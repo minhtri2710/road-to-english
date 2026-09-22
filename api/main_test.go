@@ -446,6 +446,61 @@ func TestSyncRejectsYearZeroLastReviewWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsInvalidFSRSBytesWithoutWriting(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-invalid-fsrs-bytes@example.com")
+	body := []byte(`{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T00:00:00Z","note":"a`)
+	body = append(body, 0xff)
+	body = append(body, []byte(`b"}}],"practiceDays":[],"lessonCompletion":[]}`)...)
+	response := syncWithCookie(api.handler, string(body), cookie)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+
+	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	var state storage.State
+	decodeJSON(t, empty, &state)
+	if len(state.Cards) != 0 {
+		t.Fatalf("cards after invalid fsrs bytes = %#v, want empty", state.Cards)
+	}
+}
+
+func TestSyncPreservesFSRSUnicodeEscapes(t *testing.T) {
+	tests := []struct {
+		name string
+		note string
+	}{
+		{name: "nul escape", note: `a\u0000b`},
+		{name: "lone surrogate escape", note: `x\ud800y`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			api := newTestAPI(t)
+			cookie := signupForSync(t, api, "sync-"+strings.ReplaceAll(test.name, " ", "-")+"@example.com")
+			body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T00:00:00Z","note":"` + test.note + `"}}],"practiceDays":[],"lessonCompletion":[]}`
+			response := syncWithCookie(api.handler, body, cookie)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
+			}
+			var state storage.State
+			decodeJSON(t, response, &state)
+			if len(state.Cards) != 1 || string(state.Cards[0].Fsrs) != `{"due":"2026-09-22T00:00:00Z","note":"`+test.note+`"}` {
+				t.Fatalf("fsrs = %q, want raw escape round trip", state.Cards[0].Fsrs)
+			}
+		})
+	}
+}
+
+func TestSyncRejectsNULInLastReview(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-nul-last-review@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T00:00:00Z","last_review":"2026-09-21T00:00:00Z\u0000"}}],"practiceDays":[],"lessonCompletion":[]}`
+	response := syncWithCookie(api.handler, body, cookie)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
 func TestSyncRejectsNonUTCLastReviewWithoutWriting(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-non-utc-last-review@example.com")

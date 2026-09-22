@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/road-to-english/api/internal/auth"
 	"github.com/road-to-english/api/internal/library"
@@ -237,6 +238,9 @@ func validText(value string) bool {
 }
 
 func validFSRS(raw json.RawMessage) bool {
+	if !utf8.Valid(raw) {
+		return false
+	}
 	var object map[string]json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &object) != nil || object == nil {
 		return false
@@ -245,28 +249,13 @@ func validFSRS(raw json.RawMessage) bool {
 	if rawDue, ok := object["due"]; !ok || json.Unmarshal(rawDue, &due) != nil {
 		return false
 	}
-	if !validFSRSTimestamp(due) {
+	if _, err := storage.ParseFSRSTimestamp(due); err != nil {
 		return false
 	}
-	if rawLastReview, ok := object["last_review"]; ok && string(rawLastReview) != "null" {
-		var lastReview string
-		if json.Unmarshal(rawLastReview, &lastReview) != nil || !validFSRSTimestamp(lastReview) {
-			return false
-		}
+	if _, err := storage.FSRSLastReview(raw); err != nil {
+		return false
 	}
 	return true
-}
-
-func validFSRSTimestamp(value string) bool {
-	if !strings.HasSuffix(value, "Z") {
-		return false
-	}
-	timestamp, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return false
-	}
-	_, offset := timestamp.Zone()
-	return timestamp.Year() >= 1 && offset == 0
 }
 
 func writeUser(w http.ResponseWriter, user storage.User) {

@@ -1,11 +1,13 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -56,6 +58,41 @@ type User struct {
 
 type Repository struct {
 	pool *pgxpool.Pool
+}
+
+func ParseFSRSTimestamp(value string) (time.Time, error) {
+	if !strings.HasSuffix(value, "Z") {
+		return time.Time{}, fmt.Errorf("timestamp must end in Z")
+	}
+	timestamp, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	_, offset := timestamp.Zone()
+	if timestamp.Year() < 1 || offset != 0 {
+		return time.Time{}, fmt.Errorf("timestamp must be UTC and have year >= 1")
+	}
+	return timestamp, nil
+}
+
+func FSRSLastReview(raw json.RawMessage) (*time.Time, error) {
+	var object map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &object) != nil || object == nil {
+		return nil, fmt.Errorf("fsrs must be a JSON object")
+	}
+	rawLastReview, ok := object["last_review"]
+	if !ok || bytes.Equal(bytes.TrimSpace(rawLastReview), []byte("null")) {
+		return nil, nil
+	}
+	var value string
+	if err := json.Unmarshal(rawLastReview, &value); err != nil {
+		return nil, fmt.Errorf("last_review must be a string or null: %w", err)
+	}
+	timestamp, err := ParseFSRSTimestamp(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid last_review: %w", err)
+	}
+	return &timestamp, nil
 }
 
 func Open(ctx context.Context, dsn string) (*Repository, error) {
@@ -216,23 +253,23 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 }
 
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
-	// The WHERE casts the stored row, so every stored value must be castable.
-	if _, err := tx.Exec(ctx, `SELECT ($1::json->>'last_review')::timestamptz`, card.Fsrs); err != nil {
-		return fmt.Errorf("validate card %q last review: %w", card.Id, err)
+	lastReview, err := FSRSLastReview(card.Fsrs)
+	if err != nil {
+		return fmt.Errorf("derive card %q last review: %w", card.Id, err)
 	}
-	_, err := tx.Exec(ctx, `
-		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs, last_review)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (user_id, id) DO UPDATE SET
 			front = EXCLUDED.front,
 			back = EXCLUDED.back,
 			lesson_id = EXCLUDED.lesson_id,
 			sentence_id = EXCLUDED.sentence_id,
-			fsrs = EXCLUDED.fsrs
+			fsrs = EXCLUDED.fsrs,
+			last_review = EXCLUDED.last_review
 		-- ponytail: never-reviewed cards with the same id intentionally never update each other; the web sub-slice mirrors this exact rule.
-		WHERE COALESCE((EXCLUDED.fsrs->>'last_review')::timestamptz, '-infinity')
-			> COALESCE((cards.fsrs->>'last_review')::timestamptz, '-infinity')
-	`, userID, card.Id, card.Front, card.Back, card.Source.LessonId, card.Source.SentenceId, card.Fsrs)
+		WHERE COALESCE(EXCLUDED.last_review, '-infinity') > COALESCE(cards.last_review, '-infinity')
+	`, userID, card.Id, card.Front, card.Back, card.Source.LessonId, card.Source.SentenceId, card.Fsrs, lastReview)
 	if err != nil {
 		return fmt.Errorf("sync card %q: %w", card.Id, err)
 	}

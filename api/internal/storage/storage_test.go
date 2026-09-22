@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func newTestRepo(t *testing.T) *Repository {
@@ -96,6 +98,37 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	}
 }
 
+func TestCardLastReviewColumnDerived(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "derived-last-review@example.com")
+	reviewed := testCard("lesson-reviewed:sentence-1", "lesson-reviewed", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
+	nullReview := testCard("lesson-null:sentence-1", "lesson-null", "sentence-1", "null", "review", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":null}`))
+	absentReview := testCard("lesson-absent:sentence-1", "lesson-absent", "sentence-1", "absent", "review", []byte(`{"due":"2026-01-03T00:00:00Z"}`))
+
+	syncState(t, repo, user.Id, State{Cards: []Card{reviewed, nullReview, absentReview}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	var gotReviewed pgtype.Timestamptz
+	if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.Id, reviewed.Id).Scan(&gotReviewed); err != nil {
+		t.Fatalf("query reviewed last_review: %v", err)
+	}
+	expected, err := ParseFSRSTimestamp("2026-01-04T00:00:00Z")
+	if err != nil {
+		t.Fatalf("ParseFSRSTimestamp() error = %v", err)
+	}
+	if !gotReviewed.Valid || !gotReviewed.Time.Equal(expected) {
+		t.Fatalf("reviewed last_review = %#v, want %v", gotReviewed, expected)
+	}
+
+	for _, card := range []Card{nullReview, absentReview} {
+		var got pgtype.Timestamptz
+		if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.Id, card.Id).Scan(&got); err != nil {
+			t.Fatalf("query %s last_review: %v", card.Id, err)
+		}
+		if got.Valid {
+			t.Fatalf("%s last_review = %#v, want NULL", card.Id, got)
+		}
+	}
+}
+
 func TestCardUpsertOverwrites(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "upsert@example.com")
@@ -171,19 +204,6 @@ func TestNeverReviewedCardsWithSameIDDoNotUpdateEachOther(t *testing.T) {
 	got := syncState(t, repo, user.Id, State{Cards: []Card{second}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{first}) {
 		t.Fatalf("never-reviewed card = %#v, want first %#v", got.Cards, []Card{first})
-	}
-}
-
-func TestSyncStateRejectsUncastableLastReview(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "uncastable@example.com")
-	poisoned := testCard("lesson-11:sentence-11", "lesson-11", "sentence-11", "front", "back", []byte(`{"due":"2026-09-22T00:00:00Z","last_review":"0000-01-01T00:00:00Z"}`))
-	if _, err := repo.SyncState(context.Background(), user.Id, State{Cards: []Card{poisoned}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); err == nil {
-		t.Fatal("SyncState() error = nil, want uncastable last_review error")
-	}
-	got := syncState(t, repo, user.Id, emptyState())
-	if len(got.Cards) != 0 {
-		t.Fatalf("cards after rejected uncastable card = %#v, want empty", got.Cards)
 	}
 }
 
