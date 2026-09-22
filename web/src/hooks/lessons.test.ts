@@ -1,4 +1,4 @@
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,7 +55,9 @@ describe("lesson hooks", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(createElement(HookProbe));
+      root.render(
+        createElement(StrictMode, null, createElement(HookProbe)),
+      );
     });
 
     expect(container.textContent).toContain("Greetings & Basics");

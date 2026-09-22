@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   createCard,
@@ -12,25 +12,17 @@ export function useVocabDeck() {
   const [cards, setCards] = useState<VocabCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
-  const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
-    if (mounted.current) {
-      setLoading(true);
-    }
+    setLoading(true);
     const nextCards = await getAllCards();
-    if (mounted.current) {
-      setCards(nextCards);
-      setNow(new Date());
-      setLoading(false);
-    }
+    setCards(nextCards);
+    setNow(new Date());
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     void refresh();
-    return () => {
-      mounted.current = false;
-    };
   }, [refresh]);
 
   const due = useMemo(() => dueCards(cards, now), [cards, now]);

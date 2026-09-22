@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -103,7 +103,11 @@ async function openLesson(lesson = greetingsLesson) {
   const root = createRoot(container);
 
   await act(async () => {
-    root.render(<App />);
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
   });
   await act(async () => {
     const button = Array.from(container.querySelectorAll("button")).find(
@@ -137,7 +141,11 @@ describe("App", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<App />);
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
     });
 
     expect(container.textContent).toContain("Greetings & Basics");
@@ -511,7 +519,11 @@ describe("App", () => {
     document.body.appendChild(secondContainer);
     const secondRoot = createRoot(secondContainer);
     await act(async () => {
-      secondRoot.render(<App />);
+      secondRoot.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
     });
     await act(async () => {
       Array.from(secondContainer.querySelectorAll("button"))
@@ -703,7 +715,11 @@ describe("App", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<App />);
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
     });
 
     expect(container.textContent).not.toContain("learner@example.com");
@@ -750,7 +766,11 @@ describe("App", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<App />);
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
     });
     await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
     expect(container.querySelector('input[aria-label="Email"]')).toBeNull();
@@ -774,7 +794,11 @@ describe("App", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<App />);
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
     });
 
     const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');

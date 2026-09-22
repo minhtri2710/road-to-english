@@ -129,6 +129,8 @@ export function useRecorder(): RecorderControls {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       const recorder = recorderRef.current;
