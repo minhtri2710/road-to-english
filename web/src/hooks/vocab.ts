@@ -59,5 +59,5 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  return { due, savedSentenceIds, loading, addCard, review };
+  return { due, savedSentenceIds, loading, addCard, review, reload: refresh };
 }

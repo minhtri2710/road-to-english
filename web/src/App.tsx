@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -20,6 +26,8 @@ import { matchesReference } from "./lib/dictation";
 import { Rating, type Grade, type VocabCard } from "./lib/vocab";
 import { speak } from "./lib/speech";
 import { useRecorder } from "./hooks/useRecorder";
+import { backupFileName, exportData, importData } from "./lib/backup";
+import { exportAll, replaceAll } from "./lib/backupStore";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
@@ -62,6 +70,9 @@ const appStyles = stylex.create({
   },
   viewToggle: {
     alignSelf: "start",
+  },
+  backupFileInput: {
+    display: "none",
   },
   reviewCard: {
     padding: "1.5rem",
@@ -563,8 +574,46 @@ function LessonDetail({
 export function App() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [view, setView] = useState<"library" | "review">("library");
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
   const progress = useProgress();
+
+  const exportBackup = async () => {
+    try {
+      const text = exportData(await exportAll(), new Date());
+      const blob = new Blob([text], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = backupFileName(new Date());
+      link.click();
+      link.remove();
+      URL.revokeObjectURL?.(url);
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
+    }
+  };
+
+  const importBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) {
+      return;
+    }
+
+    try {
+      const data = importData(await file.text());
+      if (!window.confirm("Importing this backup will replace all local data. Continue?")) {
+        return;
+      }
+      await replaceAll(data);
+      await Promise.all([deck.reload(), progress.reload()]);
+      setBackupError(null);
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
+    }
+  };
 
   return (
     <Theme theme={neutralTheme}>
@@ -590,6 +639,27 @@ export function App() {
                   variant={progress.practicedToday ? "success" : "info"}
                 />
               </HStack>
+              <HStack gap={1} align="center">
+                <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
+                <Button
+                  label="Import"
+                  variant="secondary"
+                  onClick={() => importInput.current?.click()}
+                />
+                <input
+                  ref={importInput}
+                  className={stylex.props(appStyles.backupFileInput).className}
+                  type="file"
+                  accept="application/json"
+                  aria-label="Import backup file"
+                  onChange={(event) => void importBackup(event)}
+                />
+              </HStack>
+              {backupError && (
+                <Text as="p" color="primary" xstyle={appStyles.error}>
+                  Backup error: {backupError}
+                </Text>
+              )}
             </VStack>
             <ToggleButtonGroup
               label="App view"

@@ -47,5 +47,6 @@ export function useProgress() {
     completedLessons,
     recordPractice,
     markLessonComplete,
+    reload: refresh,
   };
 }

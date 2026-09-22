@@ -3,8 +3,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import { getPracticeDays } from "./lib/progressStore";
-import { getAllCards } from "./lib/vocabStore";
+import { exportData } from "./lib/backup";
+import { todayKey } from "./lib/progress";
+import { recordPractice, getPracticeDays } from "./lib/progressStore";
+import { createCard } from "./lib/vocab";
+import { getAllCards, putCard } from "./lib/vocabStore";
 import { greetingsLesson, lessonSummaries } from "./test/fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -150,7 +153,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(15);
+    expect(container.querySelectorAll("button")).toHaveLength(17);
 
     await act(async () => {
       root.unmount();
@@ -588,6 +591,68 @@ describe("App", () => {
     );
     expect(container.textContent).toContain(greetingsLesson.sentences[1].text);
     expect(container.textContent).not.toContain(greetingsLesson.sentences[0].text);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("imports a backup through the UI and refreshes the deck and streak", async () => {
+    const existing = createCard(
+      {
+        front: "old card",
+        back: "old answer",
+        source: { lessonId: "old-lesson", sentenceId: "old-sentence" },
+      },
+      new Date(),
+    );
+    await putCard(existing);
+    await recordPractice("2025-01-01");
+
+    const importedCard = createCard(
+      {
+        front: "imported card",
+        back: "imported answer",
+        source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+      },
+      new Date(),
+    );
+    const text = exportData(
+      {
+        cards: [importedCard],
+        practiceDays: [{ date: todayKey(new Date()) }],
+        lessonCompletion: [{ lessonId: "lesson-1" }],
+      },
+      new Date(),
+    );
+    vi.stubGlobal("confirm", () => true);
+    const { container, root } = await openLesson();
+    const input = container.querySelector<HTMLInputElement>(
+      'input[type="file"]',
+    );
+    if (!input) throw new Error("backup file input not found");
+
+    await act(async () => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File([text], "backup.json", { type: "application/json" })],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
+
+    expect(container.textContent).toContain("1 day streak");
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Review"))
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("imported card") ?? false);
+    expect(container.textContent).toContain("imported card");
+    expect(container.textContent).not.toContain("old card");
+    expect(await getAllCards()).toHaveLength(1);
+    expect(await getPracticeDays()).toHaveLength(1);
 
     await act(async () => {
       root.unmount();
