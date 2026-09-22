@@ -19,6 +19,8 @@ import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
 import { ApiError, NotFoundError } from "./api/lessons";
+import { createSyncScheduler, type SyncScheduler } from "./lib/syncScheduler";
+import { setSyncTrigger } from "./lib/syncEvents";
 import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
@@ -546,7 +548,7 @@ function ReviewDeck({
 function LessonDetail({
   id,
   onBack,
-  savedSentenceIds,
+  savedCardIds,
   addCard,
   recordPractice,
   completed,
@@ -554,7 +556,7 @@ function LessonDetail({
 }: {
   id: string;
   onBack: () => void;
-  savedSentenceIds: Set<string>;
+  savedCardIds: Set<string>;
   addCard: (input: {
     front: string;
     back: string;
@@ -644,7 +646,7 @@ function LessonDetail({
                   <SaveToReview
                     lessonId={data.id}
                     sentence={sentence}
-                    saved={savedSentenceIds.has(sentence.id)}
+                    saved={savedCardIds.has(`${data.id}:${sentence.id}`)}
                     addCard={addCard}
                   />
                 </VStack>
@@ -660,7 +662,7 @@ function LessonDetail({
                   <SaveToReview
                     lessonId={data.id}
                     sentence={sentence}
-                    saved={savedSentenceIds.has(sentence.id)}
+                    saved={savedCardIds.has(`${data.id}:${sentence.id}`)}
                     addCard={addCard}
                   />
                 </VStack>
@@ -681,6 +683,37 @@ export function App() {
   const deck = useVocabDeck();
   const progress = useProgress();
   const auth = useAuth();
+  const syncRef = useRef<SyncScheduler | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSyncTrigger(() => syncRef.current?.trigger());
+    return () => setSyncTrigger(undefined);
+  }, []);
+
+  useEffect(() => {
+    syncRef.current?.stop();
+    syncRef.current = null;
+    setSyncMessage(null);
+    if (!auth.user) {
+      return;
+    }
+    const scheduler = createSyncScheduler(
+      auth.user.id,
+      async () => {
+        await Promise.all([deck.reload(), progress.reload()]);
+      },
+      () => setSyncMessage("This device's data belongs to another account, so sync is off. Sign in with that account to sync."),
+    );
+    syncRef.current = scheduler;
+    scheduler.trigger();
+    return () => {
+      scheduler.stop();
+      if (syncRef.current === scheduler) {
+        syncRef.current = null;
+      }
+    };
+  }, [auth.user, deck.reload, progress.reload]);
 
   const exportBackup = async () => {
     try {
@@ -763,6 +796,11 @@ export function App() {
                   Backup error: {backupError}
                 </Text>
               )}
+              {syncMessage && (
+                <Text as="p" color="primary" xstyle={appStyles.error}>
+                  {syncMessage}
+                </Text>
+              )}
               <AccountArea auth={auth} />
             </VStack>
             <ToggleButtonGroup
@@ -794,7 +832,7 @@ export function App() {
               <LessonDetail
                 id={selectedLessonId}
                 onBack={() => setSelectedLessonId(null)}
-                savedSentenceIds={deck.savedSentenceIds}
+                savedCardIds={deck.savedCardIds}
                 addCard={deck.addCard}
                 recordPractice={progress.recordPractice}
                 completed={progress.completedLessons.has(selectedLessonId)}

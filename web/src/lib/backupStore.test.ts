@@ -2,7 +2,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 
 import { exportData, importData } from "./backup";
-import { replaceAll, exportAll } from "./backupStore";
+import { claimOwner, exportAll, getOwner, mergeInto, replaceAll } from "./backupStore";
 import {
   getCompletedLessons,
   getPracticeDays,
@@ -42,6 +42,41 @@ describe("backup store", () => {
     expect(await getCompletedLessons()).toEqual(["lesson-1"]);
     expect(dueCards(await getAllCards(), now)).toHaveLength(1);
     expect((await getAllCards())[0]?.fsrs.due).toBeInstanceOf(Date);
+  });
+
+  it("merges two devices saving the same sentence into one deterministic card", async () => {
+    const deviceA = card("same");
+    const deviceB = card("same");
+    deviceB.front = "device two";
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
+
+    expect(await getAllCards()).toHaveLength(1);
+  });
+
+  it("merges cards by review time and unions progress rows", async () => {
+    const first = card("same");
+    const second = card("same");
+    second.front = "device two";
+    second.fsrs.last_review = new Date("2026-01-02T00:00:00Z");
+    await putCard(first);
+    await mergeInto({
+      cards: [second],
+      practiceDays: [{ date: "2026-01-06" }],
+      lessonCompletion: [{ lessonId: "lesson-2" }],
+    });
+
+    expect(await getAllCards()).toEqual([second]);
+    expect(await getPracticeDays()).toEqual(["2026-01-06"]);
+    expect(await getCompletedLessons()).toEqual(["lesson-2"]);
+  });
+
+  it("keeps the owner through import replacement and excludes it from export", async () => {
+    await claimOwner("user-1");
+    await replaceAll({ cards: [], practiceDays: [], lessonCompletion: [] });
+
+    expect(await getOwner()).toBe("user-1");
+    expect(await exportAll()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [] });
   });
 
   it("replaces rather than merges existing rows", async () => {

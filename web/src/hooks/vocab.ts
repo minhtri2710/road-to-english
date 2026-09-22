@@ -26,8 +26,8 @@ export function useVocabDeck() {
   }, [refresh]);
 
   const due = useMemo(() => dueCards(cards, now), [cards, now]);
-  const savedSentenceIds = useMemo(
-    () => new Set(cards.map((card) => card.source.sentenceId)),
+  const savedCardIds = useMemo(
+    () => new Set(cards.map((card) => card.id)),
     [cards],
   );
 
@@ -51,5 +51,5 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  return { due, savedSentenceIds, loading, addCard, review, reload: refresh };
+  return { due, savedCardIds, loading, addCard, review, reload: refresh };
 }

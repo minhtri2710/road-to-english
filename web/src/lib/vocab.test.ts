@@ -23,6 +23,11 @@ describe("vocabulary cards", () => {
     expect(card.fsrs.lapses).toBe(0);
   });
 
+  it("uses the lesson and sentence as the deterministic card id", () => {
+    expect(newCard().id).toBe("lesson-1:sentence-1");
+    expect(createCard(input, now).id).toBe(newCard().id);
+  });
+
   it("schedules a Good review after now", () => {
     const card = reviewCard(newCard(), Rating.Good, now);
 

@@ -1,11 +1,13 @@
 import type { VocabCard } from "./vocab";
 
 import { openAppDatabase } from "./db";
+import { notifyLocalMutation } from "./syncEvents";
 
 export async function putCard(card: VocabCard): Promise<void> {
   const db = await openAppDatabase();
   try {
     await db.put("cards", card);
+    notifyLocalMutation();
   } finally {
     db.close();
   }

@@ -20,6 +20,12 @@ function responseFor(path: string, lesson = greetingsLesson): Response {
     return new Response(null, { status: 401 });
   }
 
+  if (path === "/sync") {
+    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [] }), {
+      status: 200,
+    });
+  }
+
   if (path === "/lessons") {
     return new Response(JSON.stringify(lessonSummaries), { status: 200 });
   }
@@ -693,6 +699,114 @@ describe("App", () => {
     await act(async () => {
       root.unmount();
     });
+    container.remove();
+  });
+
+  it("syncs exactly once after sign-in", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me") return new Response(null, { status: 401 });
+      if (path === "/login") {
+        return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), { status: 200 });
+      }
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+    });
+    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+    if (!email || !password) throw new Error("sign-in form not found");
+    await act(async () => {
+      setInputValue(email, "learner@example.com");
+      setInputValue(password, "password");
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign in")
+        ?.click();
+    });
+    await waitForCondition(() => fetchMock.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/sync";
+    }).length === 1);
+    expect(fetchMock.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/sync";
+    })).toHaveLength(1);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("syncs exactly once after /me restores a user", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+    });
+    await waitForCondition(() => fetchMock.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/sync";
+    }).length === 1);
+    expect(fetchMock.mock.calls.filter(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/sync";
+    })).toHaveLength(1);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("shows the owner mismatch message and sends no sync", async () => {
+    const { claimOwner } = await import("./lib/backupStore");
+    await claimOwner("another-user");
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+    });
+    await waitForCondition(() => container.textContent?.includes("This device's data belongs to another account") ?? false);
+    expect(fetchMock.mock.calls.some(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/sync";
+    })).toBe(false);
+
+    await act(async () => root.unmount());
     container.remove();
   });
 

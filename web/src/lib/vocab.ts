@@ -33,7 +33,7 @@ export function createCard(
   now: Date,
 ): VocabCard {
   return {
-    id: crypto.randomUUID(),
+    id: `${input.source.lessonId}:${input.source.sentenceId}`,
     ...input,
     fsrs: createEmptyCard(now),
   };
