@@ -34,6 +34,20 @@ type Card struct {
 	Fsrs json.RawMessage `json:"fsrs"`
 }
 
+type PracticeDay struct {
+	Date string `json:"date"`
+}
+
+type LessonCompletion struct {
+	LessonID string `json:"lessonId"`
+}
+
+type State struct {
+	Cards            []Card             `json:"cards"`
+	PracticeDays     []PracticeDay      `json:"practiceDays"`
+	LessonCompletion []LessonCompletion `json:"lessonCompletion"`
+}
+
 type User struct {
 	Id        string    `json:"id"`
 	Email     string    `json:"email"`
@@ -166,8 +180,43 @@ func (r *Repository) DeleteSession(ctx context.Context, tokenHash string) error 
 	return nil
 }
 
-func (r *Repository) UpsertCard(ctx context.Context, userID string, card Card) error {
-	_, err := r.pool.Exec(ctx, `
+func (r *Repository) SyncState(ctx context.Context, userID string, in State) (State, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return State{}, fmt.Errorf("begin sync transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	for _, card := range in.Cards {
+		if err := syncCard(ctx, tx, userID, card); err != nil {
+			return State{}, err
+		}
+	}
+	for _, practiceDay := range in.PracticeDays {
+		if err := syncPracticeDay(ctx, tx, userID, practiceDay); err != nil {
+			return State{}, err
+		}
+	}
+	for _, completion := range in.LessonCompletion {
+		if err := syncLessonCompletion(ctx, tx, userID, completion); err != nil {
+			return State{}, err
+		}
+	}
+
+	out, err := readState(ctx, tx, userID)
+	if err != nil {
+		return State{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return State{}, fmt.Errorf("commit sync transaction: %w", err)
+	}
+	return out, nil
+}
+
+func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
+	_, err := tx.Exec(ctx, `
 		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id, id) DO UPDATE SET
@@ -176,15 +225,62 @@ func (r *Repository) UpsertCard(ctx context.Context, userID string, card Card) e
 			lesson_id = EXCLUDED.lesson_id,
 			sentence_id = EXCLUDED.sentence_id,
 			fsrs = EXCLUDED.fsrs
+		-- ponytail: never-reviewed cards with the same id intentionally never update each other; the web sub-slice mirrors this exact rule.
+		WHERE COALESCE((EXCLUDED.fsrs->>'last_review')::timestamptz, '-infinity')
+			> COALESCE((cards.fsrs->>'last_review')::timestamptz, '-infinity')
 	`, userID, card.Id, card.Front, card.Back, card.Source.LessonId, card.Source.SentenceId, card.Fsrs)
 	if err != nil {
-		return fmt.Errorf("upsert card %q: %w", card.Id, err)
+		return fmt.Errorf("sync card %q: %w", card.Id, err)
 	}
 	return nil
 }
 
-func (r *Repository) ListCards(ctx context.Context, userID string) ([]Card, error) {
-	rows, err := r.pool.Query(ctx, `
+func syncPracticeDay(ctx context.Context, tx pgx.Tx, userID string, practiceDay PracticeDay) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO practice_days (user_id, date)
+		VALUES ($1, $2::date)
+		ON CONFLICT (user_id, date) DO NOTHING
+	`, userID, practiceDay.Date)
+	if err != nil {
+		return fmt.Errorf("sync practice day %q: %w", practiceDay.Date, err)
+	}
+	return nil
+}
+
+func syncLessonCompletion(ctx context.Context, tx pgx.Tx, userID string, completion LessonCompletion) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO lesson_completion (user_id, lesson_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id, lesson_id) DO NOTHING
+	`, userID, completion.LessonID)
+	if err != nil {
+		return fmt.Errorf("sync lesson %q: %w", completion.LessonID, err)
+	}
+	return nil
+}
+
+func readState(ctx context.Context, tx pgx.Tx, userID string) (State, error) {
+	cards, err := readCards(ctx, tx, userID)
+	if err != nil {
+		return State{}, err
+	}
+	practiceDays, err := readPracticeDays(ctx, tx, userID)
+	if err != nil {
+		return State{}, err
+	}
+	lessonCompletion, err := readLessonCompletion(ctx, tx, userID)
+	if err != nil {
+		return State{}, err
+	}
+	return State{
+		Cards:            cards,
+		PracticeDays:     practiceDays,
+		LessonCompletion: lessonCompletion,
+	}, nil
+}
+
+func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
+	rows, err := tx.Query(ctx, `
 		SELECT id, front, back, lesson_id, sentence_id, fsrs
 		FROM cards
 		WHERE user_id = $1
@@ -216,53 +312,34 @@ func (r *Repository) ListCards(ctx context.Context, userID string) ([]Card, erro
 	return cards, nil
 }
 
-func (r *Repository) AddPracticeDay(ctx context.Context, userID, dateKey string) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO practice_days (user_id, date)
-		VALUES ($1, $2::date)
-		ON CONFLICT (user_id, date) DO NOTHING
-	`, userID, dateKey)
-	if err != nil {
-		return fmt.Errorf("add practice day %q: %w", dateKey, err)
-	}
-	return nil
-}
-
-func (r *Repository) ListPracticeDays(ctx context.Context, userID string) ([]string, error) {
-	rows, err := r.pool.Query(ctx, `SELECT date FROM practice_days WHERE user_id = $1 ORDER BY date`, userID)
+func readPracticeDays(ctx context.Context, tx pgx.Tx, userID string) ([]PracticeDay, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT date
+		FROM practice_days
+		WHERE user_id = $1
+		ORDER BY date
+	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list practice days: %w", err)
 	}
 	defer rows.Close()
 
-	dates := make([]string, 0)
+	practiceDays := make([]PracticeDay, 0)
 	for rows.Next() {
 		var date time.Time
 		if err := rows.Scan(&date); err != nil {
 			return nil, fmt.Errorf("scan practice day: %w", err)
 		}
-		dates = append(dates, date.Format("2006-01-02"))
+		practiceDays = append(practiceDays, PracticeDay{Date: date.Format("2006-01-02")})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate practice days: %w", err)
 	}
-	return dates, nil
+	return practiceDays, nil
 }
 
-func (r *Repository) MarkLessonComplete(ctx context.Context, userID, lessonID string) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO lesson_completion (user_id, lesson_id)
-		VALUES ($1, $2)
-		ON CONFLICT (user_id, lesson_id) DO NOTHING
-	`, userID, lessonID)
-	if err != nil {
-		return fmt.Errorf("mark lesson %q complete: %w", lessonID, err)
-	}
-	return nil
-}
-
-func (r *Repository) ListCompletedLessons(ctx context.Context, userID string) ([]string, error) {
-	rows, err := r.pool.Query(ctx, `
+func readLessonCompletion(ctx context.Context, tx pgx.Tx, userID string) ([]LessonCompletion, error) {
+	rows, err := tx.Query(ctx, `
 		SELECT lesson_id
 		FROM lesson_completion
 		WHERE user_id = $1
@@ -273,16 +350,16 @@ func (r *Repository) ListCompletedLessons(ctx context.Context, userID string) ([
 	}
 	defer rows.Close()
 
-	lessonIDs := make([]string, 0)
+	lessonCompletion := make([]LessonCompletion, 0)
 	for rows.Next() {
 		var lessonID string
 		if err := rows.Scan(&lessonID); err != nil {
 			return nil, fmt.Errorf("scan completed lesson: %w", err)
 		}
-		lessonIDs = append(lessonIDs, lessonID)
+		lessonCompletion = append(lessonCompletion, LessonCompletion{LessonID: lessonID})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate completed lessons: %w", err)
 	}
-	return lessonIDs, nil
+	return lessonCompletion, nil
 }

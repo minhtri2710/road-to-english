@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/road-to-english/api/internal/auth"
@@ -17,6 +20,11 @@ import (
 
 const defaultCORSOrigin = "http://localhost:5173"
 const sessionCookieName = "session"
+
+const authBodyMaxBytes int64 = 4 * 1024
+
+// ponytail: full-state push ceiling; upgrade = delta sync.
+const syncBodyMaxBytes int64 = 4 * 1024 * 1024
 
 type contextKey string
 
@@ -119,16 +127,137 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 		}
 		writeUser(w, user)
 	})))
+	mux.Handle("POST /sync", authMiddleware(repo, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		syncHandler(w, r, repo)
+	})))
 	return mux
 }
 
 func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, bool) {
 	var input credentials
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Email == "" || len(input.Password) == 0 || len(input.Password) > 72 {
+	if !decodeJSONBody(w, r, &input, authBodyMaxBytes, "invalid credentials") {
+		return credentials{}, false
+	}
+	if input.Email == "" || len(input.Password) == 0 || len(input.Password) > 72 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
 		return credentials{}, false
 	}
 	return input, true
+}
+
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64, invalidMessage string) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "unsupported media type"})
+		return false
+	}
+
+	writeDecodeError := func(err error) {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+		} else {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": invalidMessage})
+		}
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
+	if err := decoder.Decode(dst); err != nil {
+		writeDecodeError(err)
+		return false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeDecodeError(err)
+		return false
+	}
+	return true
+}
+
+func syncHandler(w http.ResponseWriter, r *http.Request, repo *storage.Repository) {
+	var input storage.State
+	if !decodeJSONBody(w, r, &input, syncBodyMaxBytes, "invalid sync state") {
+		return
+	}
+	if !validateSyncState(input) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid sync state"})
+		return
+	}
+
+	state, err := repo.SyncState(r.Context(), r.Context().Value(userIDContextKey).(string), input)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func validateSyncState(state storage.State) bool {
+	if state.Cards == nil || state.PracticeDays == nil || state.LessonCompletion == nil {
+		return false
+	}
+
+	cardIDs := make(map[string]struct{}, len(state.Cards))
+	for _, card := range state.Cards {
+		if card.Id == "" || card.Front == "" || card.Back == "" || card.Source.LessonId == "" || card.Source.SentenceId == "" {
+			return false
+		}
+		if card.Id != card.Source.LessonId+":"+card.Source.SentenceId {
+			return false
+		}
+		if _, exists := cardIDs[card.Id]; exists {
+			return false
+		}
+		cardIDs[card.Id] = struct{}{}
+		if !validFSRS(card.Fsrs) {
+			return false
+		}
+	}
+
+	for _, practiceDay := range state.PracticeDays {
+		date, err := time.Parse("2006-01-02", practiceDay.Date)
+		if err != nil || date.Format("2006-01-02") != practiceDay.Date {
+			return false
+		}
+	}
+	for _, completion := range state.LessonCompletion {
+		if completion.LessonID == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func validFSRS(raw json.RawMessage) bool {
+	var object map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &object) != nil || object == nil {
+		return false
+	}
+	var due string
+	if rawDue, ok := object["due"]; !ok || json.Unmarshal(rawDue, &due) != nil {
+		return false
+	}
+	if !validFSRSTimestamp(due) {
+		return false
+	}
+	if rawLastReview, ok := object["last_review"]; ok && string(rawLastReview) != "null" {
+		var lastReview string
+		if json.Unmarshal(rawLastReview, &lastReview) != nil || !validFSRSTimestamp(lastReview) {
+			return false
+		}
+	}
+	return true
+}
+
+func validFSRSTimestamp(value string) bool {
+	if !strings.HasSuffix(value, "Z") {
+		return false
+	}
+	timestamp, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return false
+	}
+	_, offset := timestamp.Zone()
+	return offset == 0
 }
 
 func writeUser(w http.ResponseWriter, user storage.User) {

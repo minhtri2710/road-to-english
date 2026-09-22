@@ -235,6 +235,46 @@ func TestCORSPreflight(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightSync(t *testing.T) {
+	api := newTestAPI(t)
+	req := httptest.NewRequest(http.MethodOptions, "/sync", nil)
+	req.Header.Set("Origin", defaultCORSOrigin)
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+	recorder := httptest.NewRecorder()
+
+	api.handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != defaultCORSOrigin {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, defaultCORSOrigin)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type" {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want Content-Type", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("Access-Control-Allow-Credentials = %q, want true", got)
+	}
+}
+
+func TestSignupRequiresJSONContentType(t *testing.T) {
+	api := newTestAPI(t)
+	req := httptest.NewRequest(http.MethodPost, "/signup", strings.NewReader(`{"email":"missing-header@example.com","password":"password"}`))
+	recorder := httptest.NewRecorder()
+	api.handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
+	}
+	if compactJSON(t, recorder.Body.Bytes()) != `{"error":"unsupported media type"}` {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
 func TestBadInputSignup(t *testing.T) {
 	api := newTestAPI(t)
 	missingEmail := doJSON(api.handler, http.MethodPost, "/signup", `{"password":"password"}`)
@@ -248,11 +288,188 @@ func TestBadInputSignup(t *testing.T) {
 }
 
 func doJSON(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	return doJSONWithCookie(handler, method, path, body, nil)
+}
+
+func doJSONWithCookie(handler http.Handler, method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 	return recorder
+}
+
+func syncWithCookie(handler http.Handler, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	return doJSONWithCookie(handler, http.MethodPost, "/sync", body, cookie)
+}
+
+func signupForSync(t *testing.T, api *testAPI, email string) *http.Cookie {
+	t.Helper()
+	signup := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"`+email+`","password":"correct password"}`)
+	if signup.Code != http.StatusOK {
+		t.Fatalf("signup status = %d, body = %s", signup.Code, signup.Body.String())
+	}
+	return responseCookie(t, signup)
+}
+
+const validSyncState = `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00.000Z","last_review":"2026-09-21T10:00:00.000Z","reps":1}}],"practiceDays":[{"date":"2026-09-22"}],"lessonCompletion":[{"lessonId":"lesson-1"}]}`
+
+func TestSyncRequiresSession(t *testing.T) {
+	api := newTestAPI(t)
+	response := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, nil)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestSyncAcceptsNullLastReview(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-null-last-review@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00.000Z","last_review":null}}],"practiceDays":[],"lessonCompletion":[]}`
+	response := syncWithCookie(api.handler, body, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSyncMergesAndReturnsFullState(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-merge@example.com")
+
+	first := syncWithCookie(api.handler, validSyncState, cookie)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first sync status = %d, body = %s", first.Code, first.Body.String())
+	}
+	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second sync status = %d, body = %s", second.Code, second.Body.String())
+	}
+	if compactJSON(t, second.Body.Bytes()) != compactJSON(t, []byte(validSyncState)) {
+		t.Fatalf("second sync body = %s, want %s", second.Body.String(), validSyncState)
+	}
+}
+
+func TestSyncRejectsInvalidState(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-invalid@example.com")
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "bad fsrs due", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"not-a-date"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "fsrs due non-UTC offset", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "missing fsrs due", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "wrong fsrs type", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":[] }],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "bad fsrs last review", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z","last_review":"not-a-date"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "fsrs last review non-UTC offset", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z","last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "invalid calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[]}`},
+		{name: "noncanonical calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-9-3"}],"lessonCompletion":[]}`},
+		{name: "card id mismatch", body: `{"cards":[{"id":"wrong-id","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty card id", body: `{"cards":[{"id":"","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty card front", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty card back", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty source lesson id", body: `{"cards":[{"id":":sentence-1","front":"front","back":"back","source":{"lessonId":"","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty source sentence id", body: `{"cards":[{"id":"lesson-1:","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":""},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "duplicate card id", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}},{"id":"lesson-1:sentence-1","front":"front 2","back":"back 2","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "empty lesson completion id", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":""}]}`},
+		{name: "missing cards array", body: `{"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "null cards array", body: `{"cards":null,"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "wrong cards type", body: `{"cards":{},"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "missing practice days array", body: `{"cards":[],"lessonCompletion":[]}`},
+		{name: "null practice days array", body: `{"cards":[],"practiceDays":null,"lessonCompletion":[]}`},
+		{name: "missing lesson completion array", body: `{"cards":[],"practiceDays":[]}`},
+		{name: "null lesson completion array", body: `{"cards":[],"practiceDays":[],"lessonCompletion":null}`},
+		{name: "malformed json", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[]`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := syncWithCookie(api.handler, test.body, cookie)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
+			}
+			if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
+				t.Fatalf("body = %s", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestSyncRejectsNonUTCLastReviewWithoutWriting(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-non-utc-last-review@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z","last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`
+	response := syncWithCookie(api.handler, body, cookie)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+
+	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if empty.Code != http.StatusOK {
+		t.Fatalf("empty sync status = %d, body = %s", empty.Code, empty.Body.String())
+	}
+	var state storage.State
+	decodeJSON(t, empty, &state)
+	if len(state.Cards) != 0 {
+		t.Fatalf("cards after rejected non-UTC push = %#v, want empty", state.Cards)
+	}
+}
+
+func TestSyncRejectsMissingOrWrongContentType(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-content-type@example.com")
+	for _, contentType := range []string{"", "text/plain"} {
+		t.Run(map[string]string{"": "missing", "text/plain": "text plain"}[contentType], func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/sync", strings.NewReader(validSyncState))
+			req.AddCookie(cookie)
+			if contentType != "" {
+				req.Header.Set("Content-Type", contentType)
+			}
+			recorder := httptest.NewRecorder()
+			api.handler.ServeHTTP(recorder, req)
+			if recorder.Code != http.StatusUnsupportedMediaType {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
+			}
+			if compactJSON(t, recorder.Body.Bytes()) != `{"error":"unsupported media type"}` {
+				t.Fatalf("body = %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestSyncRejectsOversizedBody(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-large@example.com")
+	oversizedBody := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"padding":"` + strings.Repeat("x", int(syncBodyMaxBytes)) + `"}`
+	response := syncWithCookie(api.handler, oversizedBody, cookie)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
+	}
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"request body too large"}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+func TestSyncValidationIsAtomic(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-atomic@example.com")
+	invalid := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[]}`
+	response := syncWithCookie(api.handler, invalid, cookie)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid sync status = %d, want 400", response.Code)
+	}
+
+	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if empty.Code != http.StatusOK {
+		t.Fatalf("empty sync status = %d, body = %s", empty.Code, empty.Body.String())
+	}
+	var emptyState storage.State
+	decodeJSON(t, empty, &emptyState)
+	if len(emptyState.Cards) != 0 || len(emptyState.PracticeDays) != 0 || len(emptyState.LessonCompletion) != 0 {
+		t.Fatalf("empty sync state = %#v, want no rows", emptyState)
+	}
 }
 
 func responseCookie(t *testing.T, recorder *httptest.ResponseRecorder) *http.Cookie {

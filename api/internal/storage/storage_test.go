@@ -53,31 +53,41 @@ func createTestUser(t *testing.T, repo *Repository, email string) User {
 	return user
 }
 
+func testCard(id, lessonID, sentenceID, front, back string, fsrs []byte) Card {
+	card := Card{Id: id, Front: front, Back: back, Fsrs: fsrs}
+	card.Source.LessonId = lessonID
+	card.Source.SentenceId = sentenceID
+	return card
+}
+
+func syncState(t *testing.T, repo *Repository, userID string, in State) State {
+	t.Helper()
+	out, err := repo.SyncState(context.Background(), userID, in)
+	if err != nil {
+		t.Fatalf("SyncState() error = %v", err)
+	}
+	return out
+}
+
+func emptyState() State {
+	return State{
+		Cards:            []Card{},
+		PracticeDays:     []PracticeDay{},
+		LessonCompletion: []LessonCompletion{},
+	}
+}
+
 func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "card@example.com")
 	wantFSRS := []byte(`{ "due": "2026-09-22T10:00:00.000Z", "last_review": "2026-09-21T10:00:00.000Z", "stability": 2.5, "difficulty": 4.2, "elapsed_days": 1, "scheduled_days": 2, "reps": 3, "lapses": 0, "state": 2 }`)
-	want := Card{
-		Id:    "card-1",
-		Front: "Good morning",
-		Back:  "Buenos días",
-		Fsrs:  wantFSRS,
-	}
-	want.Source.LessonId = "greetings-basics"
-	want.Source.SentenceId = "greetings-basics-1"
+	want := testCard("greetings-basics:greetings-basics-1", "greetings-basics", "greetings-basics-1", "Good morning", "Buenos días", wantFSRS)
 
-	if err := repo.UpsertCard(context.Background(), user.Id, want); err != nil {
-		t.Fatalf("UpsertCard() error = %v", err)
+	gotState := syncState(t, repo, user.Id, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if len(gotState.Cards) != 1 {
+		t.Fatalf("SyncState() returned %d cards, want 1", len(gotState.Cards))
 	}
-
-	cards, err := repo.ListCards(context.Background(), user.Id)
-	if err != nil {
-		t.Fatalf("ListCards() error = %v", err)
-	}
-	if len(cards) != 1 {
-		t.Fatalf("ListCards() returned %d cards, want 1", len(cards))
-	}
-	got := cards[0]
+	got := gotState.Cards[0]
 	if got.Id != want.Id || got.Front != want.Front || got.Back != want.Back || got.Source != want.Source {
 		t.Fatalf("card metadata = %#v, want %#v", got, want)
 	}
@@ -89,65 +99,108 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 func TestCardUpsertOverwrites(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "upsert@example.com")
-	first := Card{Id: "card-1", Front: "first", Back: "one", Fsrs: []byte(`{"reps":1}`)}
-	first.Source.LessonId = "lesson-1"
-	first.Source.SentenceId = "sentence-1"
-	second := Card{Id: "card-1", Front: "second", Back: "two", Fsrs: []byte(`{"reps":2}`)}
-	second.Source.LessonId = "lesson-2"
-	second.Source.SentenceId = "sentence-2"
+	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "one", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
+	newer := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "newer", "value", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":2}`))
 
-	if err := repo.UpsertCard(context.Background(), user.Id, first); err != nil {
-		t.Fatalf("first UpsertCard() error = %v", err)
-	}
-	if err := repo.UpsertCard(context.Background(), user.Id, second); err != nil {
-		t.Fatalf("second UpsertCard() error = %v", err)
-	}
-
-	cards, err := repo.ListCards(context.Background(), user.Id)
-	if err != nil {
-		t.Fatalf("ListCards() error = %v", err)
-	}
-	if len(cards) != 1 {
-		t.Fatalf("ListCards() returned %d cards, want 1", len(cards))
-	}
-	if !reflect.DeepEqual(cards[0], second) {
-		t.Fatalf("card = %#v, want %#v", cards[0], second)
+	syncState(t, repo, user.Id, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{newer}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{newer}) {
+		t.Fatalf("newer card = %#v, want %#v", got.Cards, []Card{newer})
 	}
 }
 
-func TestPracticeDayIsIdempotent(t *testing.T) {
+func TestCardUpsertOlderDoesNotRegress(t *testing.T) {
 	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "practice@example.com")
-	for range 2 {
-		if err := repo.AddPracticeDay(context.Background(), user.Id, "2026-09-22"); err != nil {
-			t.Fatalf("AddPracticeDay() error = %v", err)
-		}
-	}
+	user := createTestUser(t, repo, "older@example.com")
+	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
+	stale := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "stale", "value", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
 
-	dates, err := repo.ListPracticeDays(context.Background(), user.Id)
-	if err != nil {
-		t.Fatalf("ListPracticeDays() error = %v", err)
-	}
-	if !reflect.DeepEqual(dates, []string{"2026-09-22"}) {
-		t.Fatalf("dates = %#v, want %#v", dates, []string{"2026-09-22"})
+	syncState(t, repo, user.Id, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{stale}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
+		t.Fatalf("stale card = %#v, want stored %#v", got.Cards, []Card{stored})
 	}
 }
 
-func TestLessonCompletionIsIdempotent(t *testing.T) {
+func TestCardUpsertEqualIsNoOp(t *testing.T) {
 	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "lessons@example.com")
-	for range 2 {
-		if err := repo.MarkLessonComplete(context.Background(), user.Id, "greetings-basics"); err != nil {
-			t.Fatalf("MarkLessonComplete() error = %v", err)
-		}
+	user := createTestUser(t, repo, "equal@example.com")
+	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
+	equalClock := testCard("lesson-1:sentence-1", "lesson-equal", "sentence-equal", "equal", "value", []byte(`{"due":"2026-01-05T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":9}`))
+
+	syncState(t, repo, user.Id, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{equalClock}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
+		t.Fatalf("equal-clock card = %#v, want stored %#v", got.Cards, []Card{stored})
+	}
+}
+
+func TestUnreviewedCardDoesNotOverwriteReviewedCard(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "unreviewed@example.com")
+	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
+	unreviewed := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "unreviewed", "card", []byte(`{"due":"2026-01-05T00:00:00Z"}`))
+
+	syncState(t, repo, user.Id, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
+		t.Fatalf("unreviewed card = %#v, want reviewed %#v", got.Cards, []Card{reviewed})
+	}
+}
+
+func TestReviewedCardOverwritesNeverReviewedCard(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "reviewed@example.com")
+	unreviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "new", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
+	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
+
+	syncState(t, repo, user.Id, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
+		t.Fatalf("reviewed card = %#v, want %#v", got.Cards, []Card{reviewed})
+	}
+}
+
+func TestNeverReviewedCardsWithSameIDDoNotUpdateEachOther(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "never-reviewed@example.com")
+	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
+	second := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "second", "card", []byte(`{"due":"2026-01-02T00:00:00Z"}`))
+
+	syncState(t, repo, user.Id, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.Id, State{Cards: []Card{second}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{first}) {
+		t.Fatalf("never-reviewed card = %#v, want first %#v", got.Cards, []Card{first})
+	}
+}
+
+func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "union@example.com")
+	first := State{
+		Cards:            []Card{},
+		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
+		LessonCompletion: []LessonCompletion{{LessonID: "lesson-x"}},
+	}
+	second := State{
+		Cards:            []Card{},
+		PracticeDays:     []PracticeDay{{Date: "2026-09-23"}},
+		LessonCompletion: []LessonCompletion{{LessonID: "lesson-y"}},
+	}
+	want := State{
+		Cards:            []Card{},
+		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}, {Date: "2026-09-23"}},
+		LessonCompletion: []LessonCompletion{{LessonID: "lesson-x"}, {LessonID: "lesson-y"}},
 	}
 
-	lessons, err := repo.ListCompletedLessons(context.Background(), user.Id)
-	if err != nil {
-		t.Fatalf("ListCompletedLessons() error = %v", err)
+	syncState(t, repo, user.Id, first)
+	got := syncState(t, repo, user.Id, second)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("union state = %#v, want %#v", got, want)
 	}
-	if !reflect.DeepEqual(lessons, []string{"greetings-basics"}) {
-		t.Fatalf("lessons = %#v, want %#v", lessons, []string{"greetings-basics"})
+	got = syncState(t, repo, user.Id, second)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("idempotent union state = %#v, want %#v", got, want)
 	}
 }
 
@@ -155,52 +208,33 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 	repo := newTestRepo(t)
 	userA := createTestUser(t, repo, "a@example.com")
 	userB := createTestUser(t, repo, "b@example.com")
-	card := Card{Id: "card-1", Front: "front", Back: "back", Fsrs: []byte(`{"state":2}`)}
-	card.Source.LessonId = "lesson-1"
-	card.Source.SentenceId = "sentence-1"
-	if err := repo.UpsertCard(context.Background(), userA.Id, card); err != nil {
-		t.Fatalf("UpsertCard() error = %v", err)
+	stateA := State{
+		Cards:            []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "A", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))},
+		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
+		LessonCompletion: []LessonCompletion{{LessonID: "lesson-a"}},
 	}
-	if err := repo.AddPracticeDay(context.Background(), userA.Id, "2026-09-22"); err != nil {
-		t.Fatalf("AddPracticeDay() error = %v", err)
-	}
-	if err := repo.MarkLessonComplete(context.Background(), userA.Id, "lesson-1"); err != nil {
-		t.Fatalf("MarkLessonComplete() error = %v", err)
+	stateB := State{
+		Cards:            []Card{testCard("lesson-2:sentence-2", "lesson-2", "sentence-2", "B", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))},
+		PracticeDays:     []PracticeDay{{Date: "2026-09-23"}},
+		LessonCompletion: []LessonCompletion{{LessonID: "lesson-b"}},
 	}
 
-	cards, err := repo.ListCards(context.Background(), userB.Id)
-	if err != nil || len(cards) != 0 {
-		t.Fatalf("user B cards = %#v, err = %v; want empty", cards, err)
+	gotA := syncState(t, repo, userA.Id, stateA)
+	gotB := syncState(t, repo, userB.Id, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(gotA, stateA) {
+		t.Fatalf("user A state = %#v, want %#v", gotA, stateA)
 	}
-	dates, err := repo.ListPracticeDays(context.Background(), userB.Id)
-	if err != nil || len(dates) != 0 {
-		t.Fatalf("user B practice days = %#v, err = %v; want empty", dates, err)
-	}
-	lessons, err := repo.ListCompletedLessons(context.Background(), userB.Id)
-	if err != nil || len(lessons) != 0 {
-		t.Fatalf("user B lessons = %#v, err = %v; want empty", lessons, err)
+	if !reflect.DeepEqual(gotB, emptyState()) {
+		t.Fatalf("user B initial state = %#v, want empty", gotB)
 	}
 
-	if err := repo.UpsertCard(context.Background(), userB.Id, card); err != nil {
-		t.Fatalf("user B UpsertCard() error = %v", err)
+	gotB = syncState(t, repo, userB.Id, stateB)
+	gotA = syncState(t, repo, userA.Id, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(gotB, stateB) {
+		t.Fatalf("user B state = %#v, want %#v", gotB, stateB)
 	}
-	if err := repo.AddPracticeDay(context.Background(), userB.Id, "2026-09-23"); err != nil {
-		t.Fatalf("user B AddPracticeDay() error = %v", err)
-	}
-	if err := repo.MarkLessonComplete(context.Background(), userB.Id, "lesson-2"); err != nil {
-		t.Fatalf("user B MarkLessonComplete() error = %v", err)
-	}
-	cards, err = repo.ListCards(context.Background(), userA.Id)
-	if err != nil || len(cards) != 1 {
-		t.Fatalf("user A cards = %#v, err = %v; want one", cards, err)
-	}
-	dates, err = repo.ListPracticeDays(context.Background(), userA.Id)
-	if err != nil || !reflect.DeepEqual(dates, []string{"2026-09-22"}) {
-		t.Fatalf("user A practice days = %#v, err = %v", dates, err)
-	}
-	lessons, err = repo.ListCompletedLessons(context.Background(), userA.Id)
-	if err != nil || !reflect.DeepEqual(lessons, []string{"lesson-1"}) {
-		t.Fatalf("user A lessons = %#v, err = %v", lessons, err)
+	if !reflect.DeepEqual(gotA, stateA) {
+		t.Fatalf("user A final state = %#v, want %#v", gotA, stateA)
 	}
 }
 
