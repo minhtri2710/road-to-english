@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -13,10 +13,14 @@ import * as stylex from "@stylexjs/stylex";
 
 import { NotFoundError } from "./api/lessons";
 import { useLesson, useLessons } from "./hooks/lessons";
+import { useRecorder } from "./hooks/useRecorder";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import "@astryxdesign/theme-neutral/theme.css";
+
+// ponytail: 180 WPM is a heuristic rate-one mapping; speech engines vary, so tune this constant if calibration changes.
+const WPM_AT_RATE_ONE = 180;
 
 const appStyles = stylex.create({
   page: {
@@ -47,7 +51,75 @@ const appStyles = stylex.create({
   error: {
     color: "var(--color-error)",
   },
+  shadowingControls: {
+    flexWrap: "wrap",
+  },
 });
+
+function speak(text: string, targetWpm: number): void {
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-US";
+  utterance.rate = Math.min(2, Math.max(0.5, targetWpm / WPM_AT_RATE_ONE));
+  window.speechSynthesis.speak(utterance);
+}
+
+function SentenceShadowing({
+  text,
+  targetWpm,
+}: {
+  text: string;
+  targetWpm: number;
+}) {
+  const recorder = useRecorder();
+  const speechSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
+  const recordingSupported =
+    typeof MediaRecorder !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    typeof URL.createObjectURL === "function";
+
+  return (
+    <VStack gap={1}>
+      <HStack gap={1} xstyle={appStyles.shadowingControls}>
+        <Button
+          label="Listen"
+          variant="secondary"
+          isDisabled={!speechSupported}
+          onClick={() => speak(text, targetWpm)}
+        />
+        <Button
+          label={recorder.state === "recording" ? "Stop" : "Record"}
+          variant="secondary"
+          isDisabled={!recordingSupported || recorder.state === "requesting"}
+          isLoading={recorder.state === "requesting"}
+          onClick={
+            recorder.state === "recording"
+              ? recorder.stopRecording
+              : recorder.startRecording
+          }
+        />
+      </HStack>
+      {!speechSupported && (
+        <Text as="p" type="supporting">
+          Listen disabled: speech synthesis is not supported in this browser.
+        </Text>
+      )}
+      {!recordingSupported && (
+        <Text as="p" type="supporting">
+          Recording disabled: microphone recording is not supported in this browser.
+        </Text>
+      )}
+      {recorder.error && (
+        <Text as="p" color="primary" xstyle={appStyles.error}>
+          {recorder.error}
+        </Text>
+      )}
+      {recorder.url && <audio controls src={recorder.url} />}
+    </VStack>
+  );
+}
 
 function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   const message = error instanceof NotFoundError ? "not found" : error.message;
@@ -109,6 +181,14 @@ function LessonDetail({
 }) {
   const { data, loading, error } = useLesson(id);
 
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   if (loading) {
     return <Text as="p">Loading lesson...</Text>;
   }
@@ -147,6 +227,10 @@ function LessonDetail({
                     {sentence.notes}
                   </Text>
                 )}
+                <SentenceShadowing
+                  text={sentence.text}
+                  targetWpm={data.targetWpm}
+                />
               </VStack>
             </Card>
           </li>
