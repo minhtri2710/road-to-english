@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/road-to-english/api/internal/library"
+	"github.com/road-to-english/api/internal/storage"
 )
 
 const defaultCORSOrigin = "http://localhost:5173"
@@ -128,6 +130,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("load lesson library: %v", err)
 	}
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL must be set")
+	}
+	repo, err := storage.Open(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("open storage: %v", err)
+	}
+	defer repo.Close()
 
 	port := os.Getenv("PORT")
 	if port == "" {
