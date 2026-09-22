@@ -1,0 +1,35 @@
+[
+  {
+    "id": "greetings-basics",
+    "title": "Greetings & Basics",
+    "level": "A2",
+    "targetWpm": 90,
+    "sentences": [
+      { "id": "greetings-basics-1", "text": "Good morning, how are you today?" },
+      { "id": "greetings-basics-2", "text": "It is nice to meet you." },
+      { "id": "greetings-basics-3", "text": "See you tomorrow.", "notes": "casual sign-off" }
+    ]
+  },
+  {
+    "id": "daily-routine",
+    "title": "Daily Routine",
+    "level": "B1",
+    "targetWpm": 110,
+    "sentences": [
+      { "id": "daily-routine-1", "text": "I usually review my plans before breakfast." },
+      { "id": "daily-routine-2", "text": "A short walk helps me focus at work." },
+      { "id": "daily-routine-3", "text": "In the evening, I prepare for the next day." }
+    ]
+  },
+  {
+    "id": "careful-decisions",
+    "title": "Careful Decisions",
+    "level": "B2",
+    "targetWpm": 130,
+    "sentences": [
+      { "id": "careful-decisions-1", "text": "She compared the options before making a commitment." },
+      { "id": "careful-decisions-2", "text": "A clear explanation can prevent an unnecessary disagreement." },
+      { "id": "careful-decisions-3", "text": "We changed the plan after considering the long-term effects." }
+    ]
+  }
+]
