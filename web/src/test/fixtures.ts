@@ -1,0 +1,34 @@
+import type { Lesson, LessonSummary } from "../api/lessons";
+
+export const lessonSummaries = [
+  {
+    id: "greetings-basics",
+    title: "Greetings & Basics",
+    level: "A2",
+    sentenceCount: 3,
+    targetWpm: 90,
+  },
+  {
+    id: "daily-routine",
+    title: "Daily Routine",
+    level: "B1",
+    sentenceCount: 3,
+    targetWpm: 110,
+  },
+] satisfies LessonSummary[];
+
+export const greetingsLesson = {
+  id: "greetings-basics",
+  title: "Greetings & Basics",
+  level: "A2",
+  targetWpm: 90,
+  sentences: [
+    { id: "greetings-basics-1", text: "Good morning, how are you today?" },
+    { id: "greetings-basics-2", text: "It is nice to meet you." },
+    {
+      id: "greetings-basics-3",
+      text: "See you tomorrow.",
+      notes: "casual sign-off",
+    },
+  ],
+} satisfies Lesson;
