@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { getPracticeDays } from "./lib/progressStore";
 import { getAllCards } from "./lib/vocabStore";
 import { greetingsLesson, lessonSummaries } from "./test/fixtures";
 
@@ -149,7 +150,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(14);
+    expect(container.querySelectorAll("button")).toHaveLength(15);
 
     await act(async () => {
       root.unmount();
@@ -244,6 +245,67 @@ describe("App", () => {
     });
     expect(container.textContent).not.toContain(sentence.text);
     expect(input?.value).toBe("");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("records dictation practice and shows the streak witness", async () => {
+    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
+    vi.stubGlobal("SpeechSynthesisUtterance", class {});
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Dictation"))
+        ?.click();
+    });
+
+    const input = container.querySelector<HTMLInputElement>(
+      `#dictation-${greetingsLesson.sentences[0].id}`,
+    );
+    if (!input) throw new Error("dictation input not found");
+    await act(async () => {
+      setInputValue(input, greetingsLesson.sentences[0].text);
+      input.form?.requestSubmit();
+    });
+    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
+
+    expect(await getPracticeDays()).toHaveLength(1);
+    expect(container.textContent).toContain("1 day streak");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("marks a lesson complete and shows its badge", async () => {
+    const { container, root } = await openLesson();
+
+    const completeButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Mark complete",
+    );
+    if (!completeButton) throw new Error("Mark complete button not found");
+    await act(async () => {
+      completeButton.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("Completed") ?? false);
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Back to lessons"))
+        ?.click();
+    });
+    await waitForCondition(() => {
+      const lessonButton = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Greetings & Basics"),
+      );
+      return lessonButton?.textContent?.includes("Completed") ?? false;
+    });
+    expect(container.textContent).toContain("Completed");
 
     await act(async () => {
       root.unmount();

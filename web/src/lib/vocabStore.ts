@@ -1,24 +1,9 @@
-import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-
 import type { VocabCard } from "./vocab";
 
-interface VocabDatabase extends DBSchema {
-  cards: {
-    key: string;
-    value: VocabCard;
-  };
-}
-
-function openVocabDatabase(): Promise<IDBPDatabase<VocabDatabase>> {
-  return openDB<VocabDatabase>("road-to-english", 1, {
-    upgrade(db) {
-      db.createObjectStore("cards", { keyPath: "id" });
-    },
-  });
-}
+import { openAppDatabase } from "./db";
 
 export async function putCard(card: VocabCard): Promise<void> {
-  const db = await openVocabDatabase();
+  const db = await openAppDatabase();
   try {
     await db.put("cards", card);
   } finally {
@@ -27,7 +12,7 @@ export async function putCard(card: VocabCard): Promise<void> {
 }
 
 export async function getAllCards(): Promise<VocabCard[]> {
-  const db = await openVocabDatabase();
+  const db = await openAppDatabase();
   try {
     return await db.getAll("cards");
   } finally {

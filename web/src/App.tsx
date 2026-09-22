@@ -14,6 +14,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { NotFoundError } from "./api/lessons";
 import { useLesson, useLessons } from "./hooks/lessons";
+import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
 import { matchesReference } from "./lib/dictation";
 import { Rating, type Grade, type VocabCard } from "./lib/vocab";
@@ -88,9 +89,11 @@ const appStyles = stylex.create({
 function SentenceShadowing({
   text,
   targetWpm,
+  recordPractice,
 }: {
   text: string;
   targetWpm: number;
+  recordPractice: () => Promise<void>;
 }) {
   const recorder = useRecorder();
   const speechSupported =
@@ -100,6 +103,12 @@ function SentenceShadowing({
     typeof navigator !== "undefined" &&
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     typeof URL.createObjectURL === "function";
+
+  useEffect(() => {
+    if (recorder.state === "ready") {
+      void recordPractice();
+    }
+  }, [recordPractice, recorder.state]);
 
   return (
     <VStack gap={1}>
@@ -147,11 +156,13 @@ function SentenceDictation({
   text,
   notes,
   targetWpm,
+  recordPractice,
 }: {
   id: string;
   text: string;
   notes?: string;
   targetWpm: number;
+  recordPractice: () => Promise<void>;
 }) {
   const [typed, setTyped] = useState("");
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
@@ -161,6 +172,7 @@ function SentenceDictation({
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsCorrect(matchesReference(typed, text));
+    void recordPractice();
   };
 
   const tryAgain = () => {
@@ -223,7 +235,13 @@ function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   );
 }
 
-function LessonList({ onSelect }: { onSelect: (id: string) => void }) {
+function LessonList({
+  onSelect,
+  completedLessons,
+}: {
+  onSelect: (id: string) => void;
+  completedLessons: Set<string>;
+}) {
   const { data, loading, error } = useLessons();
 
   if (loading) {
@@ -255,7 +273,12 @@ function LessonList({ onSelect }: { onSelect: (id: string) => void }) {
                   {lesson.level} · {lesson.sentenceCount} sentences
                 </Text>
               </VStack>
-              <Badge label={`${lesson.targetWpm} WPM`} variant="info" />
+              <HStack gap={1} align="center">
+                <Badge label={`${lesson.targetWpm} WPM`} variant="info" />
+                {completedLessons.has(lesson.id) && (
+                  <Badge label="Completed" variant="success" />
+                )}
+              </HStack>
             </HStack>
           </Button>
         </li>
@@ -315,10 +338,12 @@ function ReviewDeck({
   due,
   loading,
   review,
+  recordPractice,
 }: {
   due: VocabCard[];
   loading: boolean;
   review: (card: VocabCard, rating: Grade) => Promise<void>;
+  recordPractice: () => Promise<void>;
 }) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isRating, setIsRating] = useState(false);
@@ -350,6 +375,7 @@ function ReviewDeck({
     setIsRating(true);
     try {
       await review(card, rating);
+      await recordPractice();
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -409,6 +435,9 @@ function LessonDetail({
   onBack,
   savedSentenceIds,
   addCard,
+  recordPractice,
+  completed,
+  markLessonComplete,
 }: {
   id: string;
   onBack: () => void;
@@ -418,6 +447,9 @@ function LessonDetail({
     back: string;
     source: { lessonId: string; sentenceId: string };
   }) => Promise<void>;
+  recordPractice: () => Promise<void>;
+  completed: boolean;
+  markLessonComplete: (lessonId: string) => Promise<void>;
 }) {
   const { data, loading, error } = useLesson(id);
   const [mode, setMode] = useState<"shadow" | "dictation">("shadow");
@@ -451,12 +483,21 @@ function LessonDetail({
     <VStack gap={4}>
       <HStack justify="between" align="center">
         <Button label="Back to lessons" variant="ghost" onClick={onBack} />
-        <Badge label={`${data.targetWpm} WPM`} variant="info" />
+        <HStack gap={1} align="center">
+          <Badge label={`${data.targetWpm} WPM`} variant="info" />
+          {completed && <Badge label="Completed" variant="success" />}
+        </HStack>
       </HStack>
       <VStack gap={1}>
         <Heading level={2}>{data.title}</Heading>
         <Text type="supporting">Level {data.level}</Text>
       </VStack>
+      <Button
+        label={completed ? "Completed" : "Mark complete"}
+        variant="secondary"
+        isDisabled={completed}
+        onClick={() => void markLessonComplete(data.id)}
+      />
       <ToggleButtonGroup
         label="Lesson mode"
         value={mode}
@@ -485,6 +526,7 @@ function LessonDetail({
                   <SentenceShadowing
                     text={sentence.text}
                     targetWpm={data.targetWpm}
+                    recordPractice={recordPractice}
                   />
                   <SaveToReview
                     lessonId={data.id}
@@ -500,6 +542,7 @@ function LessonDetail({
                     text={sentence.text}
                     notes={sentence.notes}
                     targetWpm={data.targetWpm}
+                    recordPractice={recordPractice}
                   />
                   <SaveToReview
                     lessonId={data.id}
@@ -521,6 +564,7 @@ export function App() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [view, setView] = useState<"library" | "review">("library");
   const deck = useVocabDeck();
+  const progress = useProgress();
 
   return (
     <Theme theme={neutralTheme}>
@@ -536,6 +580,16 @@ export function App() {
                   ? "Choose a lesson to practise reading and speaking."
                   : "Review saved sentences with spaced repetition."}
               </Text>
+              <HStack gap={1} align="center">
+                <Badge
+                  label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
+                  variant="info"
+                />
+                <Badge
+                  label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
+                  variant={progress.practicedToday ? "success" : "info"}
+                />
+              </HStack>
             </VStack>
             <ToggleButtonGroup
               label="App view"
@@ -555,15 +609,22 @@ export function App() {
                 due={deck.due}
                 loading={deck.loading}
                 review={deck.review}
+                recordPractice={progress.recordPractice}
               />
             ) : selectedLessonId === null ? (
-              <LessonList onSelect={setSelectedLessonId} />
+              <LessonList
+                onSelect={setSelectedLessonId}
+                completedLessons={progress.completedLessons}
+              />
             ) : (
               <LessonDetail
                 id={selectedLessonId}
                 onBack={() => setSelectedLessonId(null)}
                 savedSentenceIds={deck.savedSentenceIds}
                 addCard={deck.addCard}
+                recordPractice={progress.recordPractice}
+                completed={progress.completedLessons.has(selectedLessonId)}
+                markLessonComplete={progress.markLessonComplete}
               />
             )}
           </VStack>
