@@ -138,7 +138,7 @@ func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, boo
 	if !decodeJSONBody(w, r, &input, authBodyMaxBytes, "invalid credentials") {
 		return credentials{}, false
 	}
-	if input.Email == "" || len(input.Password) == 0 || len(input.Password) > 72 {
+	if !validText(input.Email) || len(input.Password) == 0 || len(input.Password) > 72 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
 		return credentials{}, false
 	}
@@ -183,7 +183,12 @@ func syncHandler(w http.ResponseWriter, r *http.Request, repo *storage.Repositor
 		return
 	}
 
-	state, err := repo.SyncState(r.Context(), r.Context().Value(userIDContextKey).(string), input)
+	userID, ok := r.Context().Value(userIDContextKey).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	state, err := repo.SyncState(r.Context(), userID, input)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
@@ -198,7 +203,7 @@ func validateSyncState(state storage.State) bool {
 
 	cardIDs := make(map[string]struct{}, len(state.Cards))
 	for _, card := range state.Cards {
-		if card.Id == "" || card.Front == "" || card.Back == "" || card.Source.LessonId == "" || card.Source.SentenceId == "" {
+		if !validText(card.Id) || !validText(card.Front) || !validText(card.Back) || !validText(card.Source.LessonId) || !validText(card.Source.SentenceId) {
 			return false
 		}
 		if card.Id != card.Source.LessonId+":"+card.Source.SentenceId {
@@ -215,16 +220,20 @@ func validateSyncState(state storage.State) bool {
 
 	for _, practiceDay := range state.PracticeDays {
 		date, err := time.Parse("2006-01-02", practiceDay.Date)
-		if err != nil || date.Format("2006-01-02") != practiceDay.Date {
+		if err != nil || date.Year() < 1 || date.Format("2006-01-02") != practiceDay.Date {
 			return false
 		}
 	}
 	for _, completion := range state.LessonCompletion {
-		if completion.LessonID == "" {
+		if !validText(completion.LessonID) {
 			return false
 		}
 	}
 	return true
+}
+
+func validText(value string) bool {
+	return value != "" && !strings.ContainsRune(value, 0)
 }
 
 func validFSRS(raw json.RawMessage) bool {
@@ -257,7 +266,7 @@ func validFSRSTimestamp(value string) bool {
 		return false
 	}
 	_, offset := timestamp.Zone()
-	return offset == 0
+	return timestamp.Year() >= 1 && offset == 0
 }
 
 func writeUser(w http.ResponseWriter, user storage.User) {

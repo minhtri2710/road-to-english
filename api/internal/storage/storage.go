@@ -216,6 +216,10 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 }
 
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
+	// The WHERE casts the stored row, so every stored value must be castable.
+	if _, err := tx.Exec(ctx, `SELECT ($1::json->>'last_review')::timestamptz`, card.Fsrs); err != nil {
+		return fmt.Errorf("validate card %q last review: %w", card.Id, err)
+	}
 	_, err := tx.Exec(ctx, `
 		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)

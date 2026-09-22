@@ -174,6 +174,19 @@ func TestNeverReviewedCardsWithSameIDDoNotUpdateEachOther(t *testing.T) {
 	}
 }
 
+func TestSyncStateRejectsUncastableLastReview(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "uncastable@example.com")
+	poisoned := testCard("lesson-11:sentence-11", "lesson-11", "sentence-11", "front", "back", []byte(`{"due":"2026-09-22T00:00:00Z","last_review":"0000-01-01T00:00:00Z"}`))
+	if _, err := repo.SyncState(context.Background(), user.Id, State{Cards: []Card{poisoned}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); err == nil {
+		t.Fatal("SyncState() error = nil, want uncastable last_review error")
+	}
+	got := syncState(t, repo, user.Id, emptyState())
+	if len(got.Cards) != 0 {
+		t.Fatalf("cards after rejected uncastable card = %#v, want empty", got.Cards)
+	}
+}
+
 func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "union@example.com")
