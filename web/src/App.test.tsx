@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { getAllCards } from "./lib/vocabStore";
 import { greetingsLesson, lessonSummaries } from "./test/fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -37,6 +38,19 @@ function installObjectUrlFakes(): { revokeObjectURL: ReturnType<typeof vi.fn> } 
     value: revokeObjectURL,
   });
   return { revokeObjectURL };
+}
+
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (condition()) {
+      return;
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  throw new Error("Timed out waiting for condition");
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {
@@ -135,7 +149,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(9);
+    expect(container.querySelectorAll("button")).toHaveLength(14);
 
     await act(async () => {
       root.unmount();
@@ -372,6 +386,147 @@ describe("App", () => {
     expect(container.textContent).toContain(
       "Unable to access the microphone. Please allow microphone access to record.",
     );
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("persists only one card when save is clicked twice synchronously", async () => {
+    const { container, root } = await openLesson();
+    const sentence = greetingsLesson.sentences[0];
+    const saveButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Save to review",
+    );
+    if (!saveButton) throw new Error("Save to review button not found");
+
+    await act(async () => {
+      saveButton.click();
+      saveButton.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("Saved") ?? false);
+    await act(async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    });
+
+    const cards = await getAllCards();
+    expect(
+      cards.filter((card) => card.source.sentenceId === sentence.id),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("persists saved cards across an app remount", async () => {
+    const first = await openLesson();
+    const firstSave = Array.from(first.container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Save to review",
+    );
+
+    await act(async () => {
+      firstSave?.click();
+    });
+    await waitForCondition(() => first.container.textContent?.includes("Saved") ?? false);
+
+    await act(async () => {
+      first.root.unmount();
+    });
+    first.container.remove();
+
+    const secondContainer = document.createElement("div");
+    document.body.appendChild(secondContainer);
+    const secondRoot = createRoot(secondContainer);
+    await act(async () => {
+      secondRoot.render(<App />);
+    });
+    await act(async () => {
+      Array.from(secondContainer.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Review"))
+        ?.click();
+    });
+    await waitForCondition(
+      () => secondContainer.textContent?.includes(greetingsLesson.sentences[0].text) ?? false,
+    );
+
+    expect(secondContainer.textContent).toContain(
+      greetingsLesson.sentences[0].text,
+    );
+
+    await act(async () => {
+      secondRoot.unmount();
+    });
+    secondContainer.remove();
+  });
+
+  it("rates a card once when rating buttons are clicked synchronously", async () => {
+    const { container, root } = await openLesson();
+    const saveButtons = Array.from(container.querySelectorAll("button")).filter(
+      (button) => button.textContent === "Save to review",
+    );
+
+    await act(async () => {
+      saveButtons[0]?.click();
+    });
+    await waitForCondition(
+      () =>
+        Array.from(container.querySelectorAll("button")).filter(
+          (button) => button.textContent === "Saved",
+        ).length === 1,
+    );
+
+    const secondSave = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Save to review",
+    );
+    await act(async () => {
+      secondSave?.click();
+    });
+    await waitForCondition(
+      () =>
+        Array.from(container.querySelectorAll("button")).filter(
+          (button) => button.textContent === "Saved",
+        ).length === 2,
+    );
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Review"))
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("Show answer") ?? false);
+
+    const showAnswer = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Show answer",
+    );
+    await act(async () => {
+      showAnswer?.click();
+    });
+    await waitForCondition(
+      () =>
+        Array.from(container.querySelectorAll("button")).some(
+          (button) => button.textContent === "Good",
+        ),
+    );
+
+    const good = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Good",
+    );
+    if (!good) throw new Error("Good rating button not found");
+    await act(async () => {
+      good.click();
+      good.click();
+    });
+
+    await waitForCondition(
+      () => container.textContent?.includes(greetingsLesson.sentences[1].text) ?? false,
+    );
+    expect(container.textContent).toContain(greetingsLesson.sentences[1].text);
+    expect(container.textContent).not.toContain(greetingsLesson.sentences[0].text);
+
     await act(async () => {
       root.unmount();
     });

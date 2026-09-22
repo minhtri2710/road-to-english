@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -14,7 +14,9 @@ import * as stylex from "@stylexjs/stylex";
 
 import { NotFoundError } from "./api/lessons";
 import { useLesson, useLessons } from "./hooks/lessons";
+import { useVocabDeck } from "./hooks/vocab";
 import { matchesReference } from "./lib/dictation";
+import { Rating, type Grade, type VocabCard } from "./lib/vocab";
 import { speak } from "./lib/speech";
 import { useRecorder } from "./hooks/useRecorder";
 
@@ -56,6 +58,20 @@ const appStyles = stylex.create({
   },
   modeToggle: {
     alignSelf: "start",
+  },
+  viewToggle: {
+    alignSelf: "start",
+  },
+  reviewCard: {
+    padding: "1.5rem",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-surface)",
+  },
+  answer: {
+    padding: "1rem",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-body)",
   },
   dictationInput: {
     width: "100%",
@@ -248,12 +264,160 @@ function LessonList({ onSelect }: { onSelect: (id: string) => void }) {
   );
 }
 
+function SaveToReview({
+  lessonId,
+  sentence,
+  saved,
+  addCard,
+}: {
+  lessonId: string;
+  sentence: { id: string; text: string; notes?: string };
+  saved: boolean;
+  addCard: (input: {
+    front: string;
+    back: string;
+    source: { lessonId: string; sentenceId: string };
+  }) => Promise<void>;
+}) {
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+
+  const save = async () => {
+    if (saved || isSavingRef.current) {
+      return;
+    }
+
+    isSavingRef.current = true;
+    setIsSaving(true);
+    try {
+      await addCard({
+        front: sentence.text,
+        back: sentence.notes ?? "",
+        source: { lessonId, sentenceId: sentence.id },
+      });
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Button
+      label={saved ? "Saved" : "Save to review"}
+      variant="ghost"
+      isDisabled={saved || isSaving}
+      onClick={() => void save()}
+    />
+  );
+}
+
+function ReviewDeck({
+  due,
+  loading,
+  review,
+}: {
+  due: VocabCard[];
+  loading: boolean;
+  review: (card: VocabCard, rating: Grade) => Promise<void>;
+}) {
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [isRating, setIsRating] = useState(false);
+  const isRatingRef = useRef(false);
+  const card = due[0];
+
+  useEffect(() => {
+    setShowAnswer(false);
+  }, [card?.id]);
+
+  if (loading) {
+    return <Text as="p">Loading review deck...</Text>;
+  }
+
+  if (!card) {
+    return (
+      <Text as="p">
+        Nothing due — save sentences from a lesson to build your deck.
+      </Text>
+    );
+  }
+
+  const rate = async (rating: Grade) => {
+    if (isRatingRef.current) {
+      return;
+    }
+
+    isRatingRef.current = true;
+    setIsRating(true);
+    try {
+      await review(card, rating);
+    } finally {
+      isRatingRef.current = false;
+      setIsRating(false);
+    }
+  };
+
+  return (
+    <VStack gap={3}>
+      <Card padding={3} xstyle={appStyles.reviewCard}>
+        <VStack gap={2}>
+          <Text as="p" weight="semibold">{card.front}</Text>
+          {showAnswer && (
+            <Text as="p" xstyle={appStyles.answer}>{card.back}</Text>
+          )}
+          {!showAnswer ? (
+            <Button
+              label="Show answer"
+              variant="primary"
+              onClick={() => setShowAnswer(true)}
+            />
+          ) : (
+            <HStack gap={1}>
+              <Button
+                label="Again"
+                variant="secondary"
+                isDisabled={isRating}
+                onClick={() => void rate(Rating.Again)}
+              />
+              <Button
+                label="Hard"
+                variant="secondary"
+                isDisabled={isRating}
+                onClick={() => void rate(Rating.Hard)}
+              />
+              <Button
+                label="Good"
+                variant="primary"
+                isDisabled={isRating}
+                onClick={() => void rate(Rating.Good)}
+              />
+              <Button
+                label="Easy"
+                variant="secondary"
+                isDisabled={isRating}
+                onClick={() => void rate(Rating.Easy)}
+              />
+            </HStack>
+          )}
+        </VStack>
+      </Card>
+    </VStack>
+  );
+}
+
 function LessonDetail({
   id,
   onBack,
+  savedSentenceIds,
+  addCard,
 }: {
   id: string;
   onBack: () => void;
+  savedSentenceIds: Set<string>;
+  addCard: (input: {
+    front: string;
+    back: string;
+    source: { lessonId: string; sentenceId: string };
+  }) => Promise<void>;
 }) {
   const { data, loading, error } = useLesson(id);
   const [mode, setMode] = useState<"shadow" | "dictation">("shadow");
@@ -322,14 +486,28 @@ function LessonDetail({
                     text={sentence.text}
                     targetWpm={data.targetWpm}
                   />
+                  <SaveToReview
+                    lessonId={data.id}
+                    sentence={sentence}
+                    saved={savedSentenceIds.has(sentence.id)}
+                    addCard={addCard}
+                  />
                 </VStack>
               ) : (
-                <SentenceDictation
-                  id={sentence.id}
-                  text={sentence.text}
-                  notes={sentence.notes}
-                  targetWpm={data.targetWpm}
-                />
+                <VStack gap={1}>
+                  <SentenceDictation
+                    id={sentence.id}
+                    text={sentence.text}
+                    notes={sentence.notes}
+                    targetWpm={data.targetWpm}
+                  />
+                  <SaveToReview
+                    lessonId={data.id}
+                    sentence={sentence}
+                    saved={savedSentenceIds.has(sentence.id)}
+                    addCard={addCard}
+                  />
+                </VStack>
               )}
             </Card>
           </li>
@@ -341,6 +519,8 @@ function LessonDetail({
 
 export function App() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [view, setView] = useState<"library" | "review">("library");
+  const deck = useVocabDeck();
 
   return (
     <Theme theme={neutralTheme}>
@@ -348,17 +528,42 @@ export function App() {
         <div className={stylex.props(appStyles.content).className}>
           <VStack gap={4}>
             <VStack gap={1} xstyle={appStyles.header}>
-              <Heading level={1}>Lesson library</Heading>
+              <Heading level={1}>
+                {view === "library" ? "Lesson library" : "Review deck"}
+              </Heading>
               <Text type="large">
-                Choose a lesson to practise reading and speaking.
+                {view === "library"
+                  ? "Choose a lesson to practise reading and speaking."
+                  : "Review saved sentences with spaced repetition."}
               </Text>
             </VStack>
-            {selectedLessonId === null ? (
+            <ToggleButtonGroup
+              label="App view"
+              value={view}
+              onChange={(nextView) => {
+                if (nextView) {
+                  setView(nextView as "library" | "review");
+                }
+              }}
+              xstyle={appStyles.viewToggle}
+            >
+              <ToggleButton value="library" label="Library" />
+              <ToggleButton value="review" label="Review" />
+            </ToggleButtonGroup>
+            {view === "review" ? (
+              <ReviewDeck
+                due={deck.due}
+                loading={deck.loading}
+                review={deck.review}
+              />
+            ) : selectedLessonId === null ? (
               <LessonList onSelect={setSelectedLessonId} />
             ) : (
               <LessonDetail
                 id={selectedLessonId}
                 onBack={() => setSelectedLessonId(null)}
+                savedSentenceIds={deck.savedSentenceIds}
+                addCard={deck.addCard}
               />
             )}
           </VStack>
