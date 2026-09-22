@@ -42,7 +42,7 @@ export class NotFoundError extends ApiError {
 
 const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
-function getUrl(path: string): string {
+export function getUrl(path: string): string {
   return `${apiUrl.replace(/\/$/, "")}${path}`;
 }
 

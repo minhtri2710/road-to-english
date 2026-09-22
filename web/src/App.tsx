@@ -18,7 +18,8 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
-import { NotFoundError } from "./api/lessons";
+import { ApiError, NotFoundError } from "./api/lessons";
+import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
@@ -87,6 +88,20 @@ const appStyles = stylex.create({
   },
   dictationInput: {
     width: "100%",
+    minHeight: "2.25rem",
+    padding: "0.5rem 0.75rem",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-surface)",
+    color: "var(--color-text-primary)",
+    font: "inherit",
+  },
+  accountControls: {
+    flexWrap: "wrap",
+  },
+  accountInput: {
+    width: "14rem",
+    maxWidth: "100%",
     minHeight: "2.25rem",
     padding: "0.5rem 0.75rem",
     border: "1px solid var(--color-border)",
@@ -243,6 +258,93 @@ function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
     <Text as="p" color="primary" xstyle={appStyles.error}>
       Unable to load {subject}: {message}
     </Text>
+  );
+}
+
+function AccountError({ error }: { error: Error }) {
+  let message = "Unable to complete account request. Please try again.";
+  if (error instanceof ApiError) {
+    if (error.status === 409) {
+      message = "This email is already registered.";
+    } else if (error.status === 401) {
+      message = "Invalid email or password.";
+    }
+  } else if (error.message) {
+    message = `${error.message}. You can continue using the app.`;
+  }
+
+  return (
+    <Text as="p" color="primary" xstyle={appStyles.error}>
+      {message}
+    </Text>
+  );
+}
+
+function AccountArea({ auth }: { auth: AuthState }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = async (action: AuthState["signIn"]) => {
+    try {
+      await action(email, password);
+      setPassword("");
+    } catch {
+      // The hook exposes the error for the inline account message.
+    }
+  };
+
+  if (auth.user) {
+    return (
+      <VStack gap={1}>
+        <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
+          <Text type="supporting">{auth.user.email}</Text>
+          <Button
+            label="Sign out"
+            variant="secondary"
+            onClick={() => void auth.signOut().catch(() => undefined)}
+          />
+        </HStack>
+        {auth.error && <AccountError error={auth.error} />}
+      </VStack>
+    );
+  }
+
+  return (
+    <VStack gap={1}>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        void submit(auth.signIn);
+      }}>
+        <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
+          <input
+            aria-label="Email"
+            className={stylex.props(appStyles.accountInput).className}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="Email"
+            required
+          />
+          <input
+            aria-label="Password"
+            className={stylex.props(appStyles.accountInput).className}
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Password"
+            required
+          />
+          <Button label="Sign in" variant="secondary" type="submit" />
+          <Button
+            label="Sign up"
+            variant="primary"
+            type="button"
+            onClick={() => void submit(auth.signUp)}
+          />
+        </HStack>
+      </form>
+      {auth.error && <AccountError error={auth.error} />}
+    </VStack>
   );
 }
 
@@ -578,6 +680,7 @@ export function App() {
   const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
   const progress = useProgress();
+  const auth = useAuth();
 
   const exportBackup = async () => {
     try {
@@ -660,6 +763,7 @@ export function App() {
                   Backup error: {backupError}
                 </Text>
               )}
+              <AccountArea auth={auth} />
             </VStack>
             <ToggleButtonGroup
               label="App view"

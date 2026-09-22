@@ -16,6 +16,10 @@ const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObje
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
 
 function responseFor(path: string, lesson = greetingsLesson): Response {
+  if (path === "/me") {
+    return new Response(null, { status: 401 });
+  }
+
   if (path === "/lessons") {
     return new Response(JSON.stringify(lessonSummaries), { status: 200 });
   }
@@ -153,7 +157,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(17);
+    expect(container.querySelectorAll("button")).toHaveLength(19);
 
     await act(async () => {
       root.unmount();
@@ -673,6 +677,119 @@ describe("App", () => {
     expect(Array.from(container.querySelectorAll("button")).filter(
       (button) => button.textContent === "Listen" || button.textContent === "Record",
     ).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("signs in and signs out without reloading", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me") return new Response(null, { status: 401 });
+      if (path === "/login") {
+        return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), {
+          status: 200,
+        });
+      }
+      if (path === "/logout") return new Response(null, { status: 204 });
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    expect(container.textContent).not.toContain("learner@example.com");
+    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+    if (!email || !password) throw new Error("sign-in form not found");
+    await act(async () => {
+      setInputValue(email, "learner@example.com");
+      setInputValue(password, "password");
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign in")
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("learner@example.com") ?? false);
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign out")
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("Sign in") ?? false);
+    expect(container.textContent).not.toContain("learner@example.com");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("restores a signed-in session from /me", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me") {
+        return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), {
+          status: 200,
+        });
+      }
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<App />);
+    });
+    await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
+    expect(container.querySelector('input[aria-label="Email"]')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("shows an inline sign-in error and stays signed out", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/me" || path === "/login") return new Response(null, { status: path === "/me" ? 401 : 401 });
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+    if (!email || !password) throw new Error("sign-in form not found");
+    await act(async () => {
+      setInputValue(email, "learner@example.com");
+      setInputValue(password, "wrong");
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign in")
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes("Invalid email or password.") ?? false);
+    expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("learner@example.com");
 
     await act(async () => {
       root.unmount();
