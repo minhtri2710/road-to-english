@@ -204,7 +204,7 @@ func validateSyncState(state storage.State) bool {
 
 	cardIDs := make(map[string]struct{}, len(state.Cards))
 	for _, card := range state.Cards {
-		if !validText(card.Id) || !validText(card.Front) || !validText(card.Back) || !validText(card.Source.LessonId) || !validText(card.Source.SentenceId) {
+		if !validText(card.Id) || !validText(card.Front) || !validTextOrEmpty(card.Back) || !validText(card.Source.LessonId) || !validText(card.Source.SentenceId) {
 			return false
 		}
 		if card.Id != card.Source.LessonId+":"+card.Source.SentenceId {
@@ -234,7 +234,11 @@ func validateSyncState(state storage.State) bool {
 }
 
 func validText(value string) bool {
-	return value != "" && !strings.ContainsRune(value, 0)
+	return value != "" && validTextOrEmpty(value)
+}
+
+func validTextOrEmpty(value string) bool {
+	return !strings.ContainsRune(value, 0)
 }
 
 func validFSRS(raw json.RawMessage) bool {

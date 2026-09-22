@@ -357,6 +357,23 @@ func TestSyncAcceptsNullLastReview(t *testing.T) {
 	}
 }
 
+func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-empty-back@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`
+	response := syncWithCookie(api.handler, body, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
+	}
+	var state storage.State
+	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(state.Cards) != 1 || state.Cards[0].Back != "" {
+		t.Fatalf("response cards = %#v, want one card with empty back", state.Cards)
+	}
+}
+
 func TestSyncMergesAndReturnsFullState(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-merge@example.com")
@@ -397,7 +414,7 @@ func TestSyncRejectsInvalidState(t *testing.T) {
 		{name: "empty card front", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "card front contains NUL", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"a\u0000b","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "card id contains NUL", body: `{"cards":[{"id":"lesson\u0000-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson\u0000-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty card back", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "card back contains NUL", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"a\u0000b","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "empty source lesson id", body: `{"cards":[{"id":":sentence-1","front":"front","back":"back","source":{"lessonId":"","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "empty source sentence id", body: `{"cards":[{"id":"lesson-1:","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":""},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "duplicate card id", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}},{"id":"lesson-1:sentence-1","front":"front 2","back":"back 2","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"fsrs":{"due":"2026-09-22T10:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
