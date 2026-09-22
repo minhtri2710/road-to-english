@@ -22,3 +22,6 @@ playwright-report/
 # OS / editor
 .DS_Store
 *.log
+
+# Agent task artifacts (tasks-axi generates these at the repo root)
+done-archive.md
