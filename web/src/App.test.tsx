@@ -39,6 +39,15 @@ function installObjectUrlFakes(): { revokeObjectURL: ReturnType<typeof vi.fn> } 
   return { revokeObjectURL };
 }
 
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function restoreProperty(
   target: object,
   key: string,
@@ -124,7 +133,9 @@ describe("App", () => {
     expect(container.textContent).toContain("It is nice to meet you.");
     expect(container.textContent).toContain("See you tomorrow.");
     expect(container.textContent).toContain("casual sign-off");
-    expect(container.querySelectorAll("button")).toHaveLength(7);
+    expect(container.textContent).toContain("Shadow");
+    expect(container.textContent).toContain("Dictation");
+    expect(container.querySelectorAll("button")).toHaveLength(9);
 
     await act(async () => {
       root.unmount();
@@ -179,6 +190,114 @@ describe("App", () => {
       low.root.unmount();
     });
     low.container.remove();
+  });
+
+  it("keeps dictation references hidden until checking and reveals the result", async () => {
+    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
+    vi.stubGlobal("SpeechSynthesisUtterance", class {});
+    const { container, root } = await openLesson();
+    const sentence = greetingsLesson.sentences[0];
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Dictation"))
+        ?.click();
+    });
+
+    expect(container.textContent).not.toContain(sentence.text);
+    expect(container.textContent).not.toContain("casual sign-off");
+
+    const input = container.querySelector<HTMLInputElement>(
+      `#dictation-${sentence.id}`,
+    );
+    expect(input?.getAttribute("aria-label")).toBe("Your answer");
+    expect(container.querySelector(`label[for="dictation-${sentence.id}"]`)).not.toBeNull();
+
+    await act(async () => {
+      if (!input) throw new Error("dictation input not found");
+      setInputValue(input, sentence.text);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      input.form?.requestSubmit();
+    });
+
+    expect(container.textContent).toContain(`Reference: ${sentence.text}`);
+    expect(container.textContent).toContain("Correct");
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Try again"))
+        ?.click();
+    });
+    expect(container.textContent).not.toContain(sentence.text);
+    expect(input?.value).toBe("");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("plays dictation and shows positive and negative results", async () => {
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    class FakeUtterance {
+      lang = "";
+      rate = 1;
+      constructor(readonly text: string) {}
+    }
+    vi.stubGlobal("speechSynthesis", { speak, cancel });
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Dictation"))
+        ?.click();
+    });
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Play"))
+        ?.click();
+    });
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({
+      text: greetingsLesson.sentences[0].text,
+      rate: greetingsLesson.targetWpm / 180,
+      lang: "en-US",
+    }));
+
+    const input = container.querySelector<HTMLInputElement>(
+      `#dictation-${greetingsLesson.sentences[0].id}`,
+    );
+    if (!input) throw new Error("dictation input not found");
+    await act(async () => {
+      setInputValue(input, "wrong answer");
+      input.form?.requestSubmit();
+    });
+    expect(container.textContent).toContain("Not quite");
+    expect(container.textContent).toContain(
+      `Reference: ${greetingsLesson.sentences[0].text}`,
+    );
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Try again"))
+        ?.click();
+    });
+    const retryInput = container.querySelector<HTMLInputElement>(
+      `#dictation-${greetingsLesson.sentences[1].id}`,
+    );
+    if (!retryInput) throw new Error("second dictation input not found");
+    await act(async () => {
+      setInputValue(retryInput, greetingsLesson.sentences[1].text);
+      retryInput.form?.requestSubmit();
+    });
+    expect(container.textContent).toContain("Correct");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   it("records, stops, replays, and releases the microphone", async () => {
