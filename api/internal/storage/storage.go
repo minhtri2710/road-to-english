@@ -26,12 +26,12 @@ var (
 
 // Card is the client-compatible persisted vocabulary card.
 type Card struct {
-	Id     string `json:"id"`
+	ID     string `json:"id"`
 	Front  string `json:"front"`
 	Back   string `json:"back"`
 	Source struct {
-		LessonId   string `json:"lessonId"`
-		SentenceId string `json:"sentenceId"`
+		LessonID   string `json:"lessonId"`
+		SentenceID string `json:"sentenceId"`
 	} `json:"source"`
 	Fsrs json.RawMessage `json:"fsrs"`
 }
@@ -51,7 +51,7 @@ type State struct {
 }
 
 type User struct {
-	Id        string    `json:"id"`
+	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -138,7 +138,7 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string)
 		INSERT INTO users (email, password_hash)
 		VALUES ($1, $2)
 		RETURNING id, email, created_at
-	`, email, passwordHash).Scan(&user.Id, &user.Email, &user.CreatedAt)
+	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -155,7 +155,7 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (User, erro
 		SELECT id, email, created_at
 		FROM users
 		WHERE id = $1
-	`, userID).Scan(&user.Id, &user.Email, &user.CreatedAt)
+	`, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrUserNotFound
 	}
@@ -172,7 +172,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 		SELECT id, email, password_hash, created_at
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.Id, &user.Email, &passwordHash, &user.CreatedAt)
+	`, email).Scan(&user.ID, &user.Email, &passwordHash, &user.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, "", ErrUserNotFound
 	}
@@ -269,7 +269,7 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 	lastReview, err := FSRSLastReview(card.Fsrs)
 	if err != nil {
-		return fmt.Errorf("derive card %q last review: %w", card.Id, err)
+		return fmt.Errorf("derive card %q last review: %w", card.ID, err)
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs, last_review)
@@ -283,9 +283,9 @@ func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 			last_review = EXCLUDED.last_review
 		-- ponytail: never-reviewed cards with the same id intentionally never update each other; the web sub-slice mirrors this exact rule.
 		WHERE COALESCE(EXCLUDED.last_review, '-infinity') > COALESCE(cards.last_review, '-infinity')
-	`, userID, card.Id, card.Front, card.Back, card.Source.LessonId, card.Source.SentenceId, card.Fsrs, lastReview)
+	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, card.Fsrs, lastReview)
 	if err != nil {
-		return fmt.Errorf("sync card %q: %w", card.Id, err)
+		return fmt.Errorf("sync card %q: %w", card.ID, err)
 	}
 	return nil
 }
@@ -350,11 +350,11 @@ func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 	for rows.Next() {
 		var card Card
 		if err := rows.Scan(
-			&card.Id,
+			&card.ID,
 			&card.Front,
 			&card.Back,
-			&card.Source.LessonId,
-			&card.Source.SentenceId,
+			&card.Source.LessonID,
+			&card.Source.SentenceID,
 			&card.Fsrs,
 		); err != nil {
 			return nil, fmt.Errorf("scan card: %w", err)

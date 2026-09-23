@@ -568,7 +568,7 @@ func TestSyncRejectsYearZeroLastReviewWithoutWriting(t *testing.T) {
 	}
 	var state storage.State
 	decodeJSON(t, response, &state)
-	if len(state.Cards) != 1 || state.Cards[0].Id != "lesson-11:sentence-11" {
+	if len(state.Cards) != 1 || state.Cards[0].ID != "lesson-11:sentence-11" {
 		t.Fatalf("stored cards = %#v, want lesson-11:sentence-11", state.Cards)
 	}
 }

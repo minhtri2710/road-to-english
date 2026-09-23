@@ -56,9 +56,9 @@ func createTestUser(t *testing.T, repo *Repository, email string) User {
 }
 
 func testCard(id, lessonID, sentenceID, front, back string, fsrs []byte) Card {
-	card := Card{Id: id, Front: front, Back: back, Fsrs: fsrs}
-	card.Source.LessonId = lessonID
-	card.Source.SentenceId = sentenceID
+	card := Card{ID: id, Front: front, Back: back, Fsrs: fsrs}
+	card.Source.LessonID = lessonID
+	card.Source.SentenceID = sentenceID
 	return card
 }
 
@@ -85,12 +85,12 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	wantFSRS := []byte(`{ "due": "2026-09-22T10:00:00.000Z", "last_review": "2026-09-21T10:00:00.000Z", "stability": 2.5, "difficulty": 4.2, "elapsed_days": 1, "scheduled_days": 2, "reps": 3, "lapses": 0, "state": 2 }`)
 	want := testCard("greetings-basics:greetings-basics-1", "greetings-basics", "greetings-basics-1", "Good morning", "Buenos días", wantFSRS)
 
-	gotState := syncState(t, repo, user.Id, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotState := syncState(t, repo, user.ID, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if len(gotState.Cards) != 1 {
 		t.Fatalf("SyncState() returned %d cards, want 1", len(gotState.Cards))
 	}
 	got := gotState.Cards[0]
-	if got.Id != want.Id || got.Front != want.Front || got.Back != want.Back || got.Source != want.Source {
+	if got.ID != want.ID || got.Front != want.Front || got.Back != want.Back || got.Source != want.Source {
 		t.Fatalf("card metadata = %#v, want %#v", got, want)
 	}
 	if !bytes.Equal(got.Fsrs, wantFSRS) {
@@ -105,9 +105,9 @@ func TestCardLastReviewColumnDerived(t *testing.T) {
 	nullReview := testCard("lesson-null:sentence-1", "lesson-null", "sentence-1", "null", "review", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":null}`))
 	absentReview := testCard("lesson-absent:sentence-1", "lesson-absent", "sentence-1", "absent", "review", []byte(`{"due":"2026-01-03T00:00:00Z"}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{reviewed, nullReview, absentReview}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{reviewed, nullReview, absentReview}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	var gotReviewed pgtype.Timestamptz
-	if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.Id, reviewed.Id).Scan(&gotReviewed); err != nil {
+	if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.ID, reviewed.ID).Scan(&gotReviewed); err != nil {
 		t.Fatalf("query reviewed last_review: %v", err)
 	}
 	expected, err := ParseFSRSTimestamp("2026-01-04T00:00:00Z")
@@ -120,11 +120,11 @@ func TestCardLastReviewColumnDerived(t *testing.T) {
 
 	for _, card := range []Card{nullReview, absentReview} {
 		var got pgtype.Timestamptz
-		if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.Id, card.Id).Scan(&got); err != nil {
-			t.Fatalf("query %s last_review: %v", card.Id, err)
+		if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.ID, card.ID).Scan(&got); err != nil {
+			t.Fatalf("query %s last_review: %v", card.ID, err)
 		}
 		if got.Valid {
-			t.Fatalf("%s last_review = %#v, want NULL", card.Id, got)
+			t.Fatalf("%s last_review = %#v, want NULL", card.ID, got)
 		}
 	}
 }
@@ -135,8 +135,8 @@ func TestCardUpsertOverwrites(t *testing.T) {
 	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "one", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
 	newer := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "newer", "value", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":2}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{newer}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{newer}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{newer}) {
 		t.Fatalf("newer card = %#v, want %#v", got.Cards, []Card{newer})
 	}
@@ -148,8 +148,8 @@ func TestCardUpsertOlderDoesNotRegress(t *testing.T) {
 	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
 	stale := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "stale", "value", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{stale}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{stale}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
 		t.Fatalf("stale card = %#v, want stored %#v", got.Cards, []Card{stored})
 	}
@@ -161,8 +161,8 @@ func TestCardUpsertEqualIsNoOp(t *testing.T) {
 	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
 	equalClock := testCard("lesson-1:sentence-1", "lesson-equal", "sentence-equal", "equal", "value", []byte(`{"due":"2026-01-05T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":9}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{equalClock}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{equalClock}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
 		t.Fatalf("equal-clock card = %#v, want stored %#v", got.Cards, []Card{stored})
 	}
@@ -174,8 +174,8 @@ func TestUnreviewedCardDoesNotOverwriteReviewedCard(t *testing.T) {
 	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
 	unreviewed := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "unreviewed", "card", []byte(`{"due":"2026-01-05T00:00:00Z"}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
 		t.Fatalf("unreviewed card = %#v, want reviewed %#v", got.Cards, []Card{reviewed})
 	}
@@ -187,8 +187,8 @@ func TestReviewedCardOverwritesNeverReviewedCard(t *testing.T) {
 	unreviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "new", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
 	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
 		t.Fatalf("reviewed card = %#v, want %#v", got.Cards, []Card{reviewed})
 	}
@@ -200,8 +200,8 @@ func TestNeverReviewedCardsWithSameIDDoNotUpdateEachOther(t *testing.T) {
 	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
 	second := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "second", "card", []byte(`{"due":"2026-01-02T00:00:00Z"}`))
 
-	syncState(t, repo, user.Id, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.Id, State{Cards: []Card{second}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	syncState(t, repo, user.ID, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{second}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{first}) {
 		t.Fatalf("never-reviewed card = %#v, want first %#v", got.Cards, []Card{first})
 	}
@@ -226,12 +226,12 @@ func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-x"}, {LessonID: "lesson-y"}},
 	}
 
-	syncState(t, repo, user.Id, first)
-	got := syncState(t, repo, user.Id, second)
+	syncState(t, repo, user.ID, first)
+	got := syncState(t, repo, user.ID, second)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("union state = %#v, want %#v", got, want)
 	}
-	got = syncState(t, repo, user.Id, second)
+	got = syncState(t, repo, user.ID, second)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("idempotent union state = %#v, want %#v", got, want)
 	}
@@ -252,8 +252,8 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-b"}},
 	}
 
-	gotA := syncState(t, repo, userA.Id, stateA)
-	gotB := syncState(t, repo, userB.Id, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotA := syncState(t, repo, userA.ID, stateA)
+	gotB := syncState(t, repo, userB.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(gotA, stateA) {
 		t.Fatalf("user A state = %#v, want %#v", gotA, stateA)
 	}
@@ -261,8 +261,8 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 		t.Fatalf("user B initial state = %#v, want empty", gotB)
 	}
 
-	gotB = syncState(t, repo, userB.Id, stateB)
-	gotA = syncState(t, repo, userA.Id, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotB = syncState(t, repo, userB.ID, stateB)
+	gotA = syncState(t, repo, userA.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(gotB, stateB) {
 		t.Fatalf("user B state = %#v, want %#v", gotB, stateB)
 	}
@@ -282,14 +282,14 @@ func TestCreateUserDuplicateEmail(t *testing.T) {
 func TestSessionRoundTripAndInvalidation(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "session@example.com")
-	if err := repo.CreateSession(context.Background(), user.Id, "active", time.Now().Add(time.Hour)); err != nil {
+	if err := repo.CreateSession(context.Background(), user.ID, "active", time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
 	gotUserID, err := repo.GetSession(context.Background(), "active")
-	if err != nil || gotUserID != user.Id {
-		t.Fatalf("GetSession() = %q, %v; want %q, nil", gotUserID, err, user.Id)
+	if err != nil || gotUserID != user.ID {
+		t.Fatalf("GetSession() = %q, %v; want %q, nil", gotUserID, err, user.ID)
 	}
-	if err := repo.CreateSession(context.Background(), user.Id, "expired", time.Now().Add(-time.Hour)); err != nil {
+	if err := repo.CreateSession(context.Background(), user.ID, "expired", time.Now().Add(-time.Hour)); err != nil {
 		t.Fatalf("CreateSession(expired) error = %v", err)
 	}
 	if _, err := repo.GetSession(context.Background(), "expired"); !errors.Is(err, ErrSessionInvalid) {
@@ -313,10 +313,10 @@ func TestCreateSessionPurgesExpiredSessionsAcrossUsers(t *testing.T) {
 	if _, err := repo.pool.Exec(context.Background(), `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES ($1, $2, now() - interval '1 hour')
-	`, "expired", expiredUser.Id); err != nil {
+	`, "expired", expiredUser.ID); err != nil {
 		t.Fatalf("insert expired session: %v", err)
 	}
-	if err := repo.CreateSession(context.Background(), activeUser.Id, "active", time.Now().Add(time.Hour)); err != nil {
+	if err := repo.CreateSession(context.Background(), activeUser.ID, "active", time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestCreateSessionPurgesExpiredSessionsAcrossUsers(t *testing.T) {
 	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions WHERE token_hash = $1", "expired").Scan(&expiredCount); err != nil {
 		t.Fatalf("count expired session: %v", err)
 	}
-	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions WHERE token_hash = $1 AND user_id = $2", "active", activeUser.Id).Scan(&activeCount); err != nil {
+	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions WHERE token_hash = $1 AND user_id = $2", "active", activeUser.ID).Scan(&activeCount); err != nil {
 		t.Fatalf("count active session: %v", err)
 	}
 	if expiredCount != 0 {
@@ -341,7 +341,7 @@ func TestSessionStoresHashNotRawToken(t *testing.T) {
 	rawToken := "raw-token"
 	digest := sha256.Sum256([]byte(rawToken))
 	storedHash := hex.EncodeToString(digest[:])
-	if err := repo.CreateSession(context.Background(), user.Id, storedHash, time.Now().Add(time.Hour)); err != nil {
+	if err := repo.CreateSession(context.Background(), user.ID, storedHash, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
 	var tokenHash string

@@ -88,7 +88,7 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
-		if !setSessionCookie(w, r, repo, user.Id) {
+		if !setSessionCookie(w, r, repo, user.ID) {
 			return
 		}
 		writeUser(w, user)
@@ -117,7 +117,7 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 			return
 		}
-		if !setSessionCookie(w, r, repo, user.Id) {
+		if !setSessionCookie(w, r, repo, user.ID) {
 			return
 		}
 		writeUser(w, user)
@@ -224,16 +224,16 @@ func validateSyncState(state storage.State) bool {
 
 	cardIDs := make(map[string]struct{}, len(state.Cards))
 	for _, card := range state.Cards {
-		if !validText(card.Id) || !validText(card.Front) || !validTextOrEmpty(card.Back) || !validText(card.Source.LessonId) || !validText(card.Source.SentenceId) {
+		if !validText(card.ID) || !validText(card.Front) || !validTextOrEmpty(card.Back) || !validText(card.Source.LessonID) || !validText(card.Source.SentenceID) {
 			return false
 		}
-		if card.Id != card.Source.LessonId+":"+card.Source.SentenceId {
+		if card.ID != card.Source.LessonID+":"+card.Source.SentenceID {
 			return false
 		}
-		if _, exists := cardIDs[card.Id]; exists {
+		if _, exists := cardIDs[card.ID]; exists {
 			return false
 		}
-		cardIDs[card.Id] = struct{}{}
+		cardIDs[card.ID] = struct{}{}
 		if !validFSRS(card.Fsrs) {
 			return false
 		}
@@ -283,7 +283,7 @@ func validFSRS(raw json.RawMessage) bool {
 }
 
 func writeUser(w http.ResponseWriter, user storage.User) {
-	writeJSON(w, http.StatusOK, map[string]string{"id": user.Id, "email": user.Email})
+	writeJSON(w, http.StatusOK, map[string]string{"id": user.ID, "email": user.Email})
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, repo *storage.Repository, userID string) bool {
