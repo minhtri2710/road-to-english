@@ -5,6 +5,13 @@ export interface Sentence {
   text: string;
   vi: string;
   notes?: string;
+  cue?: Cue;
+}
+
+// Seconds into the lesson video; a null end plays to the end of the video.
+export interface Cue {
+  start: number;
+  end: number | null;
 }
 
 export interface LessonSummary {
@@ -21,6 +28,7 @@ export interface Lesson {
   level: Level;
   targetWpm: number;
   sentences: Sentence[];
+  videoId?: string;
 }
 
 export class ApiError extends Error {

@@ -28,6 +28,19 @@ export const userLesson = {
   ],
 } satisfies Lesson;
 
+export const videoLesson = {
+  id: "user-00000000-0000-4000-8000-000000000003",
+  title: "Tea video",
+  level: "B1",
+  targetWpm: 110,
+  videoId: "dQw4w9WgXcQ",
+  sentences: [
+    { id: "s1", text: "I like tea.", vi: "", cue: { start: 0, end: 2.5 } },
+    { id: "s2", text: "You like coffee.", vi: "", cue: { start: 2.5, end: 65 } },
+    { id: "s3", text: "We drink it daily.", vi: "", cue: { start: 65, end: null } },
+  ],
+} satisfies Lesson;
+
 export const greetingsLesson = {
   id: "greetings-basics",
   title: "Greetings & Basics",

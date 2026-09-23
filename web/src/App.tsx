@@ -32,6 +32,7 @@ import { speak, stopSpeaking } from "./lib/speech";
 import { recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
+import { useYouTubePlayer } from "./hooks/useYouTubePlayer";
 import { backupFileName, exportData, importData } from "./lib/backup";
 import { exportBackupData, replaceAll } from "./lib/backupStore";
 import { cardsCsv, cardsCsvFileName } from "./lib/csv";
@@ -816,6 +817,7 @@ function UserLessonList({
 function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<void> }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [level, setLevel] = useState<Level>("B1");
   const [targetWpm, setTargetWpm] = useState<(typeof USER_WPMS)[number]>("110");
   const [error, setError] = useState<string | null>(null);
@@ -829,7 +831,7 @@ function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<vo
 
     isCreatingRef.current = true;
     try {
-      await onCreate(createUserLesson({ title, text, level, targetWpm: Number(targetWpm) }));
+      await onCreate(createUserLesson({ title, text, level, targetWpm: Number(targetWpm), videoUrl: videoUrl.trim() }));
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create lesson.");
     } finally {
@@ -852,6 +854,16 @@ function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<vo
           className={stylex.props(appStyles.dictationInput).className}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
+        />
+        <label htmlFor="import-video">
+          <Text as="span" type="supporting">YouTube URL</Text>
+        </label>
+        <input
+          id="import-video"
+          type="url"
+          className={stylex.props(appStyles.dictationInput).className}
+          value={videoUrl}
+          onChange={(event) => setVideoUrl(event.target.value)}
         />
         <label htmlFor="import-text">
           <Text as="span" type="supporting">Text</Text>
@@ -896,6 +908,9 @@ function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<vo
             {error}
           </Text>
         )}
+        <Text as="p" type="supporting">
+          Paste the transcript from YouTube's Show transcript panel (timestamps included).
+        </Text>
       </VStack>
     </form>
   );
@@ -1228,6 +1243,7 @@ function LessonDetail({
     sentenceId: string;
     charIndex: number;
   } | null>(null);
+  const video = useYouTubePlayer(data.videoId);
 
   useEffect(() => {
     return () => {
@@ -1250,6 +1266,19 @@ function LessonDetail({
         <Heading level={2}>{data.title}</Heading>
         <Text type="supporting">Level {data.level}</Text>
       </VStack>
+      {data.videoId && (
+        <VStack gap={1}>
+          <div ref={video.containerRef} />
+          {video.status === "failed" && (
+            <Text as="p" color="primary" xstyle={appStyles.error}>
+              Video unavailable
+            </Text>
+          )}
+          <Text as="p" type="supporting">
+            Video from YouTube; playing it connects to YouTube.
+          </Text>
+        </VStack>
+      )}
       <Button
         label={completed ? "Completed" : "Mark complete"}
         variant="secondary"
@@ -1344,6 +1373,22 @@ function LessonDetail({
         {data.sentences.map((sentence) => (
           <li key={sentence.id}>
             <Card padding={3} xstyle={appStyles.sentence}>
+              {sentence.cue && (
+                <Button
+                  label="Play clip"
+                  variant="secondary"
+                  isDisabled={video.status !== "ready"}
+                  onClick={() => {
+                    const { cue } = sentence;
+                    if (!cue) return;
+                    setLoopingSentenceId(null);
+                    if ("speechSynthesis" in window) {
+                      stopSpeaking();
+                    }
+                    video.playClip(cue, Number(speed));
+                  }}
+                />
+              )}
               {mode === "shadow" ? (
                 <VStack gap={1}>
                   {showTranscript && (

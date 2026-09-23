@@ -9,7 +9,7 @@ import {
   putUserLesson,
   segmentText,
 } from "./userLessons";
-import { userLesson } from "../test/fixtures";
+import { userLesson, videoLesson } from "../test/fixtures";
 
 describe("segmentText", () => {
   it("splits multiple sentences", () => {
@@ -89,6 +89,62 @@ describe("createUserLesson", () => {
 
   it("accepts the limits", () => {
     expect(createUserLesson({ title: "x".repeat(100), text: "Go. ".repeat(200), level: "B1", targetWpm: 110 }).sentences).toHaveLength(200);
+  });
+});
+
+describe("video lessons", () => {
+  const cueTranscript = (count: number) =>
+    Array.from({ length: count }, (_, i) => `${Math.floor(i / 60)}:${String(i % 60).padStart(2, "0")}\nGo.`).join("\n");
+  const transcript = "0:00\nI like tea.\n0:02\nYou like\ncoffee.\n1:05\nWe drink it daily.";
+
+  it("builds a valid video lesson from a URL and a transcript", () => {
+    const lesson = createUserLesson({
+      title: "Tea video",
+      text: transcript,
+      level: "B1",
+      targetWpm: 110,
+      videoUrl: "https://youtu.be/dQw4w9WgXcQ",
+    });
+
+    expect(isValidUserLesson(lesson)).toBe(true);
+    expect(lesson).toMatchObject({
+      videoId: "dQw4w9WgXcQ",
+      sentences: [
+        { id: "s1", text: "I like tea.", vi: "", cue: { start: 0, end: 2 } },
+        { id: "s2", text: "You like coffee.", vi: "", cue: { start: 2, end: 65 } },
+        { id: "s3", text: "We drink it daily.", vi: "", cue: { start: 65, end: null } },
+      ],
+    });
+  });
+
+  it("keeps a plain lesson free of video keys", () => {
+    const lesson = createUserLesson({ title: "t", text: "One.", level: "B1", targetWpm: 110, videoUrl: "" });
+
+    expect(Object.keys(lesson)).not.toContain("videoId");
+    expect(Object.keys(lesson.sentences[0]!)).toEqual(["id", "vi", "text"]);
+  });
+
+  it.each([
+    ["bad URL", "https://vimeo.com/123", transcript],
+    ["transcript without cues", "https://youtu.be/dQw4w9WgXcQ", "0:00\n0:05"],
+    ["leading text", "https://youtu.be/dQw4w9WgXcQ", "Hello\n0:00\nHi."],
+    ["too many cues", "https://youtu.be/dQw4w9WgXcQ", cueTranscript(201)],
+  ])("rejects %s", (_name, videoUrl, text) => {
+    expect(() => createUserLesson({ title: "t", text, level: "B1", targetWpm: 110, videoUrl })).toThrow();
+  });
+
+  it("accepts 200 cues", () => {
+    const lesson = createUserLesson({ title: "t", text: cueTranscript(200), level: "B1", targetWpm: 110, videoUrl: "https://youtu.be/dQw4w9WgXcQ" });
+    expect(lesson.sentences).toHaveLength(200);
+    expect(isValidUserLesson(lesson)).toBe(true);
+  });
+
+  it("accepts a stored video lesson and rejects NaN and infinite starts", () => {
+    expect(isValidUserLesson(videoLesson)).toBe(true);
+    for (const start of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const sentences = [{ ...videoLesson.sentences[0], cue: { start, end: null } }];
+      expect(isValidUserLesson({ ...videoLesson, sentences })).toBe(false);
+    }
   });
 });
 

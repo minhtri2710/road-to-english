@@ -2172,6 +2172,293 @@ describe("App", () => {
     });
   });
 
+  describe("video lessons", () => {
+    const transcript = "0:00\nI like green tea.\n0:02\nDo you like it?\n1:05\nWe drink it\nevery morning.";
+    const iframeApi = "https://www.youtube.com/iframe_api";
+
+    type PlayerOptions = { videoId: string; host: string; playerVars: object; events: { onReady: () => void; onError: () => void } };
+    class FakePlayer {
+      static instances: FakePlayer[] = [];
+      calls: unknown[][] = [];
+      time = 0;
+      constructor(
+        readonly element: HTMLElement,
+        readonly options: PlayerOptions,
+      ) {
+        FakePlayer.instances.push(this);
+      }
+      playVideo() {
+        this.calls.push(["playVideo"]);
+      }
+      pauseVideo() {
+        this.calls.push(["pauseVideo"]);
+      }
+      seekTo(seconds: number, allowSeekAhead: boolean) {
+        this.calls.push(["seekTo", seconds, allowSeekAhead]);
+      }
+      setPlaybackRate(rate: number) {
+        this.calls.push(["setPlaybackRate", rate]);
+      }
+      getCurrentTime() {
+        return this.time;
+      }
+      destroy() {
+        this.calls.push(["destroy"]);
+      }
+    }
+
+    function installYouTube() {
+      FakePlayer.instances = [];
+      window.YT = { Player: FakePlayer };
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+      delete window.YT;
+      delete window.onYouTubeIframeAPIReady;
+      document.querySelectorAll(`script[src="${iframeApi}"]`).forEach((script) => script.remove());
+    });
+
+    async function renderApp() {
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return responseFor(new URL(url, "http://localhost").pathname);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      await waitForCondition(() => container.textContent?.includes("Your lessons") ?? false);
+      return { container, root };
+    }
+
+    async function unmount({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
+    async function createLesson(container: HTMLElement, videoUrl: string, text: string) {
+      const titleInput = container.querySelector<HTMLInputElement>("#import-title");
+      const videoInput = container.querySelector<HTMLInputElement>("#import-video");
+      const textArea = container.querySelector<HTMLTextAreaElement>("#import-text");
+      if (!titleInput || !videoInput || !textArea) throw new Error("import form not found");
+      expect(container.querySelector('label[for="import-video"]')?.textContent).toBe("YouTube URL");
+      await act(async () => {
+        setInputValue(titleInput, "Tea video");
+        setInputValue(videoInput, videoUrl);
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, text);
+        textArea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        titleInput.form?.requestSubmit();
+      });
+    }
+
+    async function openVideoLesson() {
+      installYouTube();
+      const view = await renderApp();
+      await createLesson(view.container, "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=5s", transcript);
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+      await waitForCondition(() => FakePlayer.instances.length === 1);
+      const player = FakePlayer.instances[0]!;
+      await act(async () => {
+        player.options.events.onReady();
+      });
+      return { view, player };
+    }
+
+    it("creates a video lesson from a URL and a transcript and opens it in a nocookie player", async () => {
+      installYouTube();
+      const view = await renderApp();
+      expect(view.container.textContent).toContain(
+        "Paste the transcript from YouTube's Show transcript panel (timestamps included).",
+      );
+      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+      await waitForCondition(() => FakePlayer.instances.length === 1);
+
+      const [player] = FakePlayer.instances;
+      expect(player?.options).toMatchObject({
+        videoId: "dQw4w9WgXcQ",
+        host: "https://www.youtube-nocookie.com",
+        playerVars: { playsinline: 1, rel: 0 },
+      });
+      expect(view.container.contains(player?.element ?? null)).toBe(true);
+      const back = buttonsNamed(view.container, "Back to lessons")[0]!;
+      const heading = Array.from(view.container.querySelectorAll("h2")).find((node) => node.textContent === "Tea video")!;
+      for (const header of [back, heading]) {
+        expect(header.compareDocumentPosition(player!.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(view.container.textContent).toContain("Video from YouTube; playing it connects to YouTube.");
+      expect(view.container.textContent).toContain("We drink it every morning.");
+      expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
+      expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
+
+      await act(async () => {
+        player?.options.events.onReady();
+      });
+      expect(buttonsNamed(view.container, "Play clip").some((button) => button.disabled)).toBe(false);
+      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
+      const [stored] = await listUserLessons();
+      expect(stored).toMatchObject({
+        videoId: "dQw4w9WgXcQ",
+        sentences: [
+          { text: "I like green tea.", cue: { start: 0, end: 2 } },
+          { text: "Do you like it?", cue: { start: 2, end: 65 } },
+          { text: "We drink it every morning.", cue: { start: 65, end: null } },
+        ],
+      });
+      await unmount(view);
+    });
+
+    it.each([
+      ["a bad URL", "https://vimeo.com/1", transcript, "Enter a YouTube video URL."],
+      ["leading text", "https://youtu.be/dQw4w9WgXcQ", `Hi\n${transcript}`, "The transcript must start with a timestamp."],
+      ["non-increasing timestamps", "https://youtu.be/dQw4w9WgXcQ", "0:05\nOne.\n0:05\nTwo.", "Timestamps must increase"],
+    ])("shows an inline error and stores nothing for %s", async (_name, videoUrl, text, message) => {
+      installYouTube();
+      const view = await renderApp();
+      await createLesson(view.container, videoUrl, text);
+
+      expect(view.container.textContent).toContain(message);
+      expect(view.container.textContent).not.toContain("Back to lessons");
+      expect(await listUserLessons()).toEqual([]);
+      expect(FakePlayer.instances).toEqual([]);
+      await unmount(view);
+    });
+
+    it("plays a clip at the chosen speed and pauses when the time passes the cue end", async () => {
+      const { view, player } = await openVideoLesson();
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      await act(async () => {
+        buttonsNamed(view.container, "0.75x")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[1]?.click();
+      });
+      expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 2, true], ["playVideo"]]);
+
+      player.time = 64.9;
+      vi.advanceTimersByTime(100);
+      expect(player.calls).not.toContainEqual(["pauseVideo"]);
+      player.time = 65;
+      vi.advanceTimersByTime(100);
+      expect(player.calls.filter(([name]) => name === "pauseVideo")).toHaveLength(1);
+      vi.advanceTimersByTime(1000);
+      expect(player.calls.filter(([name]) => name === "pauseVideo")).toHaveLength(1);
+
+      player.calls = [];
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[2]?.click();
+      });
+      expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 65, true], ["playVideo"]]);
+      expect(vi.getTimerCount()).toBe(0);
+      await unmount(view);
+    });
+
+    it("cancels the older clip's poll when a newer clip starts", async () => {
+      const { view, player } = await openVideoLesson();
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[1]?.click();
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      player.time = 3;
+      vi.advanceTimersByTime(500);
+      expect(player.calls).not.toContainEqual(["pauseVideo"]);
+      await unmount(view);
+    });
+
+    it("destroys the player and cancels the poll on unmount", async () => {
+      const { view, player } = await openVideoLesson();
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(view.container, "Back to lessons")[0]?.click();
+      });
+
+      expect(player.calls.filter(([name]) => name === "destroy")).toHaveLength(1);
+      expect(view.container.contains(player.element)).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+      player.time = 100;
+      vi.advanceTimersByTime(500);
+      expect(player.calls).not.toContainEqual(["pauseVideo"]);
+      await unmount(view);
+    });
+
+    it("offers Play clip in the dictation and fill-the-blank modes", async () => {
+      const { view, player } = await openVideoLesson();
+      for (const mode of ["Dictation", "Fill the blank"]) {
+        await act(async () => {
+          buttonsNamed(view.container, mode)[0]?.click();
+        });
+        expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
+        player.calls = [];
+        await act(async () => {
+          buttonsNamed(view.container, "Play clip")[0]?.click();
+        });
+        expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
+      }
+      expect(FakePlayer.instances).toHaveLength(1);
+      await unmount(view);
+    });
+
+    it("creates no player and injects no script for a plain lesson", async () => {
+      const view = await renderApp();
+      const titleInput = view.container.querySelector<HTMLInputElement>("#import-title");
+      const textArea = view.container.querySelector<HTMLTextAreaElement>("#import-text");
+      if (!titleInput || !textArea) throw new Error("import form not found");
+      await act(async () => {
+        setInputValue(titleInput, "Tea talk");
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, "I like tea.");
+        textArea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        titleInput.form?.requestSubmit();
+      });
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+
+      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
+      expect(window.onYouTubeIframeAPIReady).toBeUndefined();
+      expect(buttonsNamed(view.container, "Play clip")).toEqual([]);
+      expect(view.container.textContent).not.toContain("Video from YouTube");
+      await unmount(view);
+    });
+
+    // happy-dom refuses to load script files and fires the script's error event, the same path as a blocked or offline load.
+    it("loads the API script once and shows Video unavailable when it fails, keeping the lesson usable", async () => {
+      const append = vi.spyOn(document.head, "append");
+      const view = await renderApp();
+      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+
+      await waitForCondition(() => view.container.textContent?.includes("Video unavailable") ?? false);
+      expect(append.mock.calls.map(([node]) => (node as HTMLScriptElement).src)).toEqual([iframeApi]);
+      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
+      expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
+      await act(async () => {
+        buttonsNamed(view.container, "Dictation")[0]?.click();
+      });
+      expect(view.container.querySelector("#dictation-s1")).not.toBeNull();
+      await unmount(view);
+    });
+  });
+
   describe("pronunciation check", () => {
     class FakeRecognition {
       static instances: FakeRecognition[] = [];

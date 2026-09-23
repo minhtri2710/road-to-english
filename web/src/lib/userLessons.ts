@@ -2,6 +2,7 @@ import type { Lesson, Level } from "../api/lessons";
 import { openAppDatabase } from "./db";
 import { normalize, splitWords } from "./dictation";
 import { isCardWord, isText } from "./vocab";
+import { isYouTubeId, parseTranscript, parseYouTubeId } from "./youtube";
 
 export const USER_LEVELS = ["A2", "B1", "B2"] as const satisfies readonly Level[];
 export const USER_WPMS = ["90", "110", "130", "150"] as const;
@@ -31,6 +32,7 @@ export function createUserLesson(input: {
   text: string;
   level: Level;
   targetWpm: number;
+  videoUrl?: string;
 }): Lesson {
   if (!isText(input.title) || !isText(input.text)) {
     throw new Error("Title and text must not contain NUL characters.");
@@ -42,7 +44,11 @@ export function createUserLesson(input: {
   if (input.text.length > MAX_TEXT_LENGTH) {
     throw new Error(`Text must be at most ${MAX_TEXT_LENGTH} characters.`);
   }
-  const sentences = segmentText(input.text);
+  const videoId = input.videoUrl ? parseYouTubeId(input.videoUrl) : null;
+  if (input.videoUrl && !videoId) {
+    throw new Error("Enter a YouTube video URL.");
+  }
+  const sentences = videoId ? parseTranscript(input.text) : segmentText(input.text).map((text) => ({ text }));
   if (sentences.length < 1 || sentences.length > MAX_SENTENCES) {
     throw new Error(`Text must contain 1-${MAX_SENTENCES} sentences.`);
   }
@@ -51,7 +57,8 @@ export function createUserLesson(input: {
     title,
     level: input.level,
     targetWpm: input.targetWpm,
-    sentences: sentences.map((text, index) => ({ id: `s${index + 1}`, text, vi: "" })),
+    sentences: sentences.map((sentence, index) => ({ id: `s${index + 1}`, vi: "", ...sentence })),
+    ...(videoId && { videoId }),
   };
 }
 
@@ -63,10 +70,28 @@ function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).sort().join() === [...keys].sort().join();
 }
 
+// Cue starts are finite, >= 0 and strictly increasing; each end is the next start, and the last end is null.
+function isValidCue(cue: unknown, nextSentence: unknown): boolean {
+  if (!isRecord(cue) || !hasExactKeys(cue, ["start", "end"])) {
+    return false;
+  }
+  const { start, end } = cue;
+  if (typeof start !== "number" || !Number.isFinite(start) || start < 0) {
+    return false;
+  }
+  if (nextSentence === undefined) {
+    return end === null;
+  }
+  const nextStart = isRecord(nextSentence) && isRecord(nextSentence.cue) ? nextSentence.cue.start : undefined;
+  return typeof end === "number" && end === nextStart && end > start;
+}
+
 export function isValidUserLesson(value: unknown): value is Lesson {
+  const video = isRecord(value) && "videoId" in value;
   return (
     isRecord(value) &&
-    hasExactKeys(value, ["id", "title", "level", "targetWpm", "sentences"]) &&
+    hasExactKeys(value, ["id", "title", "level", "targetWpm", "sentences", ...(video ? ["videoId"] : [])]) &&
+    (!video || isYouTubeId(value.videoId)) &&
     typeof value.id === "string" &&
     /^user-[0-9a-f-]{36}$/.test(value.id) &&
     isValidTitle(value.title) &&
@@ -76,9 +101,10 @@ export function isValidUserLesson(value: unknown): value is Lesson {
     value.sentences.length >= 1 &&
     value.sentences.length <= MAX_SENTENCES &&
     value.sentences.every(
-      (sentence, index) =>
+      (sentence, index, sentences) =>
         isRecord(sentence) &&
-        hasExactKeys(sentence, ["id", "text", "vi"]) &&
+        hasExactKeys(sentence, ["id", "text", "vi", ...(video ? ["cue"] : [])]) &&
+        (!video || isValidCue(sentence.cue, sentences[index + 1])) &&
         sentence.id === `s${index + 1}` &&
         isText(sentence.text) &&
         sentence.text.length > 0 &&
