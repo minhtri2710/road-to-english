@@ -302,6 +302,7 @@ describe("App", () => {
 
     expect(container.textContent).toContain(`Reference: ${sentence.text}`);
     expect(container.textContent).toContain("Correct");
+    expect(container.textContent).not.toMatch(/\((missed|extra|you typed)/);
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
@@ -310,6 +311,38 @@ describe("App", () => {
     });
     expect(container.textContent).not.toContain(sentence.text);
     expect(input?.value).toBe("");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("marks missed and wrong words after checking dictation", async () => {
+    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
+    vi.stubGlobal("SpeechSynthesisUtterance", class {});
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Dictation"))
+        ?.click();
+    });
+
+    const input = container.querySelector<HTMLInputElement>(
+      `#dictation-${greetingsLesson.sentences[0].id}`,
+    );
+    if (!input) throw new Error("dictation input not found");
+    await act(async () => {
+      setInputValue(input, "Good, how are you tomorrow?");
+      input.form?.requestSubmit();
+    });
+
+    expect(container.textContent).toContain(
+      'good morning (missed) how are you today (you typed "tomorrow")',
+    );
+    expect(container.textContent).not.toContain("(extra)");
+    expect(container.textContent).toContain("Not quite");
 
     await act(async () => {
       root.unmount();

@@ -25,7 +25,7 @@ import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
-import { matchesReference } from "./lib/dictation";
+import { diffWords, type WordDiff } from "./lib/dictation";
 import { Rating, type Grade, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { useRecorder } from "./hooks/useRecorder";
@@ -64,6 +64,9 @@ const appStyles = stylex.create({
   },
   error: {
     color: "var(--color-error)",
+  },
+  wordCorrect: {
+    color: "var(--color-success)",
   },
   shadowingControls: {
     flexWrap: "wrap",
@@ -227,6 +230,19 @@ function SentenceShadowing({
   );
 }
 
+function wordLabel(entry: WordDiff): string {
+  switch (entry.kind) {
+    case "correct":
+      return entry.word;
+    case "missed":
+      return `${entry.word} (missed)`;
+    case "replaced":
+      return `${entry.word} (you typed "${entry.typed}")`;
+    case "extra":
+      return `${entry.typed} (extra)`;
+  }
+}
+
 function SentenceDictation({
   id,
   text,
@@ -241,19 +257,19 @@ function SentenceDictation({
   recordPractice: () => Promise<void>;
 }) {
   const [typed, setTyped] = useState("");
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [diff, setDiff] = useState<WordDiff[] | null>(null);
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
 
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsCorrect(matchesReference(typed, text));
+    setDiff(diffWords(typed, text));
     void recordPractice();
   };
 
   const tryAgain = () => {
     setTyped("");
-    setIsCorrect(null);
+    setDiff(null);
   };
 
   return (
@@ -286,13 +302,26 @@ function SentenceDictation({
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
       </form>
-      {isCorrect !== null && (
+      {diff !== null && (
         <VStack gap={1}>
           <Text as="p">Reference: {text}</Text>
           <Text as="p">You typed: {typed}</Text>
+          <Text as="p">
+            {diff.map((entry, index) => (
+              <Text
+                key={index}
+                as="span"
+                color="primary"
+                xstyle={entry.kind === "correct" ? appStyles.wordCorrect : appStyles.error}
+              >
+                {index > 0 && " "}
+                {wordLabel(entry)}
+              </Text>
+            ))}
+          </Text>
           {notes && <Text as="p" type="supporting">{notes}</Text>}
           <Text as="p" weight="semibold">
-            {isCorrect ? "Correct" : "Not quite"}
+            {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
           </Text>
           <Button label="Try again" variant="ghost" onClick={tryAgain} />
         </VStack>
