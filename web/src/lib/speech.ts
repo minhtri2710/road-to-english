@@ -15,7 +15,8 @@ export function speak(
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "en-US";
-  utterance.rate = Math.min(2, Math.max(0.5, targetWpm / WPM_AT_RATE_ONE)) * speed;
+  // The 0.4 floor (72 WPM) sits below the slowest seed lesson (80 WPM); 0.4 * 0.5x stays above the 0.1 speech minimum.
+  utterance.rate = Math.min(2, Math.max(0.4, targetWpm / WPM_AT_RATE_ONE)) * speed;
   utterance.onend = () => {
     if (current !== utterance) {
       return;

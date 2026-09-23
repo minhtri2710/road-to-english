@@ -115,14 +115,14 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
 			return
 		}
-		if !limiter.allowAccount(w, credentials.Email) {
+		reserved, ok := limiter.allowAccount(w, r, credentials.Email)
+		if !ok {
 			return
 		}
 		user, passwordHash, err := repo.GetUserByEmail(r.Context(), credentials.Email)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserNotFound) {
 				auth.CheckDummyPassword(credentials.Password)
-				limiter.recordFailure(credentials.Email)
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 				return
 			}
@@ -130,11 +130,10 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			return
 		}
 		if !auth.CheckPassword(passwordHash, credentials.Password) {
-			limiter.recordFailure(credentials.Email)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 			return
 		}
-		limiter.clearFailures(credentials.Email)
+		limiter.clearFailures(r, credentials.Email, reserved)
 		if !setSessionCookie(w, r, repo, user.ID) {
 			return
 		}
@@ -172,6 +171,7 @@ const (
 	ipAttemptLimit     = 20
 	ipAttemptWindow    = time.Minute
 	loginFailureLimit  = 10
+	accountFailureCap  = 100
 	loginFailureWindow = 15 * time.Minute
 	limiterMaxEntries  = 10000
 )
@@ -185,11 +185,12 @@ type limitWindow struct {
 type authLimiter struct {
 	mu       sync.Mutex
 	ips      map[string]*limitWindow
-	failures map[string]*limitWindow
+	pairs    map[string]*limitWindow // failed logins per email and IP key
+	accounts map[string]*limitWindow // failed logins per email across all IP keys
 }
 
 func newAuthLimiter() *authLimiter {
-	return &authLimiter{ips: map[string]*limitWindow{}, failures: map[string]*limitWindow{}}
+	return &authLimiter{ips: map[string]*limitWindow{}, pairs: map[string]*limitWindow{}, accounts: map[string]*limitWindow{}}
 }
 
 // current returns key's live window, dropping expired entries; nil when none is live.
@@ -228,9 +229,7 @@ func writeTooManyAttempts(w http.ResponseWriter, retryAfter time.Duration) {
 	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many attempts"})
 }
 
-// allowIP counts one auth request for the client's RemoteAddr host; X-Forwarded-For is not trusted.
-// IPv6 clients are keyed by their /64 so rotating addresses within it cannot fill the map.
-func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
+func ipKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -238,6 +237,13 @@ func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
 	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
 		host = ip.Mask(net.CIDRMask(64, 128)).String()
 	}
+	return host
+}
+
+// allowIP counts one auth request for the client's RemoteAddr host; X-Forwarded-For is not trusted.
+// IPv6 clients are keyed by their /64 so rotating addresses within it cannot fill the map.
+func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
+	host := ipKey(r)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
@@ -257,36 +263,55 @@ func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func (l *authLimiter) allowAccount(w http.ResponseWriter, email string) bool {
+func pairKey(r *http.Request, email string) string {
+	return email + "\x00" + ipKey(r)
+}
+
+// live returns key's live window, starting one when none is live; nil when the map is full of live entries.
+func live(windows map[string]*limitWindow, key string, now time.Time) *limitWindow {
+	if entry := current(windows, key, loginFailureWindow, now); entry != nil {
+		return entry
+	}
+	return admit(windows, key, loginFailureWindow, now)
+}
+
+// allowAccount reserves one failed-login slot for email from this IP key and for email overall, before the password
+// check and under one lock, so parallel wrong guesses cannot all pass. It refuses when either count is at its limit.
+// A full map fails open for that count (the per-IP limiter still bounds each client), so filling the pair map cannot
+// refuse every login. It returns the account window it counted in, nil when none, for clearFailures.
+func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email string) (*limitWindow, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	entry := current(l.failures, email, loginFailureWindow, now)
-	if entry != nil && entry.count >= loginFailureLimit {
-		writeTooManyAttempts(w, entry.start.Add(loginFailureWindow).Sub(now))
-		return false
+	pair := live(l.pairs, pairKey(r, email), now)
+	account := live(l.accounts, email, now)
+	if pair != nil && pair.count >= loginFailureLimit {
+		writeTooManyAttempts(w, pair.start.Add(loginFailureWindow).Sub(now))
+		return nil, false
 	}
-	return true
+	if account != nil && account.count >= accountFailureCap {
+		writeTooManyAttempts(w, account.start.Add(loginFailureWindow).Sub(now))
+		return nil, false
+	}
+	if pair != nil {
+		pair.count++
+	}
+	if account != nil {
+		account.count++
+	}
+	return account, true
 }
 
-func (l *authLimiter) recordFailure(email string) {
+// clearFailures runs after a successful login: it clears this IP key's failures for email and returns only the one
+// slot this login reserved to the account count, and only while that window is still the live one, so failures from
+// other IP keys still count toward the cap.
+func (l *authLimiter) clearFailures(r *http.Request, email string, reserved *limitWindow) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
-	entry := current(l.failures, email, loginFailureWindow, now)
-	if entry == nil {
-		entry = admit(l.failures, email, loginFailureWindow, now)
-		if entry == nil {
-			return
-		}
+	delete(l.pairs, pairKey(r, email))
+	if reserved != nil && l.accounts[email] == reserved && reserved.count > 0 {
+		reserved.count--
 	}
-	entry.count++
-}
-
-func (l *authLimiter) clearFailures(email string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	delete(l.failures, email)
 }
 
 func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, bool) {

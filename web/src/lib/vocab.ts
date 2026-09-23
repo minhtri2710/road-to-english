@@ -64,8 +64,14 @@ export function createCard(input: NewCard, now: Date): VocabCard {
   };
 }
 
+// Rates at max(now, updatedAt + 1 ms, last_review): a clock behind another device's review would
+// make ts-fsrs throw, and a tie with the stored updatedAt would lose the merge. Stored times never
+// go backwards.
 export function reviewCard(card: VocabCard, rating: Grade, now: Date): VocabCard {
-  return { ...card, fsrs: scheduler.next(card.fsrs, now, rating).card, updatedAt: now.toISOString() };
+  const at = new Date(
+    Math.max(now.getTime(), Date.parse(card.updatedAt) + 1, card.fsrs.last_review?.getTime() ?? 0),
+  );
+  return { ...card, fsrs: scheduler.next(card.fsrs, at, rating).card, updatedAt: at.toISOString() };
 }
 
 export function deleteCard(card: VocabCard, now: Date): VocabCard {

@@ -960,15 +960,22 @@ function LessonList({
   completedLessons,
   takeFocus,
   focusHeading,
+  onSettled,
   today,
 }: {
   onSelect: (id: string) => void;
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
   focusHeading: () => void;
+  onSettled: (settled: boolean) => void;
   today: Omit<Parameters<typeof TodayStrip>[0], "nextLesson" | "onStart">;
 }) {
   const { data, loading, error, retry } = useLessons();
+  // Rows take the return focus as they mount, so this runs after any row could have taken it.
+  useEffect(() => {
+    onSettled(!loading);
+    return () => onSettled(false);
+  }, [loading]);
   // The first library lesson not yet completed; the strip reads the list this component already loads.
   const nextLesson = data?.find((lesson) => !completedLessons.has(lesson.id));
 
@@ -1765,8 +1772,7 @@ function LessonDetail({
         onChange={(nextMode) => {
           if (nextMode) {
             setMode(nextMode as LessonMode);
-            setLoopingSentenceId(null);
-            setSpokenWord(null);
+            stopMedia({ keepVideo: true });
           }
         }}
         xstyle={appStyles.modeToggle}
@@ -2114,18 +2120,36 @@ export function App() {
     setHeadingFocusRequest((request) => request + 1);
   };
 
+  // Each count or goal change consumes the arm, so a later reload (sync, import) cannot announce on its own.
   useEffect(() => {
+    const armed = goalArmed.current;
+    goalArmed.current = false;
     if (goalMet !== goalMetBefore.current) {
       goalMetBefore.current = goalMet;
-      setGoalAnnounced(goalMet && goalArmed.current);
+      setGoalAnnounced(goalMet && armed);
     }
-  }, [goalMet]);
+  }, [progress.actionsToday, dailyGoal, goalMet]);
 
   const takeHeadingFocus = () => {
     const take = headingFocus.current;
     headingFocus.current = false;
     return take;
   };
+
+  // Once both lesson lists have settled, a return focus no row took (an unknown lesson id, or a
+  // list that failed) goes to the view's h1 instead of dropping to <body>. Either list may settle last.
+  const librarySettled = useRef(false);
+  const settleReturnFocus = () => {
+    if (returnFocusId.current !== null && librarySettled.current && userLessons !== null) {
+      returnFocusId.current = null;
+      focusHeading();
+    }
+  };
+
+  // User-lesson rows take the return focus as they mount, before this runs.
+  useEffect(() => {
+    settleReturnFocus();
+  }, [userLessons]);
 
   const takeReturnFocus = (id: string) => {
     if (returnFocusId.current !== id) {
@@ -2445,6 +2469,10 @@ export function App() {
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
                     focusHeading={focusHeading}
+                    onSettled={(settled) => {
+                      librarySettled.current = settled;
+                      settleReturnFocus();
+                    }}
                     today={{
                       due: deck.error === null && !deck.loading ? reviewDeck.length : null,
                       actionsToday: progress.actionsToday,

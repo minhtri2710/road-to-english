@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createCard,
@@ -25,16 +25,28 @@ export function useVocabDeck() {
   const [error, setError] = useState<Error | null>(null);
   const [now, setNow] = useState(() => new Date());
 
+  // Only the latest refresh installs its result, so an older overlapping one cannot land a stale snapshot.
+  const generation = useRef(0);
   const refresh = useCallback(async () => {
+    const current = ++generation.current;
     setLoading(true);
     try {
-      setCards(await getAllCards());
+      const loaded = await getAllCards();
+      if (current !== generation.current) {
+        return;
+      }
+      setCards(loaded);
       setNow(new Date());
       setError(null);
     } catch (loadError) {
+      if (current !== generation.current) {
+        return;
+      }
       setError(loadError instanceof Error ? loadError : new Error("Unable to load cards"));
     } finally {
-      setLoading(false);
+      if (current === generation.current) {
+        setLoading(false);
+      }
     }
   }, []);
 

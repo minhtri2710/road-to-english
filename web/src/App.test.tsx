@@ -286,7 +286,7 @@ describe("App", () => {
         .find((button) => button.textContent === "Listen")
         ?.click();
     });
-    expect(speak).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.5 }));
+    expect(speak).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.4 }));
     await act(async () => {
       low.root.unmount();
     });
@@ -1272,6 +1272,24 @@ describe("App", () => {
     container.remove();
   });
 
+  it("stops reference speech on a lesson mode change", async () => {
+    const speech = installSpeechFakes();
+    const view = await openLesson();
+    await act(async () => {
+      buttonsNamed(view.container, "Listen")[0]?.click();
+    });
+    expect(speech.spoken).toHaveLength(1);
+    speech.cancel.mockClear();
+    await act(async () => {
+      buttonsNamed(view.container, "Dictation")[0]?.click();
+    });
+    expect(speech.cancel).toHaveBeenCalled();
+    await act(async () => {
+      view.root.unmount();
+    });
+    view.container.remove();
+  });
+
   it("scales the clamped shadowing rate by the chosen speed", async () => {
     const speech = installSpeechFakes();
     const rateAt = async (container: HTMLElement, speed: string) => {
@@ -1293,8 +1311,17 @@ describe("App", () => {
     });
     a2.container.remove();
 
+    const a1 = await openLesson({ ...greetingsLesson, targetWpm: 80 });
+    expect(await rateAt(a1.container, "1x")).toBeCloseTo(80 / 180);
+    expect(await rateAt(a1.container, "0.5x")).toBeCloseTo(40 / 180);
+    await act(async () => {
+      a1.root.unmount();
+    });
+    a1.container.remove();
+
     const low = await openLesson({ ...greetingsLesson, targetWpm: 1 });
-    expect(await rateAt(low.container, "1x")).toBe(0.5);
+    expect(await rateAt(low.container, "1x")).toBe(0.4);
+    expect(await rateAt(low.container, "0.5x")).toBe(0.2);
     await act(async () => {
       low.root.unmount();
     });
@@ -4720,6 +4747,65 @@ describe("App", () => {
       await close(review);
     });
 
+    it("focuses the library heading on Back to lessons from an unknown lesson id", async () => {
+      const view = await renderApp();
+      await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const path = new URL(url, "http://localhost").pathname;
+        return path === "/lessons/nope"
+          ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 })
+          : responseFor(path);
+      });
+      await act(async () => {
+        window.location.hash = "#/lesson/nope";
+      });
+      await waitForCondition(() => h1Texts(view.container)[0] === "Lesson unavailable");
+      await click(view.container, "Back to lessons");
+      await waitForCondition(() => h1Texts(view.container)[0] === "Lesson library");
+      await waitForCondition(() => document.activeElement?.tagName === "H1");
+      expect(document.activeElement?.textContent).toBe("Lesson library");
+      await close(view);
+    });
+
+    it("focuses the library heading once your lessons load last after Back from an unknown lesson id", async () => {
+      let resolveUserLessons: (lessons: Awaited<ReturnType<typeof listUserLessons>>) => void = () => undefined;
+      vi.spyOn(userLessonsStore, "listUserLessons").mockImplementation(
+        () => new Promise((resolve) => (resolveUserLessons = resolve)),
+      );
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const path = new URL(url, "http://localhost").pathname;
+        return path === "/lessons/nope"
+          ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 })
+          : responseFor(path);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      window.history.replaceState(null, "", "#/lesson/nope");
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      await waitForCondition(() => h1Texts(container)[0] === "Lesson unavailable");
+      await click(container, "Back to lessons");
+      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      expect(container.textContent).toContain("Loading your lessons...");
+      expect(document.activeElement?.tagName).not.toBe("H1");
+      await act(async () => {
+        resolveUserLessons([]);
+      });
+      await waitForCondition(() => document.activeElement?.tagName === "H1");
+      expect(document.activeElement?.textContent).toBe("Lesson library");
+      await act(async () => root.unmount());
+      container.remove();
+    });
+
     it("falls back to the library with replaceState for a malformed route or an unknown user lesson", async () => {
       for (const hash of ["#/nowhere", "#/lesson/", "#/my/user-missing"]) {
         window.history.replaceState(null, "", hash);
@@ -4853,6 +4939,39 @@ describe("App", () => {
       await submit("greetings-basics-2");
       await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
       expect(goal.textContent).toBe("Daily goal met.");
+      localStorage.removeItem("road-to-english.dailyGoal");
+      await close(view);
+    });
+
+    it("does not announce the daily goal when a reload after practice meets it", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 3; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      vi.stubGlobal("confirm", () => true);
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      await click(container, "Dictation");
+      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
+      await act(async () => {
+        setInputValue(input, "Good morning");
+        input.form?.requestSubmit();
+      });
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 4/5") ?? false);
+      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await act(async () => {
+        Object.defineProperty(file, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        file.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
       localStorage.removeItem("road-to-english.dailyGoal");
       await close(view);
     });

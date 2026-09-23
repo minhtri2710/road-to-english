@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { mergeCard } from "./mergeCard";
 import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
@@ -51,12 +52,25 @@ describe("vocabulary cards", () => {
   });
 
   it("schedules a Good review after now", () => {
-    const card = reviewCard(newCard(), Rating.Good, now);
+    const at = new Date(now.getTime() + 60_000);
+    const card = reviewCard(newCard(), Rating.Good, at);
 
     expect(card.fsrs.state).not.toBe(State.New);
-    expect(card.fsrs.due.getTime()).toBeGreaterThan(now.getTime());
+    expect(card.fsrs.due.getTime()).toBeGreaterThan(at.getTime());
     expect(card.fsrs.reps).toBe(1);
-    expect(card.fsrs.last_review?.getTime()).toBe(now.getTime());
+    expect(card.fsrs.last_review?.getTime()).toBe(at.getTime());
+  });
+
+  it("rates just after the stored copy when this device's clock is behind it", () => {
+    const stored = reviewCard(newCard(), Rating.Good, new Date(now.getTime() + 86_400_000));
+    expect(stored.updatedAt).toBe(stored.fsrs.last_review?.toISOString());
+    const rated = reviewCard(stored, Rating.Good, now);
+
+    expect(Date.parse(rated.updatedAt)).toBeGreaterThan(Date.parse(stored.updatedAt));
+    expect(rated.fsrs.last_review!.getTime()).toBeGreaterThanOrEqual(stored.fsrs.last_review!.getTime());
+    expect(rated.fsrs.due.getTime()).toBeGreaterThanOrEqual(rated.fsrs.last_review!.getTime());
+    expect(rated.fsrs.reps).toBe(2);
+    expect(mergeCard(stored, rated)).toBe(rated);
   });
 
   it("stamps updatedAt on review and keeps the card live", () => {

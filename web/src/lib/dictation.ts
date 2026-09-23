@@ -15,9 +15,32 @@ export type WordDiff =
   | { kind: "replaced"; word: string; typed: string }
   | { kind: "extra"; typed: string };
 
+const ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(" ");
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+function spellBelow1000(n: number): string {
+  if (n < 20) return ONES[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : "");
+  return ONES[Math.floor(n / 100)] + " hundred" + (n % 100 ? " " + spellBelow1000(n % 100) : "");
+}
+
+// A digit token as spoken words: 0-999 in words, a leading-zero run digit by
+// digit (phone style). Numbers of 1000 and up stay as digits.
+function spellNumber(digits: string): string {
+  if (digits.length > 1 && digits[0] === "0") return [...digits].map((d) => ONES[+d]).join(" ");
+  return digits.length <= 3 ? spellBelow1000(+digits) : digits;
+}
+
+// "6:30" -> "six thirty"; "7:00" -> "seven oclock", the normalized form of
+// "seven o'clock" that a recognizer writes as "7:00".
+function spellTime(_match: string, hour: string, minutes: string): string {
+  return ` ${spellNumber(hour)} ${minutes === "00" ? "oclock" : spellNumber(minutes)} `;
+}
+
+// normalize() tokens with numbers spelled out, so a digit form and its words compare equal.
 function tokens(s: string): string[] {
-  const n = normalize(s);
-  return n ? n.split(" ") : [];
+  const n = normalize(s.replace(/\b(\d{1,2}):([0-5]\d)\b/g, spellTime));
+  return n ? n.split(" ").flatMap((t) => (/^\d+$/.test(t) ? spellNumber(t).split(" ") : [t])) : [];
 }
 
 // Word-level edit distance (Levenshtein over normalize() tokens), walked
@@ -92,7 +115,8 @@ export function blankFor(text: string): { parts: string[]; index: number; answer
   return { parts, index, answer };
 }
 
-// normalize() turns a hyphen into a space, so "t-shirt" and "t shirt" both match "t-shirt".
+// Same tokens as diffWords: a hyphen becomes a space, so "t-shirt" and "t shirt"
+// both match "t-shirt", and "7" matches "seven".
 export function blankMatches(typed: string, answer: string): boolean {
-  return normalize(typed) === normalize(answer);
+  return tokens(typed).join(" ") === tokens(answer).join(" ");
 }

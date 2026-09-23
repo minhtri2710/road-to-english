@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1139,7 +1140,7 @@ func TestSuccessfulLoginClearsAccountFailures(t *testing.T) {
 	api := newTestAPI(t)
 	signupForSync(t, api, "clears@example.com")
 	login := func(i int, password string) int {
-		return doAuthFrom(api.handler, "/login", `{"email":"clears@example.com","password":"`+password+`"}`, "198.51.100."+strconv.Itoa(10+i)+":1000", nil).Code
+		return doAuthFrom(api.handler, "/login", `{"email":"clears@example.com","password":"`+password+`"}`, "198.51.100.10:"+strconv.Itoa(1000+i), nil).Code
 	}
 	for i := 0; i < loginFailureLimit-1; i++ {
 		if code := login(i, "wrong password"); code != http.StatusUnauthorized {
@@ -1156,5 +1157,150 @@ func TestSuccessfulLoginClearsAccountFailures(t *testing.T) {
 	}
 	if code := login(50, "correct password"); code != http.StatusOK {
 		t.Fatalf("login after cleared failures status = %d, want 200", code)
+	}
+}
+
+func TestAuthLimiterPerAccountHoldsUnderConcurrentFailures(t *testing.T) {
+	api := newTestAPI(t)
+	signupForSync(t, api, "burst@example.com")
+	const attempts = 2 * loginFailureLimit
+	codes := make([]int, attempts)
+	var wg sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			codes[i] = doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"wrong password"}`, "198.51.100.7:"+strconv.Itoa(1000+i), nil).Code
+		}(i)
+	}
+	wg.Wait()
+	unauthorized, limited := 0, 0
+	for i, code := range codes {
+		switch code {
+		case http.StatusUnauthorized:
+			unauthorized++
+		case http.StatusTooManyRequests:
+			limited++
+		default:
+			t.Fatalf("attempt %d status = %d, want 401 or 429", i, code)
+		}
+	}
+	if unauthorized != loginFailureLimit || limited != attempts-loginFailureLimit {
+		t.Fatalf("401s = %d, 429s = %d; want %d and %d", unauthorized, limited, loginFailureLimit, attempts-loginFailureLimit)
+	}
+
+	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"correct password"}`, "198.51.100.7:2000", nil), 900)
+	if code := doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"wrong password"}`, "198.51.100.8:1000", nil).Code; code != http.StatusUnauthorized {
+		t.Fatalf("other IP key wrong password status = %d, want 401", code)
+	}
+	if code := doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"correct password"}`, "198.51.100.9:1000", nil).Code; code != http.StatusOK {
+		t.Fatalf("fresh IP key correct password status = %d, want 200", code)
+	}
+}
+
+func TestAuthLimiterPerAccountCapAcrossIPKeys(t *testing.T) {
+	api := newTestAPI(t)
+	signupForSync(t, api, "cap@example.com")
+	wrong := `{"email":"cap@example.com","password":"wrong password"}`
+	ips := accountFailureCap / loginFailureLimit
+	for ip := 0; ip < ips; ip++ {
+		for i := 0; i < loginFailureLimit; i++ {
+			if code := doAuthFrom(api.handler, "/login", wrong, "198.51.100."+strconv.Itoa(10+ip)+":"+strconv.Itoa(1000+i), nil).Code; code != http.StatusUnauthorized {
+				t.Fatalf("IP %d failure %d status = %d, want 401", ip, i, code)
+			}
+		}
+	}
+	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", wrong, "203.0.113.1:1000", nil), 900)
+	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", `{"email":"cap@example.com","password":"correct password"}`, "203.0.113.2:1000", nil), 900)
+	if code := doAuthFrom(api.handler, "/login", `{"email":"other-cap@example.com","password":"wrong password"}`, "203.0.113.3:1000", nil).Code; code != http.StatusUnauthorized {
+		t.Fatalf("other account status = %d, want 401", code)
+	}
+}
+
+func TestAuthLimiterSuccessReturnsOnlyItsAccountSlot(t *testing.T) {
+	limiter := newAuthLimiter()
+	from := func(remoteAddr string) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/login", nil)
+		req.RemoteAddr = remoteAddr
+		return req
+	}
+	allow := func(req *http.Request) (*limitWindow, bool) {
+		return limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
+	}
+	for i := 0; i < accountFailureCap-1; i++ {
+		if _, ok := allow(from("198.51.100." + strconv.Itoa(i/loginFailureLimit) + ":1000")); !ok {
+			t.Fatalf("attempt %d refused", i)
+		}
+	}
+	owner := from("203.0.113.1:1000")
+	reserved, ok := allow(owner)
+	if !ok {
+		t.Fatal("owner's attempt refused below the cap")
+	}
+	limiter.clearFailures(owner, "a@example.com", reserved)
+	if got := limiter.accounts["a@example.com"].count; got != accountFailureCap-1 {
+		t.Fatalf("account count after success = %d, want %d", got, accountFailureCap-1)
+	}
+	if _, ok := allow(owner); !ok {
+		t.Fatal("owner refused after a success returned its slot")
+	}
+	if _, ok := allow(from("203.0.113.2:1000")); ok {
+		t.Fatal("attempt allowed past the account cap")
+	}
+}
+
+func TestAuthLimiterFailsOpenWhenMapsAreFull(t *testing.T) {
+	limiter := newAuthLimiter()
+	fill := func(windows map[string]*limitWindow) {
+		for i := 0; i < limiterMaxEntries; i++ {
+			windows["filler-"+strconv.Itoa(i)] = &limitWindow{start: time.Now(), count: 1}
+		}
+	}
+	fill(limiter.pairs)
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.RemoteAddr = "203.0.113.1:1000"
+	recorder := httptest.NewRecorder()
+	reserved, ok := limiter.allowAccount(recorder, req, "fresh@example.com")
+	if !ok {
+		t.Fatalf("login refused with a full pair map: status %d", recorder.Code)
+	}
+	if reserved == nil || reserved.count != 1 {
+		t.Fatalf("account reservation = %#v, want count 1", reserved)
+	}
+	limiter.clearFailures(req, "fresh@example.com", reserved)
+	if reserved.count != 0 {
+		t.Fatalf("account count after success = %d, want 0", reserved.count)
+	}
+
+	fill(limiter.accounts)
+	other := limiter.accounts["filler-0"]
+	reserved, ok = limiter.allowAccount(httptest.NewRecorder(), req, "second@example.com")
+	if !ok || reserved != nil {
+		t.Fatalf("full account map: allowed = %v, reservation = %#v; want allowed with no reservation", ok, reserved)
+	}
+	limiter.clearFailures(req, "second@example.com", reserved)
+	if other.count != 1 {
+		t.Fatalf("an unrecorded reservation changed another account: count %d", other.count)
+	}
+}
+
+func TestAuthLimiterSuccessDoesNotReturnASlotFromAnExpiredWindow(t *testing.T) {
+	limiter := newAuthLimiter()
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.RemoteAddr = "203.0.113.1:1000"
+	stale, ok := limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
+	if !ok {
+		t.Fatal("first attempt refused")
+	}
+	stale.start = time.Now().Add(-loginFailureWindow)
+	other := httptest.NewRequest(http.MethodPost, "/login", nil)
+	other.RemoteAddr = "203.0.113.2:1000"
+	fresh, ok := limiter.allowAccount(httptest.NewRecorder(), other, "a@example.com")
+	if !ok || fresh == stale {
+		t.Fatal("second attempt did not start a new account window")
+	}
+	limiter.clearFailures(req, "a@example.com", stale)
+	if fresh.count != 1 {
+		t.Fatalf("new window count = %d, want 1: a stale reservation was returned to it", fresh.count)
 	}
 }

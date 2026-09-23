@@ -141,3 +141,45 @@ describe("blankMatches", () => {
     expect(blankMatches("What's", blankFor("What's up?").answer)).toBe(true);
   });
 });
+
+describe("number equivalence", () => {
+  const allCorrect = (typed: string, reference: string) =>
+    diffWords(typed, reference).every((d) => d.kind === "correct");
+
+  it.each([
+    ["6:30", "six thirty"],
+    ["7 o'clock", "seven o'clock"],
+    ["7:00", "seven o'clock"],
+    ["25", "twenty-five"],
+    ["0912", "zero nine one two"],
+    ["half past 3", "half past three"],
+    ["12", "twelve"],
+    ["305", "three hundred five"],
+  ])("matches %s to %s", (digits, words) => {
+    expect(allCorrect(digits, words)).toBe(true);
+    expect(allCorrect(words, digits)).toBe(true);
+  });
+
+  it("leaves 1000 and up as digits", () => {
+    expect(diffWords("2026", "2026")).toEqual([{ kind: "correct", word: "2026" }]);
+    expect(allCorrect("2026", "two thousand twenty six")).toBe(false);
+  });
+
+  it("still marks a wrong number and a non-number word", () => {
+    expect(diffWords("I get up at 6:45", "I get up at six thirty.").slice(-3)).toEqual([
+      { kind: "correct", word: "six" },
+      { kind: "replaced", word: "thirty", typed: "forty" },
+      { kind: "extra", typed: "five" },
+    ]);
+    expect(diffWords("cat", "dog")).toEqual([{ kind: "replaced", word: "dog", typed: "cat" }]);
+  });
+
+  it("scores a recognizer transcript with digits all correct", () => {
+    expect(allCorrect("I get up at 6:30", "I get up at six thirty.")).toBe(true);
+  });
+
+  it("applies to the blank check", () => {
+    expect(blankMatches("7", "seven")).toBe(true);
+    expect(blankMatches("8", "seven")).toBe(false);
+  });
+});
