@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -90,9 +90,12 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
+// timestampGrammar is the one wire form the web also accepts: seconds, an optional 1-3 digit fraction, Z.
+var timestampGrammar = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$`)
+
 func ParseTimestamp(value string) (time.Time, error) {
-	if !strings.HasSuffix(value, "Z") {
-		return time.Time{}, fmt.Errorf("timestamp must end in Z")
+	if !timestampGrammar.MatchString(value) {
+		return time.Time{}, fmt.Errorf("timestamp must be YYYY-MM-DDTHH:MM:SS with an optional 1-3 digit fraction and Z")
 	}
 	timestamp, err := time.Parse(time.RFC3339, value)
 	if err != nil {

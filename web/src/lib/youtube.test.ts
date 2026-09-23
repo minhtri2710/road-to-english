@@ -86,6 +86,18 @@ describe("parseTranscript", () => {
     expect(() => parseTranscript(`0:00\nOne.\n${stamp}\nTwo.`)).toThrow(`Invalid timestamp: ${stamp}.`);
   });
 
+  it.each(["60:00", "75:30"])("rejects %s minutes past 59 with the h:mm:ss hint", (stamp) => {
+    expect(() => parseTranscript(`0:00\nOne.\n${stamp}\nTwo.`)).toThrow(
+      `Invalid timestamp: ${stamp}. Use h:mm:ss past an hour.`,
+    );
+  });
+
+  it("accepts 59:59 and unbounded h:mm:ss hours", () => {
+    expect(
+      parseTranscript("0:00\nOne.\n59:59\nTwo.\n1:00:00\nThree.\n10:00:00\nFour.").map(({ cue }) => cue.start),
+    ).toEqual([0, 3599, 3600, 36000]);
+  });
+
   it("accepts the largest in-range fields", () => {
     expect(parseTranscript("0:00\nOne.\n59:59\nTwo.\n1:59:59\nThree.").map(({ cue }) => cue.start)).toEqual([
       0, 3599, 7199,

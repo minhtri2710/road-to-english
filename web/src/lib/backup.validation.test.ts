@@ -24,7 +24,11 @@ function state(overrides: Record<string, unknown> = {}) {
 describe("sync state validation", () => {
   it.each([
     ["2026-01-01T00:00:00Z", true],
-    ["0001-01-01T00:00:00.123456Z", true],
+    ["0001-01-01T00:00:00.5Z", true],
+    ["0001-01-01T00:00:00.123Z", true],
+    ["2026-01-01T00:00:00,5Z", false],
+    ["2026-01-01T00:00:00.1234Z", false],
+    ["2026-01-01T00:00:00.Z", false],
     ["2026-01-01T00:00:00+07:00", false],
     ["2026-02-30T00:00:00Z", false],
     ["2026-01-01T24:00:00Z", false],

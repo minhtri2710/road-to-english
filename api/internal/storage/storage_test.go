@@ -141,6 +141,23 @@ func tombstone(card Card, deletedAt string) Card {
 	return card
 }
 
+func TestParseTimestampGrammar(t *testing.T) {
+	for value, valid := range map[string]bool{
+		"2026-01-01T00:00:00Z":      true,
+		"2026-01-01T00:00:00.5Z":    true,
+		"2026-01-01T00:00:00.123Z":  true,
+		"2026-01-01T00:00:00,5Z":    false,
+		"2026-01-01T00:00:00.1234Z": false,
+		"2026-01-01T00:00:00.Z":     false,
+		"2026-01-01T00:00:00+00:00": false,
+		"2026-02-30T00:00:00Z":      false,
+	} {
+		if _, err := ParseTimestamp(value); (err == nil) != valid {
+			t.Errorf("ParseTimestamp(%q) error = %v, want valid %v", value, err, valid)
+		}
+	}
+}
+
 func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "card-times@example.com")
@@ -151,6 +168,14 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	got := syncState(t, repo, user.ID, State{Cards: []Card{live, deleted}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{live, deleted}) {
 		t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{live, deleted})
+	}
+	for _, card := range got.Cards {
+		if _, err := ParseTimestamp(card.UpdatedAt); err != nil {
+			t.Fatalf("stored updatedAt %q fails the grammar: %v", card.UpdatedAt, err)
+		}
+	}
+	if _, err := ParseTimestamp(*got.Cards[1].DeletedAt.Value); err != nil {
+		t.Fatalf("stored deletedAt fails the grammar: %v", err)
 	}
 
 	var updatedAt time.Time

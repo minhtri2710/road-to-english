@@ -45,6 +45,9 @@ export function parseTranscript(text: string): { text: string; cue: Cue }[] {
       if (parts.slice(1).some((part) => part > 59)) {
         throw new Error(`Invalid timestamp: ${line}.`);
       }
+      if (parts.length === 2 && parts[0] > 59) {
+        throw new Error(`Invalid timestamp: ${line}. Use h:mm:ss past an hour.`);
+      }
       const start = parts.reduce((total, part) => total * 60 + part, 0);
       if (current && start <= current.start) {
         throw new Error(`Timestamps must increase: ${line} is not after the previous one.`);

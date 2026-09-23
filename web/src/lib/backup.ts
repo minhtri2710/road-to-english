@@ -59,7 +59,7 @@ function daysInMonth(year: number, month: number): number {
 }
 
 function timestampParts(value: string): number[] | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?Z$/.exec(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
   if (!match) {
     return null;
   }
@@ -83,7 +83,7 @@ function timestampParts(value: string): number[] | null {
     return null;
   }
 
-  return [year, month, day, hour, minute, second, Number(match[7]?.slice(0, 3).padEnd(3, "0") ?? 0)];
+  return [year, month, day, hour, minute, second, Number(match[7]?.padEnd(3, "0") ?? 0)];
 }
 
 function reviveTimestamp(value: string): Date {

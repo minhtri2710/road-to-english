@@ -1729,6 +1729,130 @@ describe("App", () => {
     container.remove();
   });
 
+  it("undoes nothing when the card was re-saved after the remove, keeping the fresh card", async () => {
+    const sentence = greetingsLesson.sentences[0];
+    const created = new Date("2026-01-01T00:00:00.000Z");
+    const original = createCard(
+      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
+      created,
+    );
+    await putCard(original);
+    const { container, root } = await openLesson();
+    const showView = async (name: "Review" | "Library") => {
+      await act(async () => {
+        buttonsNamed(container, name)[0]?.click();
+      });
+    };
+    const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
+    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
+
+    await showView("Review");
+    await waitForCondition(() => dueBadge() === "1");
+    await showView("Library");
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    // Earlier tests can leave toasts in document.body; this test's toast is the newest Undo.
+    const undoCount = buttonsNamed(document.body, "Undo").length;
+    await act(async () => {
+      buttonsNamed(container, "Saved")[0]!.click();
+    });
+    await waitForCondition(() => buttonsNamed(document.body, "Undo").length === undoCount + 1);
+    await act(async () => {
+      buttonsNamed(container, "Save to review")[0]!.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    const resaved = await stored();
+    expect(resaved?.deletedAt).toBeNull();
+    expect(resaved?.fsrs.due.getTime()).toBeGreaterThan(created.getTime());
+
+    const undo = buttonsNamed(document.body, "Undo").at(-1)!;
+    await act(async () => {
+      undo.click();
+    });
+    await waitForCondition(
+      () => container.textContent?.includes("Couldn't undo: this card changed since it was removed.") ?? false,
+    );
+    // happy-dom runs no CSS transitions; end the toast row's exit transition so a dismissed toast leaves the DOM.
+    await act(async () => {
+      for (let node = undo.parentElement; node; node = node.parentElement) {
+        const end = new Event("transitionend", { bubbles: true });
+        Object.defineProperty(end, "propertyName", { value: "grid-template-rows" });
+        node.dispatchEvent(end);
+      }
+    });
+    expect(undo.isConnected).toBe(false);
+    expect(await stored()).toEqual(resaved);
+    await showView("Review");
+    await waitForCondition(() => dueBadge() === "1");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  describe("due refresh on return", () => {
+    const visibility = Object.getOwnPropertyDescriptor(document, "visibilityState");
+
+    afterEach(() => {
+      vi.useRealTimers();
+      restoreProperty(document, "visibilityState", visibility);
+    });
+
+    async function renderWithFutureCard() {
+      const sentence = greetingsLesson.sentences[0];
+      const card = createCard(
+        { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
+        new Date(),
+      );
+      await putCard({ ...card, fsrs: { ...card.fsrs, due: new Date(Date.now() + 60_000) } });
+      const view = await openLesson();
+      await act(async () => {
+        buttonsNamed(view.container, "Review")[0]?.click();
+      });
+      const dueBadge = () => view.container.textContent?.match(/(\d+) due/)?.[1];
+      await waitForCondition(() => dueBadge() === "0");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 120_000);
+      return { ...view, dueBadge };
+    }
+
+    function setVisibility(state: DocumentVisibilityState) {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    it("shows a card that became due when the tab becomes visible, not when it is hidden", async () => {
+      const { container, root, dueBadge } = await renderWithFutureCard();
+      await act(async () => {
+        setVisibility("hidden");
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(dueBadge()).toBe("0");
+      await act(async () => {
+        setVisibility("visible");
+      });
+      await waitForCondition(() => dueBadge() === "1");
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("shows a card that became due when the window regains focus", async () => {
+      const { container, root, dueBadge } = await renderWithFutureCard();
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitForCondition(() => dueBadge() === "1");
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+  });
+
   it("removes word buttons and the word panel when the transcript is hidden", async () => {
     installSpeechFakes();
     const { container, root } = await openLesson();
@@ -2635,9 +2759,13 @@ describe("App", () => {
       await unmount(view);
     });
 
-    // happy-dom refuses to load script files and fires the script's error event, the same path as a blocked or offline load.
+    // The stub fires the script's error event instead of letting happy-dom try the network, the same path as a blocked or offline load.
     it("loads the API script once and shows Video unavailable when it fails, keeping the lesson usable", async () => {
-      const append = vi.spyOn(document.head, "append");
+      const append = vi.spyOn(document.head, "append").mockImplementation((...nodes) => {
+        for (const node of nodes) {
+          setTimeout(() => (node as HTMLScriptElement).dispatchEvent(new Event("error")), 0);
+        }
+      });
       const view = await renderApp();
       await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);

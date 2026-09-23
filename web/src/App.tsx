@@ -977,19 +977,21 @@ function SaveToReview({
   saved: boolean;
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
-  undoRemove: (card: VocabCard) => Promise<void>;
+  undoRemove: (tombstone: VocabCard) => Promise<boolean>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const showToast = useToast();
 
-  const undo = async (previous: VocabCard, dismiss: () => void) => {
+  const undo = async (tombstone: VocabCard, dismiss: () => void) => {
     dismiss();
     try {
-      await undoRemove(previous);
+      if (!(await undoRemove(tombstone))) {
+        setFailure("Couldn't undo: this card changed since it was removed.");
+      }
     } catch {
-      setFailed(true);
+      setFailure("Couldn't save. Try again.");
     }
   };
 
@@ -1000,19 +1002,19 @@ function SaveToReview({
 
     isSavingRef.current = true;
     setIsSaving(true);
-    setFailed(false);
+    setFailure(null);
     try {
       if (saved) {
-        const previous = await removeCard(cardId(card.source));
+        const tombstone = await removeCard(cardId(card.source));
         const dismiss = showToast({
           body: "Removed from your review deck.",
-          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={() => void undo(previous, dismiss)} />,
+          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={() => void undo(tombstone, dismiss)} />,
         });
       } else {
         await addCard(card);
       }
     } catch {
-      setFailed(true);
+      setFailure("Couldn't save. Try again.");
     } finally {
       isSavingRef.current = false;
       setIsSaving(false);
@@ -1030,9 +1032,9 @@ function SaveToReview({
         tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
         onClick={() => void toggle()}
       />
-      {failed && (
+      {failure && (
         <Text as="p" color="primary" xstyle={appStyles.error}>
-          Couldn't save. Try again.
+          {failure}
         </Text>
       )}
     </>
@@ -1116,7 +1118,7 @@ function WordPanel({
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
-  undoRemove: (card: VocabCard) => Promise<void>;
+  undoRemove: (tombstone: VocabCard) => Promise<boolean>;
   hear: () => void;
 }) {
   const speechSupported =
@@ -1333,7 +1335,7 @@ interface LessonDetailProps {
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
-  undoRemove: (card: VocabCard) => Promise<void>;
+  undoRemove: (tombstone: VocabCard) => Promise<boolean>;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   completedLessons: Set<string>;
   markLessonComplete: (lessonId: string) => Promise<void>;

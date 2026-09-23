@@ -1,4 +1,4 @@
-import type { VocabCard } from "./vocab";
+import { restoreCard, type VocabCard } from "./vocab";
 
 import { openAppDatabase } from "./db";
 import { notifyLocalMutation } from "./syncEvents";
@@ -8,6 +8,29 @@ export async function putCard(card: VocabCard): Promise<void> {
   try {
     await db.put("cards", card);
     notifyLocalMutation();
+  } finally {
+    db.close();
+  }
+}
+
+// Undo: restores the card only while the stored copy is still exactly this tombstone, in one transaction.
+export async function restoreTombstone(tombstone: VocabCard, now: Date): Promise<boolean> {
+  const db = await openAppDatabase();
+  try {
+    const tx = db.transaction("cards", "readwrite");
+    const stored = await tx.store.get(tombstone.id);
+    const unchanged =
+      stored !== undefined &&
+      stored.updatedAt === tombstone.updatedAt &&
+      stored.deletedAt === tombstone.deletedAt;
+    if (unchanged) {
+      await tx.store.put(restoreCard(tombstone, now));
+    }
+    await tx.done;
+    if (unchanged) {
+      notifyLocalMutation();
+    }
+    return unchanged;
   } finally {
     db.close();
   }

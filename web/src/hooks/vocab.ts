@@ -3,19 +3,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createCard,
   deleteCard,
-  restoreCard,
   reviewCard,
   type Grade,
   type NewCard,
   type VocabCard,
 } from "../lib/vocab";
-import { dueCards, getAllCards, putCard } from "../lib/vocabStore";
+import { dueCards, getAllCards, putCard, restoreTombstone } from "../lib/vocabStore";
 
 export function useVocabDeck() {
   const [cards, setCards] = useState<VocabCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  // ponytail: due-ness advances only on refresh, so cards becoming due while Review is open appear after the next action; upgrade = timer or visibility refresh.
   const [now, setNow] = useState(() => new Date());
 
   const refresh = useCallback(async () => {
@@ -33,6 +31,22 @@ export function useVocabDeck() {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Cards that became due while the tab was hidden or unfocused show up on return.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+    const onFocus = () => void refresh();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refresh]);
 
   const due = useMemo(() => dueCards(cards, now), [cards, now]);
@@ -57,24 +71,27 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  // Returns the card as it was before the delete, for Undo.
+  // Returns the tombstone it wrote, for Undo.
   const removeCard = useCallback(
     async (id: string) => {
       const card = cards.find((stored) => stored.id === id && stored.deletedAt === null);
       if (!card) {
         throw new Error(`No saved card ${id}`);
       }
-      await putCard(deleteCard(card, new Date()));
+      const tombstone = deleteCard(card, new Date());
+      await putCard(tombstone);
       await refresh();
-      return card;
+      return tombstone;
     },
     [cards, refresh],
   );
 
+  // Resolves false, writing nothing, when the card changed since `tombstone` was written.
   const undoRemove = useCallback(
-    async (card: VocabCard) => {
-      await putCard(restoreCard(card, new Date()));
+    async (tombstone: VocabCard) => {
+      const restored = await restoreTombstone(tombstone, new Date());
       await refresh();
+      return restored;
     },
     [refresh],
   );
