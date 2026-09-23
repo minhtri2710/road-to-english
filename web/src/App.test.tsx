@@ -3529,6 +3529,50 @@ describe("App", () => {
       await close(view);
     });
 
+    it("pauses Compare's recording when Listen starts in another sentence", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
+      await click(container, "Record");
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      await click(container, "Stop");
+      await click(container, "Compare");
+      await act(async () => {
+        speech.finish();
+        speech.spoken.at(-1)?.onend?.();
+      });
+      expect(play).toHaveBeenCalledOnce();
+      pause.mockClear();
+
+      await click(container, "Listen", 1);
+      expect(pause).toHaveBeenCalled();
+      await close(view);
+    });
+
+    it("stops speech and Loop when the recording plays from its own controls", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
+      await click(container, "Record");
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      await click(container, "Stop");
+      await click(container, "Loop", 1);
+      expect(buttonsNamed(container, "Loop")[1]?.getAttribute("aria-pressed")).toBe("true");
+      speech.cancel.mockClear();
+      pause.mockClear();
+
+      await act(async () => {
+        container.querySelector("audio")?.dispatchEvent(new Event("play"));
+      });
+      expect(buttonsNamed(container, "Loop")[1]?.getAttribute("aria-pressed")).toBe("false");
+      expect(speech.cancel).toHaveBeenCalled();
+      expect(pause).not.toHaveBeenCalled();
+      await close(view);
+    });
+
     it("turns Loop off on a speech error, plays the recording after a failed Compare reference, and explains a failed Listen once", async () => {
       const view = await openPractice();
       const { container, speech } = view;
@@ -3705,6 +3749,39 @@ describe("App", () => {
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       const [card] = await getAllCards();
       expect(card?.source.word).toBe("dont");
+      await close(view);
+    });
+
+    it("looks up and links a word without its surrounding quote marks", async () => {
+      const lesson = {
+        ...greetingsLesson,
+        sentences: [
+          { ...greetingsLesson.sentences[0], text: "She said 'hello' to the students' teacher." },
+          ...greetingsLesson.sentences.slice(1),
+        ],
+      };
+      const view = await openPractice(lesson);
+      const { container } = view;
+      const api = fetchMock.getMockImplementation()!;
+      const dictionaryUrls: string[] = [];
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.startsWith("https://api.dictionaryapi.dev/")) {
+          dictionaryUrls.push(url);
+          return new Response("[]", { status: 404 });
+        }
+        return api(input, init);
+      });
+      const youglish = () =>
+        Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
+
+      for (const [token, word] of [["'hello'", "hello"], ["students'", "students"]]) {
+        await click(container, token);
+        await click(container, "Define");
+        await waitForCondition(() => dictionaryUrls.length > 0);
+        expect(dictionaryUrls.splice(0)).toEqual([`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`]);
+        expect(youglish()?.getAttribute("href")).toBe(`https://youglish.com/pronounce/${word}/english`);
+      }
       await close(view);
     });
 

@@ -207,6 +207,9 @@ function playReference(
 
 type PracticeMode = "recording" | "check" | "dictation" | "blank";
 
+// Every mounted recording player, across all sentences, so starting any medium can pause them.
+const recordingAudios = new Set<HTMLAudioElement>();
+
 function SentenceShadowing({
   text,
   targetWpm,
@@ -228,7 +231,7 @@ function SentenceShadowing({
   setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void;
   practice: (mode: PracticeMode) => void;
   pronunciationCheck: boolean;
-  stopMedia: () => void;
+  stopMedia: (options?: { keepAudio?: HTMLAudioElement }) => void;
 }) {
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -249,6 +252,18 @@ function SentenceShadowing({
     typeof navigator !== "undefined" &&
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     typeof URL.createObjectURL === "function";
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    recordingAudios.add(audio);
+    return () => {
+      recordingAudios.delete(audio);
+      audio.pause();
+    };
+  }, [recorder.url]);
 
   useEffect(() => {
     if (recorder.state === "ready") {
@@ -401,7 +416,14 @@ function SentenceShadowing({
           {recorder.error}
         </Text>
       )}
-      {recorder.url && <audio ref={audioRef} controls src={recorder.url} />}
+      {recorder.url && (
+        <audio
+          ref={audioRef}
+          controls
+          src={recorder.url}
+          onPlay={(event) => stopMedia({ keepAudio: event.currentTarget })}
+        />
+      )}
       {playBlocked && (
         <Text as="p" type="supporting">
           Press play to hear your recording.
@@ -1203,8 +1225,8 @@ function WordPanel({
 }) {
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
-  // Lookups keep the apostrophe ("don't"); the card id uses the normalised word.
-  const word = text.toLowerCase().replace(/’/g, "'");
+  // Lookups keep an inner apostrophe ("don't") but drop quote marks; the card id uses the normalised word.
+  const word = text.toLowerCase().replace(/’/g, "'").replace(/^'+|'+$/g, "");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
   const [lookup, setLookup] = useState<"idle" | "pending" | "unreachable" | Definition | null>("idle");
 
@@ -1490,8 +1512,8 @@ function LessonDetail({
   const [completeFailed, setCompleteFailed] = useState(false);
   // One practice medium at a time: starting reference speech, the video, a recording or a
   // pronunciation check first stops the others, in every sentence. The video's own play
-  // stops the rest but not itself.
-  const stopMedia = ({ keepVideo = false } = {}) => {
+  // stops the rest but not itself, and so does a recording's.
+  const stopMedia = ({ keepVideo = false, keepAudio }: { keepVideo?: boolean; keepAudio?: HTMLAudioElement } = {}) => {
     setLoopingSentenceId(null);
     setSpokenWord(null);
     if ("speechSynthesis" in window) {
@@ -1499,6 +1521,11 @@ function LessonDetail({
     }
     abortActiveRecognition();
     stopActiveRecording();
+    recordingAudios.forEach((audio) => {
+      if (audio !== keepAudio) {
+        audio.pause();
+      }
+    });
     if (!keepVideo) {
       video.pauseClip();
     }
