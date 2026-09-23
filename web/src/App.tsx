@@ -25,8 +25,8 @@ import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
-import { diffWords, type WordDiff } from "./lib/dictation";
-import { Rating, type Grade, type VocabCard } from "./lib/vocab";
+import { diffWords, normalize, type WordDiff } from "./lib/dictation";
+import { cardId, isCardWord, Rating, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
@@ -64,6 +64,9 @@ const appStyles = stylex.create({
   },
   error: {
     color: "var(--color-error)",
+  },
+  sentenceWord: {
+    paddingInline: "0.125rem",
   },
   wordCorrect: {
     color: "var(--color-success)",
@@ -498,19 +501,15 @@ function LessonList({
 }
 
 function SaveToReview({
-  lessonId,
-  sentence,
+  card,
+  label,
   saved,
   addCard,
 }: {
-  lessonId: string;
-  sentence: { id: string; text: string; notes?: string };
+  card: NewCard;
+  label: string;
   saved: boolean;
-  addCard: (input: {
-    front: string;
-    back: string;
-    source: { lessonId: string; sentenceId: string };
-  }) => Promise<void>;
+  addCard: (input: NewCard) => Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
@@ -523,11 +522,7 @@ function SaveToReview({
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      await addCard({
-        front: sentence.text,
-        back: sentence.notes ?? "",
-        source: { lessonId, sentenceId: sentence.id },
-      });
+      await addCard(card);
     } finally {
       isSavingRef.current = false;
       setIsSaving(false);
@@ -536,11 +531,90 @@ function SaveToReview({
 
   return (
     <Button
-      label={saved ? "Saved" : "Save to review"}
+      label={saved ? "Saved" : label}
       variant="ghost"
       isDisabled={saved || isSaving}
       onClick={() => void save()}
     />
+  );
+}
+
+function sentenceCard(
+  lessonId: string,
+  sentence: { id: string; text: string; notes?: string },
+): NewCard {
+  return {
+    front: sentence.text,
+    back: sentence.notes ?? "",
+    source: { lessonId, sentenceId: sentence.id, word: "" },
+  };
+}
+
+// Splits on letter/digit runs (apostrophes kept, so "What's" is one word) and
+// renders each run whose normalize() is a single token as a button; everything
+// else stays plain text, so the sentence text reads exactly as authored.
+function SentenceWords({
+  text,
+  selected,
+  onSelect,
+}: {
+  text: string;
+  selected: string | null;
+  onSelect: (text: string) => void;
+}) {
+  return (
+    <Text as="p">
+      {text.split(/([A-Za-z0-9'’]+)/).map((part, index) =>
+        isCardWord(normalize(part)) ? (
+          <Button
+            key={index}
+            label={part}
+            size="sm"
+            variant={part === selected ? "secondary" : "ghost"}
+            xstyle={appStyles.sentenceWord}
+            onClick={() => onSelect(part)}
+          />
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+}
+
+function WordPanel({
+  text,
+  card,
+  savedCardIds,
+  addCard,
+  hear,
+}: {
+  text: string;
+  card: NewCard;
+  savedCardIds: Set<string>;
+  addCard: (input: NewCard) => Promise<void>;
+  hear: () => void;
+}) {
+  const speechSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
+
+  return (
+    <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+      <Text weight="semibold">{text}</Text>
+      <Button
+        label="Hear word"
+        variant="secondary"
+        isDisabled={!speechSupported}
+        onClick={hear}
+      />
+      <SaveToReview
+        key={card.source.word}
+        card={card}
+        label="Save word"
+        saved={savedCardIds.has(cardId(card.source))}
+        addCard={addCard}
+      />
+    </HStack>
   );
 }
 
@@ -652,11 +726,7 @@ function LessonDetail({
   id: string;
   onBack: () => void;
   savedCardIds: Set<string>;
-  addCard: (input: {
-    front: string;
-    back: string;
-    source: { lessonId: string; sentenceId: string };
-  }) => Promise<void>;
+  addCard: (input: NewCard) => Promise<void>;
   recordPractice: () => Promise<void>;
   completed: boolean;
   markLessonComplete: (lessonId: string) => Promise<void>;
@@ -667,6 +737,10 @@ function LessonDetail({
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(false);
+  const [selectedWord, setSelectedWord] = useState<{
+    sentenceId: string;
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -759,7 +833,19 @@ function LessonDetail({
             <Card padding={3} xstyle={appStyles.sentence}>
               {mode === "shadow" ? (
                 <VStack gap={1}>
-                  {showTranscript && <Text as="p">{sentence.text}</Text>}
+                  {showTranscript && (
+                    <SentenceWords
+                      text={sentence.text}
+                      selected={
+                        selectedWord?.sentenceId === sentence.id
+                          ? selectedWord.text
+                          : null
+                      }
+                      onSelect={(text) =>
+                        setSelectedWord({ sentenceId: sentence.id, text })
+                      }
+                    />
+                  )}
                   {showTranscript && sentence.notes && (
                     <Text as="p" type="supporting">
                       {sentence.notes}
@@ -769,6 +855,26 @@ function LessonDetail({
                     <Text as="p" type="supporting">
                       {sentence.vi}
                     </Text>
+                  )}
+                  {showTranscript && selectedWord?.sentenceId === sentence.id && (
+                    <WordPanel
+                      text={selectedWord.text}
+                      card={{
+                        front: selectedWord.text,
+                        back: `${sentence.text} — ${sentence.vi}`,
+                        source: {
+                          lessonId: data.id,
+                          sentenceId: sentence.id,
+                          word: normalize(selectedWord.text),
+                        },
+                      }}
+                      savedCardIds={savedCardIds}
+                      addCard={addCard}
+                      hear={() => {
+                        setLoopingSentenceId(null);
+                        speak(selectedWord.text, data.targetWpm, Number(speed));
+                      }}
+                    />
                   )}
                   <SentenceShadowing
                     text={sentence.text}
@@ -781,9 +887,9 @@ function LessonDetail({
                     recordPractice={recordPractice}
                   />
                   <SaveToReview
-                    lessonId={data.id}
-                    sentence={sentence}
-                    saved={savedCardIds.has(`${data.id}:${sentence.id}`)}
+                    card={sentenceCard(data.id, sentence)}
+                    label="Save to review"
+                    saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
                     addCard={addCard}
                   />
                 </VStack>
@@ -797,9 +903,9 @@ function LessonDetail({
                     recordPractice={recordPractice}
                   />
                   <SaveToReview
-                    lessonId={data.id}
-                    sentence={sentence}
-                    saved={savedCardIds.has(`${data.id}:${sentence.id}`)}
+                    card={sentenceCard(data.id, sentence)}
+                    label="Save to review"
+                    saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
                     addCard={addCard}
                   />
                 </VStack>

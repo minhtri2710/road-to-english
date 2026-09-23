@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -227,7 +228,10 @@ func validateSyncState(state storage.State) bool {
 		if !validText(card.ID) || !validText(card.Front) || !validTextOrEmpty(card.Back) || !validText(card.Source.LessonID) || !validText(card.Source.SentenceID) {
 			return false
 		}
-		if card.ID != card.Source.LessonID+":"+card.Source.SentenceID {
+		if card.Source.Word == nil || !validCardWord(*card.Source.Word) {
+			return false
+		}
+		if card.ID != cardID(card.Source.LessonID, card.Source.SentenceID, *card.Source.Word) {
 			return false
 		}
 		if _, exists := cardIDs[card.ID]; exists {
@@ -251,6 +255,19 @@ func validateSyncState(state storage.State) bool {
 		}
 	}
 	return true
+}
+
+var cardWordPattern = regexp.MustCompile(`^[a-z0-9]+$`)
+
+func validCardWord(word string) bool {
+	return word == "" || cardWordPattern.MatchString(word)
+}
+
+func cardID(lessonID, sentenceID, word string) string {
+	if word == "" {
+		return lessonID + ":" + sentenceID
+	}
+	return lessonID + ":" + sentenceID + ":" + word
 }
 
 func validText(value string) bool {

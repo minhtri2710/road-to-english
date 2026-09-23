@@ -215,7 +215,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(30);
+    // 30 controls plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(45);
 
     await act(async () => {
       root.unmount();
@@ -702,7 +703,7 @@ describe("App", () => {
       {
         front: "old card",
         back: "old answer",
-        source: { lessonId: "old-lesson", sentenceId: "old-sentence" },
+        source: { lessonId: "old-lesson", sentenceId: "old-sentence", word: "" },
       },
       new Date(),
     );
@@ -713,7 +714,7 @@ describe("App", () => {
       {
         front: "imported card",
         back: "imported answer",
-        source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+        source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
       },
       new Date(),
     );
@@ -1324,6 +1325,134 @@ describe("App", () => {
       expect(container.textContent).toContain(sentence.text);
       expect(container.textContent).not.toContain(sentence.vi);
     }
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("shows Hear and Save for a clicked word and speaks the word after stopping Loop", async () => {
+    const speech = installSpeechFakes();
+    const { container, root } = await openLesson();
+    const sentence = greetingsLesson.sentences[0];
+
+    expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
+    expect(container.textContent).toContain(sentence.text);
+    await act(async () => {
+      buttonsNamed(container, "Loop")[0]?.click();
+    });
+    await act(async () => {
+      buttonsNamed(container, "morning")[0]?.click();
+    });
+    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
+    expect(buttonsNamed(container, "Save word")).toHaveLength(1);
+
+    await act(async () => {
+      buttonsNamed(container, "Hear word")[0]?.click();
+    });
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+    expect(speech.spoken.at(-1)?.text).toBe("morning");
+    await act(async () => {
+      speech.finish();
+    });
+    expect(speech.spoken.at(-1)?.text).toBe("morning");
+
+    await act(async () => {
+      buttonsNamed(container, "nice")[0]?.click();
+    });
+    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
+    expect(container.textContent).not.toContain("morningHear word");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("saves one word card under a synchronous double click, keeps it Saved across a remount, and reviews it", async () => {
+    installSpeechFakes();
+    const { container, root } = await openLesson();
+    const sentence = greetingsLesson.sentences[0];
+
+    await act(async () => {
+      buttonsNamed(container, "morning")[0]?.click();
+    });
+    const save = buttonsNamed(container, "Save word")[0];
+    if (!save) throw new Error("Save word button not found");
+    // putCard is keyed by id, so a second write would not change the card count; count the writes.
+    const put = vi.spyOn(IDBObjectStore.prototype, "put");
+    await act(async () => {
+      save.click();
+      save.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    await act(async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    });
+
+    expect(put.mock.contexts.filter((store) => (store as IDBObjectStore).name === "cards")).toHaveLength(1);
+    put.mockRestore();
+    const cards = await getAllCards();
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      id: `greetings-basics:${sentence.id}:morning`,
+      front: "morning",
+      back: `${sentence.text} — ${sentence.vi}`,
+      source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "morning" },
+    });
+    expect(buttonsNamed(container, "Save to review")).toHaveLength(3);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+
+    const second = await openLesson();
+    await act(async () => {
+      buttonsNamed(second.container, "morning")[0]?.click();
+    });
+    await waitForCondition(() => buttonsNamed(second.container, "Saved").length === 1);
+    expect(buttonsNamed(second.container, "Save word")).toHaveLength(0);
+
+    await act(async () => {
+      buttonsNamed(second.container, "Review")[0]?.click();
+    });
+    await waitForCondition(() => second.container.textContent?.includes("Show answer") ?? false);
+    expect(second.container.textContent).toContain("morning");
+    await act(async () => {
+      buttonsNamed(second.container, "Show answer")[0]?.click();
+    });
+    expect(second.container.textContent).toContain(`${sentence.text} — ${sentence.vi}`);
+    await act(async () => {
+      buttonsNamed(second.container, "Good")[0]?.click();
+    });
+    await waitForCondition(() => second.container.textContent?.includes("Nothing due") ?? false);
+    const [reviewed] = await getAllCards();
+    expect(reviewed?.fsrs.reps).toBe(1);
+
+    await act(async () => {
+      second.root.unmount();
+    });
+    second.container.remove();
+  });
+
+  it("removes word buttons and the word panel when the transcript is hidden", async () => {
+    installSpeechFakes();
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      buttonsNamed(container, "morning")[0]?.click();
+    });
+    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
+    await act(async () => {
+      buttonsNamed(container, "Hide transcript")[0]?.click();
+    });
+    expect(buttonsNamed(container, "morning")).toHaveLength(0);
+    expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
+    expect(buttonsNamed(container, "Save word")).toHaveLength(0);
 
     await act(async () => {
       root.unmount();

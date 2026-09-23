@@ -59,6 +59,7 @@ func testCard(id, lessonID, sentenceID, front, back string, fsrs []byte) Card {
 	card := Card{ID: id, Front: front, Back: back, Fsrs: fsrs}
 	card.Source.LessonID = lessonID
 	card.Source.SentenceID = sentenceID
+	card.Source.Word = new(string)
 	return card
 }
 
@@ -90,11 +91,49 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 		t.Fatalf("SyncState() returned %d cards, want 1", len(gotState.Cards))
 	}
 	got := gotState.Cards[0]
-	if got.ID != want.ID || got.Front != want.Front || got.Back != want.Back || got.Source != want.Source {
+	if got.ID != want.ID || got.Front != want.Front || got.Back != want.Back || got.Source.LessonID != want.Source.LessonID || got.Source.SentenceID != want.Source.SentenceID || *got.Source.Word != *want.Source.Word {
 		t.Fatalf("card metadata = %#v, want %#v", got, want)
 	}
 	if !bytes.Equal(got.Fsrs, wantFSRS) {
 		t.Fatalf("Fsrs = %q, want byte-equal %q", got.Fsrs, wantFSRS)
+	}
+}
+
+func TestWordCardRoundTripPreservesWord(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "word-card@example.com")
+	sentence := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "Good morning", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	word := testCard("lesson-1:sentence-1:morning", "lesson-1", "sentence-1", "morning", "Good morning — Chào buổi sáng", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	*word.Source.Word = "morning"
+
+	got := syncState(t, repo, user.ID, State{Cards: []Card{sentence, word}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if len(got.Cards) != 2 {
+		t.Fatalf("SyncState() returned %d cards, want 2", len(got.Cards))
+	}
+	if got.Cards[0].ID != sentence.ID || *got.Cards[0].Source.Word != "" {
+		t.Fatalf("sentence card = %q word %q, want %q word \"\"", got.Cards[0].ID, *got.Cards[0].Source.Word, sentence.ID)
+	}
+	if got.Cards[1].ID != word.ID || *got.Cards[1].Source.Word != "morning" {
+		t.Fatalf("word card = %q word %q, want %q word \"morning\"", got.Cards[1].ID, *got.Cards[1].Source.Word, word.ID)
+	}
+}
+
+func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "nil-word@example.com")
+	valid := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	nilWord := testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	nilWord.Source.Word = nil
+
+	if _, err := repo.SyncState(context.Background(), user.ID, State{Cards: []Card{valid, nilWord}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); err == nil {
+		t.Fatal("SyncState() error = nil, want missing word error")
+	}
+	var count int
+	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM cards WHERE user_id = $1", user.ID).Scan(&count); err != nil {
+		t.Fatalf("count cards: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("cards rows = %d, want 0", count)
 	}
 }
 

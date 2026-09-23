@@ -30,8 +30,9 @@ type Card struct {
 	Front  string `json:"front"`
 	Back   string `json:"back"`
 	Source struct {
-		LessonID   string `json:"lessonId"`
-		SentenceID string `json:"sentenceId"`
+		LessonID   string  `json:"lessonId"`
+		SentenceID string  `json:"sentenceId"`
+		Word       *string `json:"word"`
 	} `json:"source"`
 	Fsrs json.RawMessage `json:"fsrs"`
 }
@@ -267,23 +268,27 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 }
 
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
+	if card.Source.Word == nil {
+		return fmt.Errorf("sync card %q: missing source word", card.ID)
+	}
 	lastReview, err := FSRSLastReview(card.Fsrs)
 	if err != nil {
 		return fmt.Errorf("derive card %q last review: %w", card.ID, err)
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, fsrs, last_review)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, last_review)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (user_id, id) DO UPDATE SET
 			front = EXCLUDED.front,
 			back = EXCLUDED.back,
 			lesson_id = EXCLUDED.lesson_id,
 			sentence_id = EXCLUDED.sentence_id,
+			word = EXCLUDED.word,
 			fsrs = EXCLUDED.fsrs,
 			last_review = EXCLUDED.last_review
 		-- ponytail: never-reviewed cards with the same id intentionally never update each other; the web sub-slice mirrors this exact rule.
 		WHERE COALESCE(EXCLUDED.last_review, '-infinity') > COALESCE(cards.last_review, '-infinity')
-	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, card.Fsrs, lastReview)
+	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, lastReview)
 	if err != nil {
 		return fmt.Errorf("sync card %q: %w", card.ID, err)
 	}
@@ -336,7 +341,7 @@ func readState(ctx context.Context, tx pgx.Tx, userID string) (State, error) {
 
 func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT id, front, back, lesson_id, sentence_id, fsrs
+		SELECT id, front, back, lesson_id, sentence_id, word, fsrs
 		FROM cards
 		WHERE user_id = $1
 		ORDER BY id
@@ -355,6 +360,7 @@ func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 			&card.Back,
 			&card.Source.LessonID,
 			&card.Source.SentenceID,
+			&card.Source.Word,
 			&card.Fsrs,
 		); err != nil {
 			return nil, fmt.Errorf("scan card: %w", err)

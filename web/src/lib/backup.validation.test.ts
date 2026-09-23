@@ -9,7 +9,7 @@ function state(overrides: Record<string, unknown> = {}) {
         id: "lesson-1:sentence-1",
         front: "hello",
         back: "answer",
-        source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+        source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
         fsrs: { due: "2026-01-01T00:00:00Z" },
       },
     ],
@@ -72,9 +72,13 @@ describe("sync state validation", () => {
     ["short timestamp", { fsrs: { due: "2026" } }],
     ["NUL in card back", { back: "answer\u0000" }],
     ["NUL in card text", { front: "hello\u0000" }],
-    ["NUL in lesson id", { source: { lessonId: "lesson\u0000-1", sentenceId: "sentence-1" }, id: "lesson\u0000-1:sentence-1" }],
+    ["NUL in lesson id", { source: { lessonId: "lesson\u0000-1", sentenceId: "sentence-1", word: "" }, id: "lesson\u0000-1:sentence-1" }],
     ["duplicate card id", { cards: [state().cards[0], state().cards[0]] }],
     ["card id mismatch", { id: "other:sentence-1" }],
+    ["missing word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1" } }],
+    ["word card with sentence id", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" } }],
+    ["word with colon", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "a:b" }, id: "lesson-1:sentence-1:a:b" }],
+    ["uppercase word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "Hello" }, id: "lesson-1:sentence-1:Hello" }],
     ["null cards", { cards: null }],
     ["null practice days", { practiceDays: null }],
     ["null lesson completion", { lessonCompletion: null }],
@@ -84,6 +88,20 @@ describe("sync state validation", () => {
       ? { ...state(), ...overrides }
       : { ...state(), cards: [{ ...state().cards[0], ...overrides }] };
     expect(() => reviveBackupData(next)).toThrow();
+  });
+
+  it("accepts sentence and word cards", () => {
+    expect(() => reviveBackupData({
+      ...state(),
+      cards: [
+        state().cards[0],
+        {
+          ...state().cards[0],
+          id: "lesson-1:sentence-1:hello",
+          source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" },
+        },
+      ],
+    })).not.toThrow();
   });
 
   it("accepts an empty card back", () => {

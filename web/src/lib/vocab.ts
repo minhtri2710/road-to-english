@@ -8,32 +8,40 @@ import type { Card, Grade } from "ts-fsrs";
 export { Rating, State } from "ts-fsrs";
 export type { Grade, Card } from "ts-fsrs";
 
+export interface CardSource {
+  lessonId: string;
+  sentenceId: string;
+  // "" for a sentence card; one normalize() token ([a-z0-9]+) for a word card.
+  word: string;
+}
+
 export interface VocabCard {
   id: string;
   front: string;
   back: string;
-  source: {
-    lessonId: string;
-    sentenceId: string;
-  };
+  source: CardSource;
   fsrs: Card;
+}
+
+export type NewCard = Omit<VocabCard, "id" | "fsrs">;
+
+// A word card's word: one non-empty normalize() token.
+export function isCardWord(word: string): boolean {
+  return /^[a-z0-9]+$/.test(word);
+}
+
+export function cardId({ lessonId, sentenceId, word }: CardSource): string {
+  return word === "" ? `${lessonId}:${sentenceId}` : `${lessonId}:${sentenceId}:${word}`;
 }
 
 const scheduler = fsrs(generatorParameters({ enable_fuzz: false }));
 
-export function createCard(
-  input: {
-    front: string;
-    back: string;
-    source: {
-      lessonId: string;
-      sentenceId: string;
-    };
-  },
-  now: Date,
-): VocabCard {
+export function createCard(input: NewCard, now: Date): VocabCard {
+  if (input.source.word !== "" && !isCardWord(input.source.word)) {
+    throw new Error(`Invalid card word: ${input.source.word}`);
+  }
   return {
-    id: `${input.source.lessonId}:${input.source.sentenceId}`,
+    id: cardId(input.source),
     ...input,
     fsrs: createEmptyCard(now),
   };

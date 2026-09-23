@@ -10,7 +10,7 @@ function card(front: string, lastReview?: string) {
     {
       front,
       back: "answer",
-      source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+      source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
     },
     base,
   );

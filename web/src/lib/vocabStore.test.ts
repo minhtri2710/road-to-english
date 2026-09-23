@@ -7,7 +7,7 @@ const now = new Date("2026-01-01T00:00:00Z");
 const input = {
   front: "hello",
   back: "hola",
-  source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+  source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
 };
 
 describe("vocabulary store", () => {
@@ -27,15 +27,15 @@ describe("vocabulary store", () => {
 
   it("selects due cards in ascending due order", () => {
     const early = createCard(
-      { ...input, source: { ...input.source, sentenceId: "early" } },
+      { ...input, source: { ...input.source, sentenceId: "early", word: "" } },
       new Date("2025-12-31T23:00:00Z"),
     );
     const late = createCard(
-      { ...input, source: { ...input.source, sentenceId: "late" } },
+      { ...input, source: { ...input.source, sentenceId: "late", word: "" } },
       new Date("2025-01-01T00:00:00Z"),
     );
     const future = createCard(
-      { ...input, source: { ...input.source, sentenceId: "future" } },
+      { ...input, source: { ...input.source, sentenceId: "future", word: "" } },
       new Date("2026-01-02T00:00:00Z"),
     );
 

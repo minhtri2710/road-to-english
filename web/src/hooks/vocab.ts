@@ -4,6 +4,7 @@ import {
   createCard,
   reviewCard,
   type Grade,
+  type NewCard,
   type VocabCard,
 } from "../lib/vocab";
 import { dueCards, getAllCards, putCard } from "../lib/vocabStore";
@@ -33,11 +34,7 @@ export function useVocabDeck() {
   );
 
   const addCard = useCallback(
-    async (input: {
-      front: string;
-      back: string;
-      source: { lessonId: string; sentenceId: string };
-    }) => {
+    async (input: NewCard) => {
       await putCard(createCard(input, new Date()));
       await refresh();
     },

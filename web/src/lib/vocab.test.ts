@@ -6,7 +6,7 @@ const now = new Date("2026-01-01T00:00:00Z");
 const input = {
   front: "hello",
   back: "hola",
-  source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+  source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
 };
 
 function newCard() {
@@ -26,6 +26,21 @@ describe("vocabulary cards", () => {
   it("uses the lesson and sentence as the deterministic card id", () => {
     expect(newCard().id).toBe("lesson-1:sentence-1");
     expect(createCard(input, now).id).toBe(newCard().id);
+  });
+
+  it("appends the word to a word card id", () => {
+    const card = createCard(
+      { ...input, source: { ...input.source, word: "hello" } },
+      now,
+    );
+    expect(card.id).toBe("lesson-1:sentence-1:hello");
+    expect(card.source.word).toBe("hello");
+  });
+
+  it("rejects a word that is not a single normalized token", () => {
+    for (const word of ["Hello", "a:b", "a b"]) {
+      expect(() => createCard({ ...input, source: { ...input.source, word } }, now)).toThrow();
+    }
   });
 
   it("schedules a Good review after now", () => {

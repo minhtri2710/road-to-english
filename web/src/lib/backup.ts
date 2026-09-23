@@ -1,6 +1,6 @@
 import { todayKey } from "./progress";
 import type { Card } from "ts-fsrs";
-import type { VocabCard } from "./vocab";
+import { cardId, isCardWord, type CardSource, type VocabCard } from "./vocab";
 
 export interface BackupData {
   cards: VocabCard[];
@@ -17,10 +17,7 @@ interface SerializedCard {
   id: string;
   front: string;
   back: string;
-  source: {
-    lessonId: string;
-    sentenceId: string;
-  };
+  source: CardSource;
   fsrs: SerializedFsrs;
 }
 
@@ -121,7 +118,9 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
     !isRecord(source) ||
     !isNonEmptyText(source.lessonId) ||
     !isNonEmptyText(source.sentenceId) ||
-    value.id !== `${source.lessonId}:${source.sentenceId}` ||
+    typeof source.word !== "string" ||
+    (source.word !== "" && !isCardWord(source.word)) ||
+    value.id !== cardId({ lessonId: source.lessonId, sentenceId: source.sentenceId, word: source.word }) ||
     !isRecord(fsrs) ||
     !isValidTimestamp(fsrs.due)
   ) {

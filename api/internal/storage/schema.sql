@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS cards (
     back TEXT NOT NULL,
     lesson_id TEXT NOT NULL,
     sentence_id TEXT NOT NULL,
+    word TEXT NOT NULL,
     fsrs JSON NOT NULL,
     last_review TIMESTAMPTZ NULL,
     PRIMARY KEY (user_id, id)

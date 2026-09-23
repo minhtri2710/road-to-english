@@ -19,7 +19,7 @@ function card(sentenceId: string, date = now) {
     {
       front: sentenceId,
       back: `answer-${sentenceId}`,
-      source: { lessonId: "lesson-1", sentenceId },
+      source: { lessonId: "lesson-1", sentenceId, word: "" },
     },
     date,
   );

@@ -10,7 +10,7 @@ function backupState() {
     {
       front: "hello",
       back: "hola",
-      source: { lessonId: "lesson-1", sentenceId: "sentence-1" },
+      source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
     },
     now,
   );
@@ -18,7 +18,15 @@ function backupState() {
     {
       front: "goodbye",
       back: "adiós",
-      source: { lessonId: "lesson-2", sentenceId: "sentence-2" },
+      source: { lessonId: "lesson-2", sentenceId: "sentence-2", word: "" },
+    },
+    now,
+  );
+  const word = createCard(
+    {
+      front: "Hello",
+      back: "hello there — xin chào",
+      source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" },
     },
     now,
   );
@@ -26,7 +34,7 @@ function backupState() {
   second.fsrs.last_review = lastReview;
 
   return {
-    cards: [first, second],
+    cards: [first, second, word],
     practiceDays: [{ date: "2026-01-05" }],
     lessonCompletion: [{ lessonId: "lesson-1" }],
   };
@@ -47,6 +55,8 @@ describe("backup", () => {
     expect(JSON.parse(JSON.stringify(imported.cards))).toEqual(
       JSON.parse(JSON.stringify(state.cards)),
     );
+    expect(imported.cards[2]?.id).toBe("lesson-1:sentence-1:hello");
+    expect(imported.cards[2]?.source.word).toBe("hello");
     expect(imported.practiceDays).toEqual(state.practiceDays);
     expect(imported.lessonCompletion).toEqual(state.lessonCompletion);
     expect(JSON.parse(exportData(state, new Date(2026, 0, 5))).exportedAt).toBeDefined();

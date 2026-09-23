@@ -8,7 +8,7 @@
       { "id": "greetings-basics-1", "text": "Good morning, how are you today?", "vi": "Chào buổi sáng, hôm nay bạn thế nào?" },
       { "id": "greetings-basics-2", "text": "It is nice to meet you.", "vi": "Rất vui được gặp bạn." },
       { "id": "greetings-basics-3", "text": "See you tomorrow.", "vi": "Hẹn gặp lại ngày mai.", "notes": "casual sign-off" },
-      { "id": "greetings-basics-4", "text": "What's your name?", "vi": "Bạn tên là gì?", "notes": "\"What's your\" often sounds like \"wotcher\"" },
+      { "id": "greetings-basics-4", "text": "What's your name?", "vi": "Bạn tên là gì?", "notes": "\"What's your\" often sounds like \"whatcha\" in fast speech" },
       { "id": "greetings-basics-5", "text": "I'm from Vietnam, and I live in Hanoi.", "vi": "Tôi đến từ Việt Nam và tôi sống ở Hà Nội." },
       { "id": "greetings-basics-6", "text": "Sorry, could you say that again?", "vi": "Xin lỗi, bạn có thể nói lại được không?" },
       { "id": "greetings-basics-7", "text": "Thanks a lot for your help.", "vi": "Cảm ơn bạn rất nhiều vì đã giúp đỡ.", "notes": "link \"thanks a lot\": thank-sa-lot" },
@@ -28,7 +28,7 @@
       { "id": "shopping-basics-4", "text": "I'm just looking, thanks.", "vi": "Tôi chỉ xem thôi, cảm ơn." },
       { "id": "shopping-basics-5", "text": "Can I pay by card?", "vi": "Tôi trả bằng thẻ được không?" },
       { "id": "shopping-basics-6", "text": "Where is the fitting room?", "vi": "Phòng thử đồ ở đâu?" },
-      { "id": "shopping-basics-7", "text": "That's a bit too expensive for me.", "vi": "Cái đó hơi đắt so với tôi." },
+      { "id": "shopping-basics-7", "text": "That's a bit too expensive for me.", "vi": "Cái đó hơi quá túi tiền của tôi." },
       { "id": "shopping-basics-8", "text": "I'll take two of these, please.", "vi": "Cho tôi lấy hai cái này nhé." },
       { "id": "shopping-basics-9", "text": "Could I have a bag, please?", "vi": "Cho tôi xin một cái túi được không?" }
     ]
