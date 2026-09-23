@@ -1,5 +1,5 @@
 import { openAppDatabase } from "./db";
-import { newerCard } from "./newerCard";
+import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 import type { BackupData, SyncState } from "./backup";
 
@@ -95,9 +95,7 @@ export async function mergeInto(data: SyncState): Promise<void> {
     const cards = tx.objectStore("cards");
     for (const incoming of data.cards) {
       const local = await cards.get(incoming.id);
-      if (!local || newerCard(local, incoming)) {
-        cards.put(incoming);
-      }
+      cards.put(local ? mergeCard(local, incoming) : incoming);
     }
     data.practiceDays.forEach((practiceDay) =>
       tx.objectStore("practiceDays").put(practiceDay),

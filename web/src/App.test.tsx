@@ -7,7 +7,7 @@ import { exportData } from "./lib/backup";
 import { cardsCsv } from "./lib/csv";
 import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
-import { createCard, State } from "./lib/vocab";
+import { createCard, deleteCard, Rating, reviewCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
 import { blankFor } from "./lib/dictation";
 import * as backupStore from "./lib/backupStore";
@@ -1946,6 +1946,157 @@ describe("App", () => {
     });
   });
 
+  describe("review data integrity", () => {
+    const sentence = greetingsLesson.sentences[0];
+    const staleMessage = "This card changed on another device. Showing the latest.";
+    const newCard = (front = sentence.text, back = "answer one", sentenceId = sentence.id) =>
+      createCard({ front, back, source: { lessonId: "greetings-basics", sentenceId, word: "" } }, new Date());
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function press(container: HTMLElement, name: string) {
+      const button = buttonsNamed(container, name)[0];
+      if (!button) throw new Error(`${name} button not found`);
+      await act(async () => {
+        button.click();
+      });
+    }
+
+    async function openReview() {
+      const view = await openLesson();
+      await press(view.container, "Review");
+      await waitForCondition(() => buttonsNamed(view.container, "Show answer").length === 1);
+      const unmount = async () => {
+        await act(async () => {
+          view.root.unmount();
+        });
+        view.container.remove();
+      };
+      return { container: view.container, unmount };
+    }
+
+    // Every text React painted under `container` since the call, even if a later commit replaced it:
+    // added nodes, and text nodes React rewrote in place.
+    function addedText(container: HTMLElement) {
+      const added: string[] = [];
+      const collect = (records: MutationRecord[]) =>
+        records.forEach((record) => {
+          record.addedNodes.forEach((node) => added.push(node.textContent ?? ""));
+          if (record.type === "characterData") {
+            added.push(record.target.textContent ?? "");
+          }
+        });
+      const observer = new MutationObserver(collect);
+      observer.observe(container, { childList: true, subtree: true, characterData: true });
+      return () => {
+        collect(observer.takeRecords());
+        observer.disconnect();
+        return added;
+      };
+    }
+
+    it("re-saves a removed card with its stored FSRS state and history", async () => {
+      const reviewed = reviewCard(newCard(sentence.text, ""), Rating.Good, new Date(Date.now() - 60_000));
+      await putCard(reviewed);
+      const { container, root } = await openLesson();
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      await act(async () => {
+        buttonsNamed(container, "Saved")[0]!.click();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
+      expect((await getAllCards())[0]?.deletedAt).not.toBeNull();
+
+      await act(async () => {
+        buttonsNamed(container, "Save to review")[0]!.click();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      const [resaved] = await getAllCards();
+      expect(resaved?.deletedAt).toBeNull();
+      expect(resaved?.fsrs.due).toEqual(reviewed.fsrs.due);
+      expect(resaved?.fsrs.reps).toBe(reviewed.fsrs.reps);
+      expect(resaved?.fsrs).toEqual(reviewed.fsrs);
+      expect(Date.parse(resaved!.updatedAt)).toBeGreaterThan(Date.parse(reviewed.updatedAt));
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("writes nothing, shows the latest card, and records no XP when the stored card changed", async () => {
+      const card = newCard();
+      await putCard(card);
+      const { container, unmount } = await openReview();
+      await press(container, "Show answer");
+      const changed = { ...card, front: "Changed on another device", updatedAt: new Date(Date.now() + 1000).toISOString() };
+      await putCard(changed);
+      const recordPractice = vi.spyOn(progressStore, "recordPractice");
+
+      await press(container, "Good");
+      await waitForCondition(() => container.textContent?.includes(staleMessage) ?? false);
+      expect(await getAllCards()).toEqual([changed]);
+      expect(container.textContent).toContain("Changed on another device");
+      expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
+      expect(recordPractice).not.toHaveBeenCalled();
+      expect(await getPracticeDays()).toEqual([]);
+      await unmount();
+    });
+
+    it("does not resurrect a card tombstoned in IndexedDB by a rating", async () => {
+      const card = newCard();
+      await putCard(card);
+      const { container, unmount } = await openReview();
+      await press(container, "Show answer");
+      const tombstone = deleteCard(card, new Date(Date.now() + 1000));
+      await putCard(tombstone);
+      const recordPractice = vi.spyOn(progressStore, "recordPractice");
+
+      await press(container, "Good");
+      await waitForCondition(() => container.textContent?.includes(staleMessage) ?? false);
+      expect(await getAllCards()).toEqual([tombstone]);
+      expect(container.textContent).toContain("Nothing to review yet.");
+      expect(recordPractice).not.toHaveBeenCalled();
+      await unmount();
+    });
+
+    it("renders the next card hidden from its first frame after a rating", async () => {
+      await putCard(newCard(sentence.text, "answer one"));
+      await putCard(newCard(greetingsLesson.sentences[1].text, "answer two", greetingsLesson.sentences[1].id));
+      const { container, unmount } = await openReview();
+      await press(container, "Show answer");
+      expect(container.textContent).toContain("answer one");
+      const added = addedText(container);
+
+      await press(container, "Good");
+      await waitForCondition(() => container.textContent?.includes(greetingsLesson.sentences[1].text) ?? false);
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      expect(added().some((text) => text.includes("answer two"))).toBe(false);
+      expect(container.textContent).not.toContain("answer two");
+      await unmount();
+    });
+
+    it("brings a card rated Again back in the session, hidden, when it becomes due", async () => {
+      await putCard(newCard());
+      const { container, unmount } = await openReview();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+      await press(container, "Show answer");
+
+      await press(container, "Again");
+      await waitForCondition(() => container.textContent?.includes("All caught up. Next card in 1 min.") ?? false);
+      const added = addedText(container);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      expect(container.textContent).toContain(sentence.text);
+      expect(added().some((text) => text.includes("answer one"))).toBe(false);
+      expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
+      await unmount();
+    });
+  });
+
   it("removes word buttons and the word panel when the transcript is hidden", async () => {
     installSpeechFakes();
     const { container, root } = await openLesson();
@@ -3227,7 +3378,7 @@ describe("App", () => {
       installSpeechFakes();
       const { container, unmount } = await renderApp();
       await openGreetings(container);
-      const putCard = vi.spyOn(vocabStore, "putCard").mockRejectedValueOnce(new Error("quota"));
+      const saveCard = vi.spyOn(vocabStore, "saveCard").mockRejectedValueOnce(new Error("quota"));
 
       const save = await click(container, "Save to review");
       await waitForCondition(hasText(container, "Couldn't save. Try again."));
@@ -3238,7 +3389,7 @@ describe("App", () => {
       expect(container.textContent).not.toContain("Couldn't save.");
 
       await click(container, "morning");
-      putCard.mockRejectedValueOnce(new Error("quota"));
+      saveCard.mockRejectedValueOnce(new Error("quota"));
       await click(container, "Save word");
       await waitForCondition(hasText(container, "Couldn't save. Try again."));
       await click(container, "Save word");
@@ -3255,7 +3406,7 @@ describe("App", () => {
       await click(container, "Review");
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
       await click(container, "Show answer");
-      vi.spyOn(vocabStore, "putCard").mockRejectedValueOnce(new Error("quota"));
+      vi.spyOn(vocabStore, "saveReview").mockRejectedValueOnce(new Error("quota"));
       await click(container, "Good");
       await waitForCondition(hasText(container, "Couldn't save. Try again."));
       expect(buttonsNamed(container, "Good")[0]?.disabled).toBe(false);

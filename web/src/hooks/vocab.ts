@@ -3,12 +3,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createCard,
   deleteCard,
-  reviewCard,
   type Grade,
   type NewCard,
   type VocabCard,
 } from "../lib/vocab";
-import { dueCards, getAllCards, putCard, restoreTombstone } from "../lib/vocabStore";
+import {
+  dueCards,
+  getAllCards,
+  putCard,
+  restoreTombstone,
+  saveCard,
+  saveReview,
+} from "../lib/vocabStore";
+
+// A live card due within this window is refreshed in on time, so a card rated Again comes back in-session.
+const NEXT_DUE_WINDOW_MS = 60 * 60_000;
 
 export function useVocabDeck() {
   const [cards, setCards] = useState<VocabCard[]>([]);
@@ -50,6 +59,26 @@ export function useVocabDeck() {
   }, [refresh]);
 
   const due = useMemo(() => dueCards(cards, now), [cards, now]);
+  // Earliest future due among live cards, when within the window.
+  const nextDueTime = useMemo(() => {
+    const nowTime = now.getTime();
+    let next: number | null = null;
+    for (const card of cards) {
+      const dueTime = card.fsrs.due.getTime();
+      if (card.deletedAt === null && dueTime > nowTime && dueTime - nowTime <= NEXT_DUE_WINDOW_MS && (next === null || dueTime < next)) {
+        next = dueTime;
+      }
+    }
+    return next;
+  }, [cards, now]);
+
+  useEffect(() => {
+    if (nextDueTime === null) {
+      return;
+    }
+    const timer = window.setTimeout(() => void refresh(), Math.max(0, nextDueTime - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [nextDueTime, refresh]);
   const savedCardIds = useMemo(
     () => new Set(cards.filter((card) => card.deletedAt === null).map((card) => card.id)),
     [cards],
@@ -57,16 +86,18 @@ export function useVocabDeck() {
 
   const addCard = useCallback(
     async (input: NewCard) => {
-      await putCard(createCard(input, new Date()));
+      await saveCard(createCard(input, new Date()));
       await refresh();
     },
     [refresh],
   );
 
   const review = useCallback(
+    // Resolves false, writing nothing, when the stored card changed since `card` was loaded.
     async (card: VocabCard, rating: Grade) => {
-      await putCard(reviewCard(card, rating, new Date()));
+      const saved = await saveReview(card, rating, new Date());
       await refresh();
+      return saved;
     },
     [refresh],
   );
@@ -96,5 +127,7 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  return { due, savedCardIds, loading, error, addCard, removeCard, undoRemove, review, reload: refresh };
+  const nextDueInMinutes = nextDueTime === null ? null : Math.ceil((nextDueTime - now.getTime()) / 60_000);
+
+  return { due, nextDueInMinutes, savedCardIds, loading, error, addCard, removeCard, undoRemove, review, reload: refresh };
 }

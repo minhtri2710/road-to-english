@@ -110,6 +110,28 @@ export function isValidDayKey(value: unknown): value is string {
   return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
 }
 
+// A required FSRS number in [0, max]; the api validFSRS applies the same rules.
+function isFsrsNumber(value: unknown, integer: boolean, max = Number.MAX_VALUE): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= max &&
+    (!integer || Number.isInteger(value))
+  );
+}
+
+function isValidFsrs(fsrs: Record<string, unknown>): boolean {
+  return (
+    isFsrsNumber(fsrs.stability, false) &&
+    isFsrsNumber(fsrs.difficulty, false) &&
+    (["elapsed_days", "scheduled_days", "learning_steps", "reps", "lapses"] as const).every((key) =>
+      isFsrsNumber(fsrs[key], true, Number.MAX_SAFE_INTEGER),
+    ) &&
+    isFsrsNumber(fsrs.state, true, 3)
+  );
+}
+
 function validateCard(value: unknown, index: number): asserts value is SerializedCard {
   if (!isRecord(value)) {
     throw new Error(`Invalid card at index ${index}.`);
@@ -129,6 +151,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
     value.id !== cardId({ lessonId: source.lessonId, sentenceId: source.sentenceId, word: source.word }) ||
     !isRecord(fsrs) ||
     !isValidTimestamp(fsrs.due) ||
+    !isValidFsrs(fsrs) ||
     !isValidTimestamp(value.updatedAt) ||
     (value.deletedAt !== null && !isValidTimestamp(value.deletedAt))
   ) {

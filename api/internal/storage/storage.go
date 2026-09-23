@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -333,6 +334,13 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 	return out, nil
 }
 
+// ponytail: LWW on device wall-clock updatedAt, so clock skew between devices can pick the wrong write; upgrade = server-assigned per-card version.
+// History-preserving LWW, the rule web mergeCard implements: the newer updatedAt wins, and at equal time a tombstone beats a live card.
+// The winner is kept whole, except that a winner with fsrs.reps 0 takes the other copy's fsrs when that copy has reps > 0,
+// so a fresh save never wipes review history. The upsert therefore also updates when the incoming card loses but carries that history.
+const incomingWins = `(EXCLUDED.updated_at > cards.updated_at
+	OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL))`
+
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 	if card.Source.Word == nil {
 		return fmt.Errorf("sync card %q: missing source word", card.ID)
@@ -349,22 +357,26 @@ func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 		}
 		deletedAt = &value
 	}
-	_, err = tx.Exec(ctx, `
+	_, err = tx.Exec(ctx, strings.ReplaceAll(`
 		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (user_id, id) DO UPDATE SET
-			front = EXCLUDED.front,
-			back = EXCLUDED.back,
-			lesson_id = EXCLUDED.lesson_id,
-			sentence_id = EXCLUDED.sentence_id,
-			word = EXCLUDED.word,
-			fsrs = EXCLUDED.fsrs,
-			updated_at = EXCLUDED.updated_at,
-			deleted_at = EXCLUDED.deleted_at
-		-- ponytail: LWW on device wall-clock updatedAt, so clock skew between devices can pick the wrong write; upgrade = server-assigned per-card version. Web newerCard mirrors this exact rule.
-		WHERE EXCLUDED.updated_at > cards.updated_at
-			OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL)
-	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
+			front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
+			back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
+			lesson_id = CASE WHEN {wins} THEN EXCLUDED.lesson_id ELSE cards.lesson_id END,
+			sentence_id = CASE WHEN {wins} THEN EXCLUDED.sentence_id ELSE cards.sentence_id END,
+			word = CASE WHEN {wins} THEN EXCLUDED.word ELSE cards.word END,
+			fsrs = CASE
+				WHEN (cards.fsrs->>'reps')::numeric > 0 AND (EXCLUDED.fsrs->>'reps')::numeric = 0 THEN cards.fsrs
+				WHEN (EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0 THEN EXCLUDED.fsrs
+				WHEN {wins} THEN EXCLUDED.fsrs
+				ELSE cards.fsrs
+			END,
+			updated_at = CASE WHEN {wins} THEN EXCLUDED.updated_at ELSE cards.updated_at END,
+			deleted_at = CASE WHEN {wins} THEN EXCLUDED.deleted_at ELSE cards.deleted_at END
+		WHERE {wins}
+			OR ((EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0)
+	`, "{wins}", incomingWins), userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
 	if err != nil {
 		return fmt.Errorf("sync card %q: %w", card.ID, err)
 	}

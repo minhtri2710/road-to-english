@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime"
 	"net"
 	"net/http"
@@ -444,7 +445,29 @@ func validFSRS(raw json.RawMessage) bool {
 	if _, err := storage.FSRSLastReview(raw); err != nil {
 		return false
 	}
-	return true
+	for _, key := range []string{"stability", "difficulty"} {
+		if !fsrsNumber(object[key], false, math.MaxFloat64) {
+			return false
+		}
+	}
+	for _, key := range []string{"elapsed_days", "scheduled_days", "learning_steps", "reps", "lapses"} {
+		if !fsrsNumber(object[key], true, maxSafeInteger) {
+			return false
+		}
+	}
+	return fsrsNumber(object["state"], true, 3)
+}
+
+// JavaScript's Number.MAX_SAFE_INTEGER: web validateCard accepts the same integers.
+const maxSafeInteger = 1<<53 - 1
+
+// A required FSRS number in [0, max]; JSON has no NaN or Infinity, so a decoded float64 is finite.
+func fsrsNumber(raw json.RawMessage, integer bool, max float64) bool {
+	var value *float64
+	if raw == nil || json.Unmarshal(raw, &value) != nil || value == nil {
+		return false
+	}
+	return *value >= 0 && *value <= max && (!integer || *value == math.Trunc(*value))
 }
 
 func writeUser(w http.ResponseWriter, user storage.User) {

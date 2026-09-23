@@ -35,6 +35,8 @@ export function useAuth(): AuthState {
   const meNetworkFailed = useRef(false);
   // Bumped when an explicit auth action sets the user; a /me started before it must not overwrite that.
   const generation = useRef(0);
+  // The error the last failed /me set; a later /me success clears only that one, never a sign-in or sign-up error.
+  const meError = useRef<Error | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -46,17 +48,20 @@ export function useAuth(): AuthState {
         .then((currentUser) => {
           if (active && started === generation.current) {
             setUser(currentUser);
-            setError(null);
+            const cleared = meError.current;
+            meError.current = null;
+            setError((current) => (current === cleared ? null : current));
           }
         })
         .catch((requestError: unknown) => {
           if (active && started === generation.current) {
             meNetworkFailed.current = !(requestError instanceof ApiError);
-            setError(
+            const nextError =
               requestError instanceof Error
                 ? requestError
-                : new Error("Unable to restore account session"),
-            );
+                : new Error("Unable to restore account session");
+            meError.current = nextError;
+            setError(nextError);
           }
         })
         .finally(() => {

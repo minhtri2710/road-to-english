@@ -10,7 +10,7 @@ import {
   recordPractice,
 } from "./progressStore";
 import { dueCards, getAllCards, putCard } from "./vocabStore";
-import { createCard, deleteCard, restoreCard } from "./vocab";
+import { createCard, deleteCard, Rating, restoreCard, reviewCard } from "./vocab";
 import { listUserLessons, putUserLesson } from "./userLessons";
 import { userLesson } from "../test/fixtures";
 
@@ -93,6 +93,15 @@ describe("backup store", () => {
     await putCard(remoteTombstone);
     await mergeInto({ cards: [resaved], practiceDays: [], lessonCompletion: [] });
     expect(await getAllCards()).toEqual([resaved]);
+  });
+
+  it("keeps local review history when a newer fresh save syncs in", async () => {
+    const reviewed = reviewCard(card("same"), Rating.Good, new Date("2026-01-06T00:00:00.000Z"));
+    await putCard(reviewed);
+    const staleSave = card("same", new Date("2026-01-07T00:00:00.000Z"));
+    await mergeInto({ cards: [staleSave], practiceDays: [], lessonCompletion: [] });
+
+    expect(await getAllCards()).toEqual([{ ...staleSave, fsrs: reviewed.fsrs }]);
   });
 
   it("round-trips a tombstone through export and import", async () => {

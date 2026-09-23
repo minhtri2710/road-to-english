@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { isValidDayKey, isValidTimestamp, reviveSyncState } from "./backup";
 
+const fsrsFields = {
+  stability: 2.5,
+  difficulty: 4.2,
+  elapsed_days: 1,
+  scheduled_days: 2,
+  learning_steps: 0,
+  reps: 3,
+  lapses: 0,
+  state: 2,
+};
+
 function state(overrides: Record<string, unknown> = {}) {
   return {
     cards: [
@@ -10,7 +21,7 @@ function state(overrides: Record<string, unknown> = {}) {
         front: "hello",
         back: "answer",
         source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
-        fsrs: { due: "2026-01-01T00:00:00Z" },
+        fsrs: { ...fsrsFields, due: "2026-01-01T00:00:00Z" },
         updatedAt: "2026-01-01T00:00:00.000Z",
         deletedAt: null,
       },
@@ -59,6 +70,7 @@ describe("sync state validation", () => {
         {
           ...state().cards[0],
           fsrs: {
+            ...fsrsFields,
             due: "0001-01-01T00:00:00.123Z",
             last_review: "2024-02-29T23:59:59Z",
           },
@@ -72,10 +84,10 @@ describe("sync state validation", () => {
   });
 
   it.each([
-    ["non-Z offset", { fsrs: { due: "2026-01-01T00:00:00+07:00" } }],
-    ["invalid timestamp day", { fsrs: { due: "2026-02-30T00:00:00Z" } }],
-    ["zero timestamp year", { fsrs: { due: "0000-01-01T00:00:00Z" } }],
-    ["short timestamp", { fsrs: { due: "2026" } }],
+    ["non-Z offset", { fsrs: { ...fsrsFields, due: "2026-01-01T00:00:00+07:00" } }],
+    ["invalid timestamp day", { fsrs: { ...fsrsFields, due: "2026-02-30T00:00:00Z" } }],
+    ["zero timestamp year", { fsrs: { ...fsrsFields, due: "0000-01-01T00:00:00Z" } }],
+    ["short timestamp", { fsrs: { ...fsrsFields, due: "2026" } }],
     ["NUL in card back", { back: "answer\u0000" }],
     ["NUL in card text", { front: "hello\u0000" }],
     ["NUL in lesson id", { source: { lessonId: "lesson\u0000-1", sentenceId: "sentence-1", word: "" }, id: "lesson\u0000-1:sentence-1" }],
@@ -99,6 +111,41 @@ describe("sync state validation", () => {
       ? { ...state(), ...overrides }
       : { ...state(), cards: [{ ...state().cards[0], ...overrides }] };
     expect(() => reviveSyncState(next)).toThrow();
+  });
+
+  const invalidFsrs: [keyof typeof fsrsFields, unknown[]][] = [
+    ["stability", [undefined, -0.5, null, "1", Infinity, NaN]],
+    ["difficulty", [undefined, -1, null, true]],
+    ["elapsed_days", [undefined, -1, 1.5, null]],
+    ["scheduled_days", [undefined, -1, 0.5, "2"]],
+    ["learning_steps", [undefined, -1, 1.25, null]],
+    ["reps", [undefined, -1, 1.5, 9007199254740992, null]],
+    ["lapses", [undefined, -1, 2.5, []]],
+    ["state", [undefined, -1, 4, 1.5, null]],
+  ];
+  it.each(invalidFsrs.flatMap(([key, values]) => values.map((value) => [key, value] as const)))(
+    "rejects fsrs %s = %s",
+    (key, value) => {
+      const fsrs: Record<string, unknown> = { ...fsrsFields, due: "2026-01-01T00:00:00Z" };
+      if (value === undefined) {
+        delete fsrs[key];
+      } else {
+        fsrs[key] = value;
+      }
+      expect(() => reviveSyncState({ ...state(), cards: [{ ...state().cards[0], fsrs }] })).toThrow(
+        "Invalid card at index 0.",
+      );
+    },
+  );
+
+  it.each([
+    ["state", 3],
+    ["reps", Number.MAX_SAFE_INTEGER],
+    ["stability", 0],
+    ["difficulty", 10.75],
+  ] as const)("accepts fsrs %s = %s", (key, value) => {
+    const fsrs = { ...fsrsFields, due: "2026-01-01T00:00:00Z", [key]: value };
+    expect(() => reviveSyncState({ ...state(), cards: [{ ...state().cards[0], fsrs }] })).not.toThrow();
   });
 
   it("accepts sentence and word cards", () => {
@@ -150,7 +197,7 @@ describe("sync state validation", () => {
     expect(() => reviveSyncState(state())).not.toThrow();
     expect(() => reviveSyncState({
       ...state(),
-      cards: [{ ...state().cards[0], fsrs: { due: "2026-01-01T00:00:00Z", last_review: null } }],
+      cards: [{ ...state().cards[0], fsrs: { ...fsrsFields, due: "2026-01-01T00:00:00Z", last_review: null } }],
     })).not.toThrow();
   });
 });

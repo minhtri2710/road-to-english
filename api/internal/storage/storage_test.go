@@ -195,40 +195,63 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	}
 }
 
+// Mirrors web mergeCard.test.ts case for case.
 func TestCardUpsertMergeRule(t *testing.T) {
-	base := func(front, updatedAt string) Card {
-		card := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", []byte(`{"due":"2026-01-01T00:00:00Z","reps":1}`))
-		card.UpdatedAt = updatedAt
-		return card
+	fresh := []byte(`{"due":"2026-01-01T00:00:00Z","reps":0}`)
+	reviewed := []byte(`{"due":"2026-01-09T00:00:00Z","reps":3}`)
+	reviewedMore := []byte(`{"due":"2026-01-20T00:00:00Z","reps":5}`)
+	card := func(front, updatedAt string, fsrs []byte) Card {
+		value := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", fsrs)
+		value.UpdatedAt = updatedAt
+		return value
 	}
 	const earlier, later = "2026-01-02T00:00:00Z", "2026-01-04T00:00:00Z"
 	tests := []struct {
 		name             string
 		stored, incoming Card
-		incomingWins     bool
+		want             Card
+		// False only for the equal-time both-live or both-tombstone tie, where the stored copy wins.
+		symmetric bool
 	}{
-		{"newer updatedAt wins", base("stored", earlier), base("incoming", later), true},
-		{"older updatedAt loses", base("stored", later), base("incoming", earlier), false},
-		{"older live copy never resurrects a tombstone", tombstone(base("stored", ""), later), base("incoming", earlier), false},
-		{"newer live copy replaces a tombstone", tombstone(base("stored", ""), earlier), base("incoming", later), true},
-		{"equal with an incoming tombstone: tombstone wins", base("stored", later), tombstone(base("incoming", ""), later), true},
-		{"equal with a stored tombstone: stored kept", tombstone(base("stored", ""), later), base("incoming", later), false},
-		{"equal live cards: stored kept", base("stored", later), base("incoming", later), false},
+		{"newer updatedAt wins", card("a", earlier, reviewed), card("b", later, reviewed), card("b", later, reviewed), true},
+		{"older updatedAt loses", card("a", later, reviewed), card("b", earlier, reviewed), card("a", later, reviewed), true},
+		{"older live copy never resurrects a tombstone", tombstone(card("a", "", reviewed), later), card("b", earlier, reviewed), tombstone(card("a", "", reviewed), later), true},
+		{"newer live copy replaces a tombstone", tombstone(card("a", "", reviewed), earlier), card("b", later, reviewed), card("b", later, reviewed), true},
+		{"equal time: incoming tombstone wins", card("a", later, reviewed), tombstone(card("b", "", reviewed), later), tombstone(card("b", "", reviewed), later), true},
+		{"equal time: stored tombstone kept", tombstone(card("a", "", reviewed), later), card("b", later, reviewed), tombstone(card("a", "", reviewed), later), true},
+		{"equal live cards: stored kept", card("a", later, reviewed), card("b", later, fresh), card("a", later, reviewed), false},
+		{"equal tombstones: stored kept", tombstone(card("a", "", reviewed), later), tombstone(card("b", "", reviewedMore), later), tombstone(card("a", "", reviewed), later), false},
+		{"newer fresh save over reviewed history keeps the history", card("a", earlier, reviewed), card("b", later, fresh), card("b", later, reviewed), true},
+		{"older reviewed copy gives its history to a newer fresh save", card("a", later, fresh), card("b", earlier, reviewed), card("a", later, reviewed), true},
+		{"older fresh save loses", card("a", later, reviewed), card("b", earlier, fresh), card("a", later, reviewed), true},
+		{"reviewed beats reviewed by time", card("a", earlier, reviewedMore), card("b", later, reviewed), card("b", later, reviewed), true},
+		{"tombstone with history + newer fresh save: live, history kept", tombstone(card("a", "", reviewed), earlier), card("b", later, fresh), card("b", later, reviewed), true},
+	}
+	run := func(t *testing.T, stored, incoming, want Card) {
+		repo := newTestRepo(t)
+		user := createTestUser(t, repo, "merge@example.com")
+		syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+		got := syncState(t, repo, user.ID, State{Cards: []Card{incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+		if !reflect.DeepEqual(got.Cards, []Card{want}) {
+			t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{want})
+		}
+		var fsrs []byte
+		if err := repo.pool.QueryRow(context.Background(), "SELECT fsrs FROM cards WHERE user_id = $1 AND id = $2", user.ID, want.ID).Scan(&fsrs); err != nil {
+			t.Fatalf("query stored fsrs: %v", err)
+		}
+		if !bytes.Equal(fsrs, want.Fsrs) {
+			t.Fatalf("stored fsrs = %s, want %s", fsrs, want.Fsrs)
+		}
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			repo := newTestRepo(t)
-			user := createTestUser(t, repo, "merge@example.com")
-			syncState(t, repo, user.ID, State{Cards: []Card{test.stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-			got := syncState(t, repo, user.ID, State{Cards: []Card{test.incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-			want := test.stored
-			if test.incomingWins {
-				want = test.incoming
-			}
-			if !reflect.DeepEqual(got.Cards, []Card{want}) {
-				t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{want})
-			}
+			run(t, test.stored, test.incoming, test.want)
 		})
+		if test.symmetric {
+			t.Run(test.name+" (swapped)", func(t *testing.T) {
+				run(t, test.incoming, test.stored, test.want)
+			})
+		}
 	}
 }
 

@@ -1198,6 +1198,7 @@ function WordPanel({
 function ReviewDeck({
   due,
   hiddenNew,
+  nextDueInMinutes,
   hasCards,
   loading,
   loadFailed,
@@ -1207,26 +1208,27 @@ function ReviewDeck({
 }: {
   due: VocabCard[];
   hiddenNew: number;
+  nextDueInMinutes: number | null;
   hasCards: boolean;
   loading: boolean;
   loadFailed: boolean;
-  review: (card: VocabCard, rating: Grade) => Promise<void>;
+  review: (card: VocabCard, rating: Grade) => Promise<boolean>;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   onGoToLibrary: () => void;
 }) {
-  const [showAnswer, setShowAnswer] = useState(false);
+  // The card and rating turn the answer was revealed for: a rating changes updatedAt, so the next card,
+  // or the same card back after Again, renders hidden from its first frame.
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
   const [isRating, setIsRating] = useState(false);
-  const [rateFailed, setRateFailed] = useState(false);
+  const [rateError, setRateError] = useState<string | null>(null);
   const isRatingRef = useRef(false);
   // Show answer and rating remove the focused button, so focus moves to what replaced it.
   const [focusTarget, setFocusTarget] = useState<"answer" | "prompt" | null>(null);
   const answerRef = useRef<HTMLElement>(null);
   const promptRef = useRef<HTMLElement>(null);
   const card = due[0];
-
-  useEffect(() => {
-    setShowAnswer(false);
-  }, [card?.id]);
+  const cardTurn = card ? `${card.id}@${card.updatedAt}` : null;
+  const showAnswer = cardTurn !== null && revealedFor === cardTurn;
 
   useEffect(() => {
     if (focusTarget === null) {
@@ -1251,15 +1253,24 @@ function ReviewDeck({
     );
   }
 
+  const rateErrorLine = rateError !== null && (
+    <Text as="p" color="primary" xstyle={appStyles.error}>
+      {rateError}
+    </Text>
+  );
+
   if (!card) {
     return (
       <VStack gap={2}>
+        {rateErrorLine}
         <Text as="p" ref={promptRef} tabIndex={-1}>
           {!hasCards
             ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
             : hiddenNew > 0
               ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
-              : "All caught up. Come back later for your next review."}
+              : nextDueInMinutes !== null
+                ? `All caught up. Next card in ${nextDueInMinutes} min.`
+                : "All caught up. Come back later for your next review."}
         </Text>
         <Button label="Go to library" variant="secondary" xstyle={appStyles.viewToggle} onClick={onGoToLibrary} />
       </VStack>
@@ -1275,14 +1286,17 @@ function ReviewDeck({
     setIsRating(true);
     // Read before rating: the review moves the card out of New.
     const newCard = card.fsrs.state === State.New;
-    setRateFailed(false);
+    setRateError(null);
     try {
-      await review(card, rating);
-      // Resolves even when the write fails; the header storage line reports it.
-      await recordPractice({ newCard });
+      if (await review(card, rating)) {
+        // Resolves even when the write fails; the header storage line reports it.
+        await recordPractice({ newCard });
+      } else {
+        setRateError("This card changed on another device. Showing the latest.");
+      }
       setFocusTarget("prompt");
     } catch {
-      setRateFailed(true);
+      setRateError("Couldn't save. Try again.");
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -1302,7 +1316,7 @@ function ReviewDeck({
               label="Show answer"
               variant="primary"
               onClick={() => {
-                setShowAnswer(true);
+                setRevealedFor(cardTurn);
                 setFocusTarget("answer");
               }}
             />
@@ -1334,11 +1348,7 @@ function ReviewDeck({
               />
             </HStack>
           )}
-          {rateFailed && (
-            <Text as="p" color="primary" xstyle={appStyles.error}>
-              Couldn't save. Try again.
-            </Text>
-          )}
+          {rateErrorLine}
         </VStack>
       </Card>
     </VStack>
@@ -1984,6 +1994,7 @@ export function App() {
                 <ReviewDeck
                   due={reviewDeck}
                   hiddenNew={deck.due.length - reviewDeck.length}
+                  nextDueInMinutes={deck.nextDueInMinutes}
                   hasCards={deck.savedCardIds.size > 0}
                   loading={deck.loading}
                   loadFailed={deck.error !== null}

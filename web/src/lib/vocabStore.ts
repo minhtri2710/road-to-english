@@ -1,6 +1,7 @@
-import { restoreCard, type VocabCard } from "./vocab";
+import { restoreCard, reviewCard, type Grade, type VocabCard } from "./vocab";
 
 import { openAppDatabase } from "./db";
+import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 
 export async function putCard(card: VocabCard): Promise<void> {
@@ -13,18 +14,32 @@ export async function putCard(card: VocabCard): Promise<void> {
   }
 }
 
-// Undo: restores the card only while the stored copy is still exactly this tombstone, in one transaction.
-export async function restoreTombstone(tombstone: VocabCard, now: Date): Promise<boolean> {
+// Save: merges the new card into the stored copy in one transaction, so a re-save keeps the stored FSRS history.
+export async function saveCard(card: VocabCard): Promise<void> {
   const db = await openAppDatabase();
   try {
     const tx = db.transaction("cards", "readwrite");
-    const stored = await tx.store.get(tombstone.id);
+    const stored = await tx.store.get(card.id);
+    await tx.store.put(stored ? mergeCard(stored, card) : card);
+    await tx.done;
+    notifyLocalMutation();
+  } finally {
+    db.close();
+  }
+}
+
+// Writes `next` only while the stored copy is still exactly `expected`, in one transaction.
+async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise<boolean> {
+  const db = await openAppDatabase();
+  try {
+    const tx = db.transaction("cards", "readwrite");
+    const stored = await tx.store.get(expected.id);
     const unchanged =
       stored !== undefined &&
-      stored.updatedAt === tombstone.updatedAt &&
-      stored.deletedAt === tombstone.deletedAt;
+      stored.updatedAt === expected.updatedAt &&
+      stored.deletedAt === expected.deletedAt;
     if (unchanged) {
-      await tx.store.put(restoreCard(tombstone, now));
+      await tx.store.put(next);
     }
     await tx.done;
     if (unchanged) {
@@ -34,6 +49,16 @@ export async function restoreTombstone(tombstone: VocabCard, now: Date): Promise
   } finally {
     db.close();
   }
+}
+
+// Undo: restores the card only while the stored copy is still exactly this tombstone.
+export function restoreTombstone(tombstone: VocabCard, now: Date): Promise<boolean> {
+  return replaceIfUnchanged(tombstone, restoreCard(tombstone, now));
+}
+
+// Rating: writes the review only while the stored copy is still the card that was rated.
+export function saveReview(card: VocabCard, rating: Grade, now: Date): Promise<boolean> {
+  return replaceIfUnchanged(card, reviewCard(card, rating, now));
 }
 
 export async function getAllCards(): Promise<VocabCard[]> {
