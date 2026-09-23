@@ -1718,6 +1718,38 @@ describe("App", () => {
       await remounted.unmount();
     });
 
+    it("drops a count loaded before local midnight on the next render", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 0, 5, 23, 59, 0));
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, "Goal 1/10"));
+
+      vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
+      // Changing the goal re-renders without reloading the counts.
+      await act(async () => {
+        buttonsNamed(container, "5")[0]?.click();
+      });
+
+      expect(container.textContent).toContain("Goal 0/5");
+      await unmount();
+    });
+
+    it("shows XP and held freezes from seeded practice", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(start);
+      for (let offset = 6; offset >= 0; offset -= 1) {
+        await recordPractice(todayKey(new Date(2026, 0, 5 - offset)), { newCard: false });
+      }
+      await recordPractice(todayKey(start), { newCard: false });
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, "80 XP"));
+
+      expect(container.textContent).toContain("7 days streak");
+      expect(container.textContent).toContain("Freezes 1/2");
+      await unmount();
+    });
+
     it("reads a missing or invalid stored goal as 10", async () => {
       localStorage.setItem("road-to-english.dailyGoal", "7");
       const { container, unmount } = await renderApp();

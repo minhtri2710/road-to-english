@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { exportAll } from "./backupStore";
 import { openAppDatabase } from "./db";
-import { streak, todayKey } from "./progress";
+import { streakState, todayKey } from "./progress";
 import {
   getCompletedLessons,
   getDailyCount,
@@ -84,6 +84,6 @@ describe("progress store", () => {
     expect([before, after]).toEqual(["2026-01-05", "2026-01-06"]);
     expect(await getDailyCount(before)).toEqual({ date: before, actions: 1, newCards: 1 });
     expect(await getDailyCount(after)).toEqual({ date: after, actions: 1, newCards: 0 });
-    expect(streak(await getPracticeDays(), after)).toBe(2);
+    expect(streakState(await getPracticeDays(), after).streak).toBe(2);
   });
 });

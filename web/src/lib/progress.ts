@@ -32,20 +32,41 @@ function previousDay(dayKey: string): string {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function streak(days: string[], today: string): number {
-  const practiced = new Set(days);
+const MAX_FREEZES = 2;
+
+// Walks sorted unique days: every 7th consecutive day earns a freeze (max 2 held);
+// a single missed day spends one freeze and keeps the streak.
+export function streakState(days: string[], today: string): { streak: number; freezes: number } {
+  const sorted = [...new Set(days)].sort();
+  let running = 0;
+  let freezes = 0;
+  let last: string | undefined;
+  for (const day of sorted) {
+    const before = previousDay(day);
+    if (last !== undefined && last === before) {
+      running += 1;
+    } else if (last !== undefined && last === previousDay(before) && freezes > 0) {
+      freezes -= 1;
+      running += 1;
+    } else {
+      running = 1;
+    }
+    if (running % 7 === 0) {
+      freezes = Math.min(MAX_FREEZES, freezes + 1);
+    }
+    last = day;
+  }
+
   const yesterday = previousDay(today);
-  const mostRecent = [...practiced].sort().at(-1);
-
-  if (mostRecent !== today && mostRecent !== yesterday) {
-    return 0;
+  if (last === today || last === yesterday) {
+    return { streak: running, freezes };
   }
-
-  let count = 0;
-  let cursor = mostRecent;
-  while (cursor && practiced.has(cursor)) {
-    count += 1;
-    cursor = previousDay(cursor);
+  if (last === previousDay(yesterday) && freezes > 0) {
+    return { streak: running, freezes: freezes - 1 };
   }
-  return count;
+  return { streak: 0, freezes };
+}
+
+export function xp(counts: { actions: number }[]): number {
+  return 10 * counts.reduce((total, { actions }) => total + actions, 0);
 }

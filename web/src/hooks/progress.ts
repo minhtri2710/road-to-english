@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { DailyCount } from "../lib/db";
-import { streak as calculateStreak, todayKey } from "../lib/progress";
+import { streakState, todayKey, xp } from "../lib/progress";
 import {
+  getAllDailyCounts,
   getCompletedLessons,
   getDailyCount,
   getPracticeDays,
@@ -16,16 +17,19 @@ export function useProgress() {
     () => new Set(),
   );
   const [dailyCount, setDailyCount] = useState<DailyCount | null>(null);
+  const [allCounts, setAllCounts] = useState<DailyCount[]>([]);
 
   const refresh = useCallback(async () => {
-    const [days, lessons, count] = await Promise.all([
+    const [days, lessons, count, counts] = await Promise.all([
       getPracticeDays(),
       getCompletedLessons(),
       getDailyCount(todayKey(new Date())),
+      getAllDailyCounts(),
     ]);
     setPracticeDays(days);
     setCompletedLessons(new Set(lessons));
     setDailyCount(count);
+    setAllCounts(counts);
   }, []);
 
   useEffect(() => {
@@ -48,10 +52,14 @@ export function useProgress() {
   const today = todayKey(new Date());
   // A count loaded before local midnight belongs to another day.
   const todayCount = dailyCount?.date === today ? dailyCount : undefined;
+  const { streak, freezes } = streakState(practiceDays, today);
   return {
     actionsToday: todayCount?.actions ?? 0,
     newCardsToday: todayCount?.newCards ?? 0,
-    streak: calculateStreak(practiceDays, today),
+    streak,
+    freezes,
+    // XP is local-only: dailyCounts is not synced.
+    xp: xp(allCounts),
     practicedToday: practiceDays.includes(today),
     completedLessons,
     recordPractice,

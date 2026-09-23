@@ -1,31 +1,68 @@
 import { describe, expect, it } from "vitest";
 
-import { streak, todayKey } from "./progress";
+import { streakState, todayKey, xp } from "./progress";
+
+// Day keys for consecutive calendar days starting at 2026-01-01.
+function run(start: number, length: number): string[] {
+  return Array.from({ length }, (_, index) => todayKey(new Date(2026, 0, start + index)));
+}
+
+const day = (offset: number) => todayKey(new Date(2026, 0, offset));
 
 describe("progress logic", () => {
   it("counts a streak ending today", () => {
-    expect(streak(["2026-01-05"], "2026-01-05")).toBe(1);
-    expect(streak(["2026-01-04", "2026-01-05"], "2026-01-05")).toBe(2);
+    expect(streakState(["2026-01-05"], "2026-01-05").streak).toBe(1);
+    expect(streakState(["2026-01-04", "2026-01-05"], "2026-01-05").streak).toBe(2);
   });
 
   it("keeps yesterday's streak alive", () => {
-    expect(streak(["2026-01-04"], "2026-01-05")).toBe(1);
+    expect(streakState(["2026-01-04"], "2026-01-05").streak).toBe(1);
   });
 
   it("returns zero after a gap", () => {
-    expect(streak(["2026-01-03"], "2026-01-05")).toBe(0);
+    expect(streakState(["2026-01-03"], "2026-01-05").streak).toBe(0);
   });
 
   it("crosses a month boundary", () => {
-    expect(streak(["2026-01-31", "2026-02-01"], "2026-02-01")).toBe(2);
+    expect(streakState(["2026-01-31", "2026-02-01"], "2026-02-01").streak).toBe(2);
   });
 
   it("crosses a year boundary", () => {
-    expect(streak(["2025-12-31", "2026-01-01"], "2026-01-01")).toBe(2);
+    expect(streakState(["2025-12-31", "2026-01-01"], "2026-01-01").streak).toBe(2);
   });
 
   it("crosses leap day", () => {
-    expect(streak(["2028-02-28", "2028-02-29"], "2028-02-29")).toBe(2);
+    expect(streakState(["2028-02-28", "2028-02-29"], "2028-02-29").streak).toBe(2);
+  });
+
+  it.each([
+    { name: "7 consecutive days earn a freeze", days: run(1, 7), today: day(7), streak: 7, freezes: 1 },
+    { name: "14 consecutive days earn two freezes", days: run(1, 14), today: day(14), streak: 14, freezes: 2 },
+    { name: "21 consecutive days stay capped at two freezes", days: run(1, 21), today: day(21), streak: 21, freezes: 2 },
+    { name: "a freeze bridges one missed day", days: [...run(1, 7), day(9)], today: day(9), streak: 8, freezes: 0 },
+    { name: "one missed day without a freeze resets", days: [...run(1, 6), day(8)], today: day(8), streak: 1, freezes: 0 },
+    { name: "two missed days reset and keep the freeze", days: [...run(1, 7), day(10)], today: day(10), streak: 1, freezes: 1 },
+    {
+      name: "two freezes bridge two separate missed days",
+      days: [...run(1, 14), day(16), day(18)],
+      today: day(18),
+      streak: 16,
+      freezes: 0,
+    },
+    { name: "a held freeze covers yesterday", days: run(1, 7), today: day(9), streak: 7, freezes: 0 },
+    { name: "no freeze leaves the day before yesterday dead", days: run(1, 6), today: day(8), streak: 0, freezes: 0 },
+  ])("$name", ({ days, today, streak, freezes }) => {
+    expect(streakState(days, today)).toEqual({ streak, freezes });
+  });
+
+  it("sums actions across days into XP", () => {
+    expect(xp([])).toBe(0);
+    expect(
+      xp([
+        { actions: 3 },
+        { actions: 4 },
+      ]),
+    ).toBe(70);
   });
 
   it("formats a local calendar date with padding", () => {

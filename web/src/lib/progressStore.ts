@@ -32,6 +32,15 @@ export async function getDailyCount(dateKey: string): Promise<DailyCount> {
   }
 }
 
+export async function getAllDailyCounts(): Promise<DailyCount[]> {
+  const db = await openAppDatabase();
+  try {
+    return await db.getAll("dailyCounts");
+  } finally {
+    db.close();
+  }
+}
+
 export async function getPracticeDays(): Promise<string[]> {
   const db = await openAppDatabase();
   try {

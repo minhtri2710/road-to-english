@@ -1061,6 +1061,8 @@ export function App() {
                   label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
                   variant="info"
                 />
+                <Badge label={`${progress.xp} XP`} variant="info" />
+                <Badge label={`Freezes ${progress.freezes}/2`} variant="info" />
                 <Badge
                   label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
                   variant={progress.practicedToday ? "success" : "info"}
