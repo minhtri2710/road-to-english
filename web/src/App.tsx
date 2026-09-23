@@ -21,7 +21,7 @@ import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
 import { ApiError, NotFoundError, type Lesson, type Level } from "./api/lessons";
-import { createSyncScheduler, type SyncScheduler } from "./lib/syncScheduler";
+import { createSyncScheduler, type SyncScheduler, type SyncStatus } from "./lib/syncScheduler";
 import { setSyncTrigger } from "./lib/syncEvents";
 import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
@@ -602,21 +602,28 @@ function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   );
 }
 
+const syncMessages: Record<Exclude<SyncStatus, "signedOut">, string | null> = {
+  synced: null,
+  failed: "Couldn't sync. Your changes are saved on this device and will sync when you're back online.",
+  ownerMismatch: "This device's data belongs to another account, so sync is off. Sign in with that account to sync.",
+};
+
 const passwordPolicyMessage =
   "Password must be at least 8 characters (and at most 72 bytes).";
 
 function AccountError({ error, isSignUp }: { error: Error; isSignUp: boolean }) {
-  let message = "Unable to complete account request. Please try again.";
+  let message = "Can't reach the server. You can keep practising on this device.";
   if (error instanceof ApiError) {
+    message = "Unable to complete account request. Please try again.";
     if (error.status === 409) {
       message = "This email is already registered.";
     } else if (error.status === 401) {
       message = "Invalid email or password.";
+    } else if (error.status === 429) {
+      message = "Too many attempts. Try again in a few minutes.";
     } else if (error.status === 400 && isSignUp) {
-      message = passwordPolicyMessage;
+      message = `Check your email address and password. ${passwordPolicyMessage}`;
     }
-  } else if (error.message) {
-    message = `${error.message}. You can continue using the app.`;
   }
 
   return (
@@ -631,6 +638,7 @@ function AccountArea({ auth }: { auth: AuthState }) {
   const [password, setPassword] = useState("");
   const [lastAction, setLastAction] = useState<"signIn" | "signUp" | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const form = useRef<HTMLFormElement>(null);
 
   const submit = async (action: AuthState["signIn"], isSignUp: boolean) => {
     setLastAction(isSignUp ? "signUp" : "signIn");
@@ -665,7 +673,7 @@ function AccountArea({ auth }: { auth: AuthState }) {
 
   return (
     <VStack gap={1}>
-      <form onSubmit={(event) => {
+      <form ref={form} onSubmit={(event) => {
         event.preventDefault();
         void submit(auth.signIn, false);
       }}>
@@ -693,10 +701,19 @@ function AccountArea({ auth }: { auth: AuthState }) {
             label="Sign up"
             variant="primary"
             type="button"
-            onClick={() => void submit(auth.signUp, true)}
+            onClick={() => {
+              if (form.current?.reportValidity()) {
+                void submit(auth.signUp, true);
+              }
+            }}
           />
         </HStack>
       </form>
+      {auth.expired && (
+        <Text as="p" color="primary" xstyle={appStyles.error}>
+          You were signed out. Sign in again to sync.
+        </Text>
+      )}
       {localError && (
         <Text as="p" color="primary" xstyle={appStyles.error}>
           {localError}
@@ -1680,9 +1697,12 @@ export function App() {
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = progress.actionsToday >= Number(dailyGoal);
   const auth = useAuth();
+  const { expire } = auth;
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const returnFocusId = useRef<string | null>(null);
+  const [storageKept, setStorageKept] = useState<boolean | null>(null);
+  const persistRequested = useRef(false);
 
   // A pending return focus is dropped once the user moves on, so a late row mount cannot steal focus.
   const showView = (nextView: "library" | "review") => {
@@ -1703,6 +1723,19 @@ export function App() {
     return true;
   };
 
+  // Ask once per app start; StrictMode's second effect run keeps the ref and skips.
+  useEffect(() => {
+    if (persistRequested.current) {
+      return;
+    }
+    persistRequested.current = true;
+    if (typeof navigator.storage?.persist !== "function") {
+      setStorageKept(false);
+      return;
+    }
+    navigator.storage.persist().then(setStorageKept, () => setStorageKept(false));
+  }, []);
+
   useEffect(() => {
     setSyncTrigger(() => syncRef.current?.trigger());
     return () => setSyncTrigger(undefined);
@@ -1720,17 +1753,34 @@ export function App() {
       async () => {
         await Promise.all([deck.reload(), progress.reload()]);
       },
-      () => setSyncMessage("This device's data belongs to another account, so sync is off. Sign in with that account to sync."),
+      (status) => {
+        if (status === "signedOut") {
+          expire();
+          return;
+        }
+        setSyncMessage(syncMessages[status]);
+      },
     );
     syncRef.current = scheduler;
     scheduler.trigger();
+    const retry = () => {
+      if (document.visibilityState === "visible") {
+        scheduler.trigger();
+      }
+    };
+    window.addEventListener("online", retry);
+    window.addEventListener("focus", retry);
+    document.addEventListener("visibilitychange", retry);
     return () => {
+      window.removeEventListener("online", retry);
+      window.removeEventListener("focus", retry);
+      document.removeEventListener("visibilitychange", retry);
       scheduler.stop();
       if (syncRef.current === scheduler) {
         syncRef.current = null;
       }
     };
-  }, [auth.user, deck.reload, progress.reload]);
+  }, [auth.user, expire, deck.reload, progress.reload]);
 
   const loadUserLessons = () =>
     listUserLessons().catch((loadError: unknown) =>
@@ -1801,7 +1851,11 @@ export function App() {
 
     try {
       const data = importData(await file.text());
-      if (!window.confirm("Importing this backup will replace all local data. Continue?")) {
+      const replaceNotice = "Importing this backup will replace all local data on this device.";
+      const confirmText = auth.user
+        ? `${replaceNotice} Your next sync merges it with your account, so cards and progress already in your account stay. Continue?`
+        : `${replaceNotice} Continue?`;
+      if (!window.confirm(confirmText)) {
         return;
       }
       await replaceAll(data);
@@ -1887,6 +1941,13 @@ export function App() {
                   onChange={(event) => void importBackup(event)}
                 />
               </HStack>
+              {storageKept !== null && (
+                <Text type="supporting">
+                  {storageKept
+                    ? "Storage: kept on this device."
+                    : "Storage: the browser may clear this data when space is low. Export a backup or sign in to keep it."}
+                </Text>
+              )}
               {storageError && (
                 <Text as="p" color="primary" xstyle={appStyles.error}>
                   Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.

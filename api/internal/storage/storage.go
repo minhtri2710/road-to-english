@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/road-to-english/api/internal/auth"
 )
 
 //go:embed schema.sql
@@ -245,20 +247,47 @@ func (r *Repository) CreateSession(ctx context.Context, userID, tokenHash string
 	return nil
 }
 
-func (r *Repository) GetSession(ctx context.Context, tokenHash string) (string, error) {
-	var userID string
+// Session is a valid session. Extended reports that this lookup moved ExpiresAt forward.
+type Session struct {
+	UserID    string
+	ExpiresAt time.Time
+	Extended  bool
+}
+
+// sessionExtendInterval limits rolling extension to at most one UPDATE per session per interval.
+const sessionExtendInterval = 24 * time.Hour
+
+func (r *Repository) GetSession(ctx context.Context, tokenHash string) (Session, error) {
+	var session Session
+	var createdAt, now time.Time
 	err := r.pool.QueryRow(ctx, `
-		SELECT user_id
+		SELECT user_id, created_at, expires_at, now()
 		FROM sessions
 		WHERE token_hash = $1 AND expires_at > now()
-	`, tokenHash).Scan(&userID)
+	`, tokenHash).Scan(&session.UserID, &createdAt, &session.ExpiresAt, &now)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrSessionInvalid
+		return Session{}, ErrSessionInvalid
 	}
 	if err != nil {
-		return "", fmt.Errorf("get session: %w", err)
+		return Session{}, fmt.Errorf("get session: %w", err)
 	}
-	return userID, nil
+	limit := createdAt.Add(auth.SessionMaxLifetime)
+	if !now.Before(limit) {
+		return Session{}, ErrSessionInvalid
+	}
+	fresh := now.Add(auth.SessionTTL)
+	if fresh.After(limit) {
+		fresh = limit
+	}
+	if fresh.Sub(session.ExpiresAt) <= sessionExtendInterval {
+		return session, nil
+	}
+	if _, err := r.pool.Exec(ctx, `UPDATE sessions SET expires_at = $2 WHERE token_hash = $1`, tokenHash, fresh); err != nil {
+		return Session{}, fmt.Errorf("extend session: %w", err)
+	}
+	session.ExpiresAt = fresh
+	session.Extended = true
+	return session, nil
 }
 
 func (r *Repository) DeleteSession(ctx context.Context, tokenHash string) error {

@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { ApiError } from "../api/lessons";
 
 import {
   fetchMe,
@@ -16,42 +18,61 @@ export interface AuthState {
   user: AuthUser | null;
   loading: boolean;
   error: Error | null;
+  // True after the server rejected the session mid-use, until the next sign-in.
+  expired: boolean;
   signIn: AuthActions;
   signUp: AuthActions;
   signOut: () => Promise<void>;
+  expire: () => void;
 }
 
 export function useAuth(): AuthState {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [expired, setExpired] = useState(false);
+  // Set while the last /me attempt failed on the network; an `online` event then retries it.
+  const meNetworkFailed = useRef(false);
 
   useEffect(() => {
     let active = true;
 
-    fetchMe()
-      .then((currentUser) => {
-        if (active) {
-          setUser(currentUser);
-        }
-      })
-      .catch((requestError: unknown) => {
-        if (active) {
-          setError(
-            requestError instanceof Error
-              ? requestError
-              : new Error("Unable to restore account session"),
-          );
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
+    const restore = () => {
+      meNetworkFailed.current = false;
+      fetchMe()
+        .then((currentUser) => {
+          if (active) {
+            setUser(currentUser);
+            setError(null);
+          }
+        })
+        .catch((requestError: unknown) => {
+          if (active) {
+            meNetworkFailed.current = !(requestError instanceof ApiError);
+            setError(
+              requestError instanceof Error
+                ? requestError
+                : new Error("Unable to restore account session"),
+            );
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+          }
+        });
+    };
+    const retryOnline = () => {
+      if (meNetworkFailed.current) {
+        restore();
+      }
+    };
 
+    restore();
+    window.addEventListener("online", retryOnline);
     return () => {
       active = false;
+      window.removeEventListener("online", retryOnline);
     };
   }, []);
 
@@ -63,6 +84,8 @@ export function useAuth(): AuthState {
     setError(null);
     try {
       setUser(await request(email, password));
+      meNetworkFailed.current = false;
+      setExpired(false);
     } catch (requestError: unknown) {
       const nextError =
         requestError instanceof Error
@@ -92,5 +115,11 @@ export function useAuth(): AuthState {
     }
   };
 
-  return { user, loading, error, signIn, signUp, signOut };
+  const expire = useCallback(() => {
+    setUser(null);
+    setError(null);
+    setExpired(true);
+  }, []);
+
+  return { user, loading, error, expired, signIn, signUp, signOut, expire };
 }

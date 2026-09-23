@@ -310,9 +310,9 @@ func TestSessionRoundTripAndInvalidation(t *testing.T) {
 	if err := repo.CreateSession(context.Background(), user.ID, "active", time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
-	gotUserID, err := repo.GetSession(context.Background(), "active")
-	if err != nil || gotUserID != user.ID {
-		t.Fatalf("GetSession() = %q, %v; want %q, nil", gotUserID, err, user.ID)
+	got, err := repo.GetSession(context.Background(), "active")
+	if err != nil || got.UserID != user.ID {
+		t.Fatalf("GetSession() = %#v, %v; want %q, nil", got, err, user.ID)
 	}
 	if err := repo.CreateSession(context.Background(), user.ID, "expired", time.Now().Add(-time.Hour)); err != nil {
 		t.Fatalf("CreateSession(expired) error = %v", err)
@@ -378,5 +378,87 @@ func TestSessionStoresHashNotRawToken(t *testing.T) {
 	}
 	if tokenHash != storedHash {
 		t.Fatalf("token_hash = %q, want stored hash %q", tokenHash, storedHash)
+	}
+}
+
+func insertSession(t *testing.T, repo *Repository, userID, tokenHash, createdAgo, expiresIn string) {
+	t.Helper()
+	if _, err := repo.pool.Exec(context.Background(), `
+		INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
+		VALUES ($1, $2, now() - $3::interval, now() + $4::interval)
+	`, tokenHash, userID, createdAgo, expiresIn); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+}
+
+func sessionExpiresAt(t *testing.T, repo *Repository, tokenHash string) time.Time {
+	t.Helper()
+	var expiresAt time.Time
+	if err := repo.pool.QueryRow(context.Background(), `SELECT expires_at FROM sessions WHERE token_hash = $1`, tokenHash).Scan(&expiresAt); err != nil {
+		t.Fatalf("query expires_at: %v", err)
+	}
+	return expiresAt
+}
+
+func TestGetSessionExtendsAtMostOncePer24Hours(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "rolling@example.com")
+	insertSession(t, repo, user.ID, "stale", "2 days", "27 days")
+	insertSession(t, repo, user.ID, "recent", "1 hour", "29 days 1 hour")
+	before := time.Now()
+
+	first, err := repo.GetSession(context.Background(), "stale")
+	if err != nil || !first.Extended {
+		t.Fatalf("first GetSession() = %#v, %v; want extended", first, err)
+	}
+	extended := sessionExpiresAt(t, repo, "stale")
+	if !extended.Equal(first.ExpiresAt) || extended.Before(before.Add(30*24*time.Hour-time.Minute)) {
+		t.Fatalf("expires_at = %v, returned %v; want about now + 30 days", extended, first.ExpiresAt)
+	}
+
+	second, err := repo.GetSession(context.Background(), "stale")
+	if err != nil || second.Extended {
+		t.Fatalf("second GetSession() = %#v, %v; want not extended", second, err)
+	}
+	if got := sessionExpiresAt(t, repo, "stale"); !got.Equal(extended) {
+		t.Fatalf("expires_at after second lookup = %v, want unchanged %v", got, extended)
+	}
+
+	recentBefore := sessionExpiresAt(t, repo, "recent")
+	recent, err := repo.GetSession(context.Background(), "recent")
+	if err != nil || recent.Extended {
+		t.Fatalf("recent GetSession() = %#v, %v; want not extended", recent, err)
+	}
+	if got := sessionExpiresAt(t, repo, "recent"); !got.Equal(recentBefore) {
+		t.Fatalf("recent expires_at = %v, want unchanged %v", got, recentBefore)
+	}
+}
+
+func TestGetSessionExtensionCapsAt90DaysFromCreation(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "cap@example.com")
+	insertSession(t, repo, user.ID, "old", "80 days", "1 day")
+
+	session, err := repo.GetSession(context.Background(), "old")
+	if err != nil || !session.Extended {
+		t.Fatalf("GetSession() = %#v, %v; want extended", session, err)
+	}
+	var capped bool
+	if err := repo.pool.QueryRow(context.Background(), `
+		SELECT expires_at = created_at + interval '90 days' FROM sessions WHERE token_hash = 'old'
+	`).Scan(&capped); err != nil {
+		t.Fatalf("query cap: %v", err)
+	}
+	if !capped {
+		t.Fatalf("expires_at = %v, want created_at + 90 days", sessionExpiresAt(t, repo, "old"))
+	}
+}
+
+func TestGetSessionRejectsSessionPast90Days(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "past-cap@example.com")
+	insertSession(t, repo, user.ID, "past-cap", "91 days", "1 day")
+	if _, err := repo.GetSession(context.Background(), "past-cap"); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("GetSession() error = %v, want ErrSessionInvalid", err)
 	}
 }

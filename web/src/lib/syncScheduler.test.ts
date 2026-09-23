@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../api/lessons";
 import { syncState } from "../api/sync";
-import { createSyncScheduler } from "./syncScheduler";
+import { createSyncScheduler, type SyncStatus } from "./syncScheduler";
 import { getAllCards } from "./vocabStore";
 import { createCard } from "./vocab";
 import { putCard } from "./vocabStore";
@@ -138,6 +139,38 @@ describe("sync scheduler", () => {
 
     expect(syncMock).not.toHaveBeenCalled();
     expect(await getAllCards()).toEqual([existing]);
+    scheduler.stop();
+  });
+
+  it("reports a failed sync, a 401 as signed out, and success after a failure", async () => {
+    const statuses: SyncStatus[] = [];
+    syncMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    syncMock.mockRejectedValueOnce(new ApiError(401));
+    syncMock.mockResolvedValueOnce({ cards: [], practiceDays: [], lessonCompletion: [] });
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
+
+    scheduler.trigger();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(statuses).toEqual(["failed"]);
+
+    scheduler.trigger();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(statuses).toEqual(["failed", "signedOut"]);
+
+    scheduler.trigger();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(statuses).toEqual(["failed", "signedOut", "synced"]);
+    scheduler.stop();
+  });
+
+  it("reports a server error as a failure, not signed out", async () => {
+    const statuses: SyncStatus[] = [];
+    syncMock.mockRejectedValueOnce(new ApiError(500));
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
+
+    scheduler.trigger();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(statuses).toEqual(["failed"]);
     scheduler.stop();
   });
 });

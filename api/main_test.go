@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/road-to-english/api/internal/auth"
 	"github.com/road-to-english/api/internal/library"
 	"github.com/road-to-english/api/internal/storage"
 )
@@ -880,5 +881,153 @@ func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder, value any) {
 	t.Helper()
 	if err := json.NewDecoder(recorder.Body).Decode(value); err != nil {
 		t.Fatalf("decode JSON: %v", err)
+	}
+}
+
+func doAuthFrom(handler http.Handler, path, body, remoteAddr string, header http.Header) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	for key, values := range header {
+		req.Header[key] = values
+	}
+	req.RemoteAddr = remoteAddr
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	return recorder
+}
+
+func assertTooManyAttempts(t *testing.T, response *httptest.ResponseRecorder, maxRetryAfter int) {
+	t.Helper()
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429; body = %s", response.Code, response.Body.String())
+	}
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"too many attempts"}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+	retryAfter, err := strconv.Atoi(response.Header().Get("Retry-After"))
+	if err != nil || retryAfter < 1 || retryAfter > maxRetryAfter {
+		t.Fatalf("Retry-After = %q, want 1..%d", response.Header().Get("Retry-After"), maxRetryAfter)
+	}
+}
+
+func TestRequestExtendsSessionCookieOncePer24Hours(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "rolling-cookie@example.com")
+	if _, err := api.pool.Exec(context.Background(), `UPDATE sessions SET created_at = now() - interval '2 days', expires_at = now() + interval '1 day'`); err != nil {
+		t.Fatalf("age session: %v", err)
+	}
+
+	first := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie)
+	if first.Code != http.StatusOK {
+		t.Fatalf("/me status = %d, body = %s", first.Code, first.Body.String())
+	}
+	refreshed := responseCookie(t, first)
+	ttl := int(auth.SessionTTL / time.Second)
+	if refreshed.Name != sessionCookieName || refreshed.Value != cookie.Value || refreshed.Path != "/" || !refreshed.HttpOnly || refreshed.Secure || refreshed.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("refreshed cookie = %#v", refreshed)
+	}
+	if refreshed.MaxAge < ttl-60 || refreshed.MaxAge > ttl {
+		t.Fatalf("refreshed MaxAge = %d, want about %d", refreshed.MaxAge, ttl)
+	}
+	var stored time.Time
+	if err := api.pool.QueryRow(context.Background(), `SELECT expires_at FROM sessions`).Scan(&stored); err != nil {
+		t.Fatalf("query expires_at: %v", err)
+	}
+	if !refreshed.Expires.Equal(stored.Truncate(time.Second)) {
+		t.Fatalf("cookie Expires = %v, stored expires_at = %v", refreshed.Expires, stored)
+	}
+
+	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if second.Code != http.StatusOK {
+		t.Fatalf("/sync status = %d, body = %s", second.Code, second.Body.String())
+	}
+	if cookies := second.Result().Cookies(); len(cookies) != 0 {
+		t.Fatalf("second request cookies = %#v, want none", cookies)
+	}
+}
+
+func TestExpiredOrCappedSessionIsRejected(t *testing.T) {
+	api := newTestAPI(t)
+	for _, update := range []string{
+		`UPDATE sessions SET expires_at = now() - interval '1 second'`,
+		`UPDATE sessions SET created_at = now() - interval '91 days', expires_at = now() + interval '1 day'`,
+	} {
+		cookie := signupForSync(t, api, "rejected-"+strconv.Itoa(len(update))+"@example.com")
+		if _, err := api.pool.Exec(context.Background(), update+` WHERE token_hash = $1`, auth.HashSessionToken(cookie.Value)); err != nil {
+			t.Fatalf("update session: %v", err)
+		}
+		if response := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie); response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: /me status = %d, want 401", update, response.Code)
+		}
+	}
+}
+
+func TestAuthLimiterPerIP(t *testing.T) {
+	api := newTestAPI(t)
+	for i := 0; i < ipAttemptLimit; i++ {
+		path := "/login"
+		if i%2 == 0 {
+			path = "/signup"
+		}
+		if response := doAuthFrom(api.handler, path, `{}`, "198.51.100.7:"+strconv.Itoa(1000+i), nil); response.Code != http.StatusBadRequest {
+			t.Fatalf("request %d status = %d, want 400", i, response.Code)
+		}
+	}
+	spoofed := http.Header{"X-Forwarded-For": {"203.0.113.9"}}
+	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", `{}`, "198.51.100.7:2000", spoofed), 60)
+
+	blockedSignup := doAuthFrom(api.handler, "/signup", `{"email":"blocked@example.com","password":"correct password"}`, "198.51.100.7:2001", nil)
+	assertTooManyAttempts(t, blockedSignup, 60)
+	var users int
+	if err := api.pool.QueryRow(context.Background(), `SELECT count(*) FROM users`).Scan(&users); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if users != 0 {
+		t.Fatalf("users = %d, want 0: a limited signup must not hash or insert", users)
+	}
+
+	if response := doAuthFrom(api.handler, "/login", `{}`, "198.51.100.8:1000", nil); response.Code != http.StatusBadRequest {
+		t.Fatalf("other IP status = %d, want 400", response.Code)
+	}
+}
+
+func TestAuthLimiterPerAccountChecksBeforePassword(t *testing.T) {
+	api := newTestAPI(t)
+	signupForSync(t, api, "locked@example.com")
+	for i := 0; i < loginFailureLimit; i++ {
+		if response := doJSON(api.handler, http.MethodPost, "/login", `{"email":" LOCKED@example.com ","password":"wrong password"}`); response.Code != http.StatusUnauthorized {
+			t.Fatalf("failure %d status = %d, want 401", i, response.Code)
+		}
+	}
+	// The correct password would succeed, so a 429 proves the limit runs before password verification.
+	assertTooManyAttempts(t, doJSON(api.handler, http.MethodPost, "/login", `{"email":"locked@example.com","password":"correct password"}`), 900)
+
+	signupForSync(t, api, "other@example.com")
+	if response := doJSON(api.handler, http.MethodPost, "/login", `{"email":"other@example.com","password":"correct password"}`); response.Code != http.StatusOK {
+		t.Fatalf("other account status = %d, want 200", response.Code)
+	}
+}
+
+func TestSuccessfulLoginClearsAccountFailures(t *testing.T) {
+	api := newTestAPI(t)
+	signupForSync(t, api, "clears@example.com")
+	login := func(i int, password string) int {
+		return doAuthFrom(api.handler, "/login", `{"email":"clears@example.com","password":"`+password+`"}`, "198.51.100."+strconv.Itoa(10+i)+":1000", nil).Code
+	}
+	for i := 0; i < loginFailureLimit-1; i++ {
+		if code := login(i, "wrong password"); code != http.StatusUnauthorized {
+			t.Fatalf("failure %d status = %d, want 401", i, code)
+		}
+	}
+	if code := login(20, "correct password"); code != http.StatusOK {
+		t.Fatalf("login status = %d, want 200", code)
+	}
+	for i := 0; i < loginFailureLimit-1; i++ {
+		if code := login(30+i, "wrong password"); code != http.StatusUnauthorized {
+			t.Fatalf("failure after success %d status = %d, want 401", i, code)
+		}
+	}
+	if code := login(50, "correct password"); code != http.StatusOK {
+		t.Fatalf("login after cleared failures status = %d, want 200", code)
 	}
 }

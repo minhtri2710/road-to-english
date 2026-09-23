@@ -19,6 +19,9 @@ var (
 
 const SessionTTL = 30 * 24 * time.Hour
 
+// SessionMaxLifetime caps rolling extension: a session is invalid this long after it was created.
+const SessionMaxLifetime = 90 * 24 * time.Hour
+
 const dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 func HashPassword(plain string) (string, error) {

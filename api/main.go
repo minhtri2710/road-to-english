@@ -9,10 +9,13 @@ import (
 	"io"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -43,6 +46,7 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
+	limiter := newAuthLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /lessons", func(w http.ResponseWriter, _ *http.Request) {
@@ -57,6 +61,9 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 		writeJSON(w, http.StatusOK, lesson)
 	})
 	mux.HandleFunc("POST /signup", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.allowIP(w, r) {
+			return
+		}
 		credentials, ok := decodeCredentials(w, r)
 		if !ok {
 			return
@@ -95,6 +102,9 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 		writeUser(w, user)
 	})
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.allowIP(w, r) {
+			return
+		}
 		credentials, ok := decodeCredentials(w, r)
 		if !ok {
 			return
@@ -104,10 +114,14 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
 			return
 		}
+		if !limiter.allowAccount(w, credentials.Email) {
+			return
+		}
 		user, passwordHash, err := repo.GetUserByEmail(r.Context(), credentials.Email)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserNotFound) {
 				auth.CheckDummyPassword(credentials.Password)
+				limiter.recordFailure(credentials.Email)
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 				return
 			}
@@ -115,9 +129,11 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 			return
 		}
 		if !auth.CheckPassword(passwordHash, credentials.Password) {
+			limiter.recordFailure(credentials.Email)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 			return
 		}
+		limiter.clearFailures(credentials.Email)
 		if !setSessionCookie(w, r, repo, user.ID) {
 			return
 		}
@@ -149,6 +165,123 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 		syncHandler(w, r, repo)
 	})))
 	return mux
+}
+
+const (
+	ipAttemptLimit     = 20
+	ipAttemptWindow    = time.Minute
+	loginFailureLimit  = 10
+	loginFailureWindow = 15 * time.Minute
+	limiterMaxEntries  = 10000
+)
+
+type limitWindow struct {
+	start time.Time
+	count int
+}
+
+// ponytail: in-memory, single-instance limiter; move to a shared store if the api runs more than one instance.
+type authLimiter struct {
+	mu       sync.Mutex
+	ips      map[string]*limitWindow
+	failures map[string]*limitWindow
+}
+
+func newAuthLimiter() *authLimiter {
+	return &authLimiter{ips: map[string]*limitWindow{}, failures: map[string]*limitWindow{}}
+}
+
+// current returns key's live window, dropping expired entries; nil when none is live.
+func current(windows map[string]*limitWindow, key string, length time.Duration, now time.Time) *limitWindow {
+	entry := windows[key]
+	if entry != nil && !now.Before(entry.start.Add(length)) {
+		delete(windows, key)
+		return nil
+	}
+	return entry
+}
+
+// admit starts a window for key, sweeping expired entries when the map is full. It fails closed when every entry is live.
+func admit(windows map[string]*limitWindow, key string, length time.Duration, now time.Time) *limitWindow {
+	if len(windows) >= limiterMaxEntries {
+		for other, entry := range windows {
+			if !now.Before(entry.start.Add(length)) {
+				delete(windows, other)
+			}
+		}
+		if len(windows) >= limiterMaxEntries {
+			return nil
+		}
+	}
+	entry := &limitWindow{start: now}
+	windows[key] = entry
+	return entry
+}
+
+func writeTooManyAttempts(w http.ResponseWriter, retryAfter time.Duration) {
+	seconds := int((retryAfter + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many attempts"})
+}
+
+// allowIP counts one auth request for the client's RemoteAddr host; X-Forwarded-For is not trusted.
+func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	entry := current(l.ips, host, ipAttemptWindow, now)
+	if entry == nil {
+		entry = admit(l.ips, host, ipAttemptWindow, now)
+		if entry == nil {
+			writeTooManyAttempts(w, ipAttemptWindow)
+			return false
+		}
+	}
+	if entry.count >= ipAttemptLimit {
+		writeTooManyAttempts(w, entry.start.Add(ipAttemptWindow).Sub(now))
+		return false
+	}
+	entry.count++
+	return true
+}
+
+func (l *authLimiter) allowAccount(w http.ResponseWriter, email string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	entry := current(l.failures, email, loginFailureWindow, now)
+	if entry != nil && entry.count >= loginFailureLimit {
+		writeTooManyAttempts(w, entry.start.Add(loginFailureWindow).Sub(now))
+		return false
+	}
+	return true
+}
+
+func (l *authLimiter) recordFailure(email string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	entry := current(l.failures, email, loginFailureWindow, now)
+	if entry == nil {
+		entry = admit(l.failures, email, loginFailureWindow, now)
+		if entry == nil {
+			return
+		}
+	}
+	entry.count++
+}
+
+func (l *authLimiter) clearFailures(email string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.failures, email)
 }
 
 func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, bool) {
@@ -321,17 +454,21 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, repo *storage.Repo
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return false
 	}
+	writeSessionCookie(w, rawToken, expiresAt, auth.SessionTTL)
+	return true
+}
+
+func writeSessionCookie(w http.ResponseWriter, rawToken string, expiresAt time.Time, maxAge time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    rawToken,
 		Path:     "/",
 		Expires:  expiresAt,
-		MaxAge:   int(auth.SessionTTL / time.Second),
+		MaxAge:   int(maxAge / time.Second),
 		HttpOnly: true,
 		Secure:   false,
 		SameSite: http.SameSiteLaxMode,
 	})
-	return true
 }
 
 func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
@@ -354,7 +491,7 @@ func authMiddleware(repo *storage.Repository, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
-		userID, err := repo.GetSession(r.Context(), auth.HashSessionToken(cookie.Value))
+		session, err := repo.GetSession(r.Context(), auth.HashSessionToken(cookie.Value))
 		if err != nil {
 			if errors.Is(err, storage.ErrSessionInvalid) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
@@ -363,7 +500,10 @@ func authMiddleware(repo *storage.Repository, next http.Handler) http.Handler {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDContextKey, userID)))
+		if session.Extended {
+			writeSessionCookie(w, cookie.Value, session.ExpiresAt, time.Until(session.ExpiresAt))
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDContextKey, session.UserID)))
 	})
 }
 

@@ -1176,7 +1176,7 @@ describe("App", () => {
     container.remove();
   });
 
-  it("shows the password policy message for a sign-up 400", async () => {
+  it("shows the email and password message for a sign-up 400", async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       const path = new URL(url, "http://localhost").pathname;
@@ -1207,11 +1207,11 @@ describe("App", () => {
         ?.click();
     });
     await waitForCondition(() => container.textContent?.includes(
-      "Password must be at least 8 characters (and at most 72 bytes).",
+      "Check your email address and password. Password must be at least 8 characters (and at most 72 bytes).",
     ) ?? false);
 
     expect(container.textContent).toContain(
-      "Password must be at least 8 characters (and at most 72 bytes).",
+      "Check your email address and password. Password must be at least 8 characters (and at most 72 bytes).",
     );
 
     await act(async () => root.unmount());
@@ -3464,6 +3464,222 @@ describe("App", () => {
       });
       await waitForCondition(hasText(container, "Daily Routine"));
       expect(document.activeElement).toBe(libraryToggle);
+      await unmount();
+    });
+  });
+
+  describe("sync status, session loss, and account errors", () => {
+    const originalStorage = Object.getOwnPropertyDescriptor(navigator, "storage");
+
+    afterEach(() => {
+      restoreProperty(navigator, "storage", originalStorage);
+    });
+
+    function pathOf(input: Parameters<typeof fetch>[0]): string {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname;
+    }
+
+    function userResponse(): Response {
+      return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
+    }
+
+    function callsTo(path: string): number {
+      return fetchMock.mock.calls.filter(([input]) => pathOf(input) === path).length;
+    }
+
+    async function renderApp(route: (path: string) => Response | undefined) {
+      fetchMock.mockImplementation(async (input) => {
+        const path = pathOf(input);
+        return route(path) ?? responseFor(path);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      const unmount = async () => {
+        await act(async () => root.unmount());
+        container.remove();
+      };
+      return { container, unmount };
+    }
+
+    async function fillAccountForm(container: HTMLElement, emailValue: string, passwordValue: string, buttonText: string) {
+      const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+      const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+      if (!email || !password) throw new Error("account form not found");
+      await act(async () => {
+        setInputValue(email, emailValue);
+        setInputValue(password, passwordValue);
+        Array.from(container.querySelectorAll("button"))
+          .find((button) => button.textContent === buttonText)
+          ?.click();
+      });
+    }
+
+    const syncFailed = "Couldn't sync. Your changes are saved on this device and will sync when you're back online.";
+
+    it("shows a failed sync and clears it when an online event re-syncs", async () => {
+      let offline = true;
+      const { container, unmount } = await renderApp((path) => {
+        if (path === "/me") return userResponse();
+        if (path === "/sync" && offline) throw new TypeError("Failed to fetch");
+        return undefined;
+      });
+      await waitForCondition(() => container.textContent?.includes(syncFailed) ?? false);
+      expect(container.textContent).toContain("restored@example.com");
+
+      offline = false;
+      const before = callsTo("/sync");
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+      });
+      await waitForCondition(() => !(container.textContent?.includes(syncFailed) ?? true));
+      expect(callsTo("/sync")).toBe(before + 1);
+
+      await unmount();
+    });
+
+    it("re-syncs when the window gains focus", async () => {
+      const { container, unmount } = await renderApp((path) => (path === "/me" ? userResponse() : undefined));
+      await waitForCondition(() => callsTo("/sync") === 1);
+
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitForCondition(() => callsTo("/sync") === 2);
+      expect(container.textContent).toContain("restored@example.com");
+
+      await unmount();
+    });
+
+    it("signs the user out with a message when sync returns 401", async () => {
+      const { container, unmount } = await renderApp((path) => {
+        if (path === "/me") return userResponse();
+        if (path === "/sync") return new Response(null, { status: 401 });
+        return undefined;
+      });
+      await waitForCondition(() => container.textContent?.includes("You were signed out. Sign in again to sync.") ?? false);
+      expect(container.textContent).not.toContain("restored@example.com");
+      expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
+      expect(container.textContent).not.toContain(syncFailed);
+
+      await unmount();
+    });
+
+    it("shows a friendly line when /me is offline and signs in when an online event retries it", async () => {
+      let offline = true;
+      const { container, unmount } = await renderApp((path) => {
+        if (path === "/me") {
+          if (offline) throw new TypeError("Failed to fetch");
+          return userResponse();
+        }
+        return undefined;
+      });
+      await waitForCondition(() => container.textContent?.includes("Can't reach the server. You can keep practising on this device.") ?? false);
+      expect(container.textContent).not.toContain("Failed to fetch");
+
+      offline = false;
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+      });
+      await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
+      expect(container.textContent).not.toContain("Can't reach the server");
+
+      await unmount();
+    });
+
+    it("does not retry /me on online after a server error", async () => {
+      const { container, unmount } = await renderApp((path) => (path === "/me" ? new Response(null, { status: 500 }) : undefined));
+      await waitForCondition(() => container.textContent?.includes("Unable to complete account request. Please try again.") ?? false);
+      const before = callsTo("/me");
+
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+      });
+      expect(callsTo("/me")).toBe(before);
+
+      await unmount();
+    });
+
+    it("sends no sign-up request for an invalid email", async () => {
+      const { container, unmount } = await renderApp(() => undefined);
+      await fillAccountForm(container, "not-an-email", "password", "Sign up");
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(callsTo("/signup")).toBe(0);
+
+      await unmount();
+    });
+
+    it("shows the too-many-attempts line for a 429", async () => {
+      const { container, unmount } = await renderApp((path) => (path === "/login" ? new Response(null, { status: 429 }) : undefined));
+      await fillAccountForm(container, "learner@example.com", "password", "Sign in");
+      await waitForCondition(() => container.textContent?.includes("Too many attempts. Try again in a few minutes.") ?? false);
+
+      await unmount();
+    });
+
+    async function importConfirmText(signedIn: boolean): Promise<string> {
+      const confirm = vi.fn<(message?: string) => boolean>(() => false);
+      vi.stubGlobal("confirm", confirm);
+      const { container, unmount } = await renderApp((path) => (path === "/me" && signedIn ? userResponse() : undefined));
+      if (signedIn) {
+        await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
+      }
+      const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("backup file input not found");
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      await act(async () => {
+        Object.defineProperty(input, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(() => confirm.mock.calls.length === 1);
+      await unmount();
+      return confirm.mock.calls[0]?.[0] ?? "";
+    }
+
+    it("words the import confirm for signed-out and signed-in users", async () => {
+      expect(await importConfirmText(false)).toBe(
+        "Importing this backup will replace all local data on this device. Continue?",
+      );
+      expect(await importConfirmText(true)).toBe(
+        "Importing this backup will replace all local data on this device. Your next sync merges it with your account, so cards and progress already in your account stay. Continue?",
+      );
+    });
+
+    const kept = "Storage: kept on this device.";
+    const mayClear = "Storage: the browser may clear this data when space is low. Export a backup or sign in to keep it.";
+
+    it.each([
+      ["granted", () => Promise.resolve(true), kept],
+      ["denied", () => Promise.resolve(false), mayClear],
+      ["rejected", () => Promise.reject(new Error("blocked")), mayClear],
+      ["absent", undefined, mayClear],
+    ] as const)("shows the storage line when persistence is %s", async (_name, persist, expected) => {
+      const persistMock = persist && vi.fn(persist);
+      Object.defineProperty(navigator, "storage", {
+        configurable: true,
+        value: persistMock ? { persist: persistMock } : undefined,
+      });
+      const { container, unmount } = await renderApp(() => undefined);
+      await waitForCondition(() => container.textContent?.includes(expected) ?? false);
+      if (persistMock) {
+        expect(persistMock).toHaveBeenCalledTimes(1);
+      }
+      expect(container.textContent).not.toContain("blocked");
+
       await unmount();
     });
   });
