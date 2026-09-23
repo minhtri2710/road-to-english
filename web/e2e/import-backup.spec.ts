@@ -1,0 +1,43 @@
+import { downloadText, expect, test } from "./fixtures";
+
+const TITLE = "My pasted text";
+const TEXT = "The first sentence is short. The second one follows.\n\nA new paragraph starts here.";
+
+test("import text, export a backup, delete, restore from the backup", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Title").fill(TITLE);
+  await page.getByLabel("Text", { exact: true }).fill(TEXT);
+  await page.getByRole("button", { name: "Create" }).click();
+
+  await expect(page.getByRole("heading", { level: 2, name: TITLE })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Listen" })).toHaveCount(3);
+  await expect(page.getByText("A new paragraph starts here.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+  const deleteButton = page.getByRole("button", { name: `Delete ${TITLE}` });
+  await expect(deleteButton).toBeVisible();
+  await expect(page.getByText("B1 · 3 sentences")).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const download = await downloadPromise;
+  const backupPath = await download.path();
+  const backup = JSON.parse(await downloadText(download)) as { userLessons: { title: string }[] };
+  expect(backup.userLessons.map((lesson) => lesson.title)).toEqual([TITLE]);
+
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain(`Delete "${TITLE}"?`);
+    void dialog.accept();
+  });
+  await deleteButton.click();
+  await expect(page.getByText("No lessons of your own yet.")).toBeVisible();
+
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("replace all local data");
+    void dialog.accept();
+  });
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await (await chooserPromise).setFiles(backupPath);
+  await expect(page.getByRole("button", { name: `Delete ${TITLE}` })).toBeVisible();
+});
