@@ -33,21 +33,24 @@ export function useAuth(): AuthState {
   const [expired, setExpired] = useState(false);
   // Set while the last /me attempt failed on the network; an `online` event then retries it.
   const meNetworkFailed = useRef(false);
+  // Bumped when an explicit auth action sets the user; a /me started before it must not overwrite that.
+  const generation = useRef(0);
 
   useEffect(() => {
     let active = true;
 
     const restore = () => {
       meNetworkFailed.current = false;
+      const started = generation.current;
       fetchMe()
         .then((currentUser) => {
-          if (active) {
+          if (active && started === generation.current) {
             setUser(currentUser);
             setError(null);
           }
         })
         .catch((requestError: unknown) => {
-          if (active) {
+          if (active && started === generation.current) {
             meNetworkFailed.current = !(requestError instanceof ApiError);
             setError(
               requestError instanceof Error
@@ -83,7 +86,9 @@ export function useAuth(): AuthState {
   ) => {
     setError(null);
     try {
-      setUser(await request(email, password));
+      const nextUser = await request(email, password);
+      generation.current++;
+      setUser(nextUser);
       meNetworkFailed.current = false;
       setExpired(false);
     } catch (requestError: unknown) {
@@ -104,6 +109,7 @@ export function useAuth(): AuthState {
     setError(null);
     try {
       await requestSignOut();
+      generation.current++;
       setUser(null);
     } catch (requestError: unknown) {
       const nextError =
@@ -116,6 +122,7 @@ export function useAuth(): AuthState {
   };
 
   const expire = useCallback(() => {
+    generation.current++;
     setUser(null);
     setError(null);
     setExpired(true);

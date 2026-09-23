@@ -991,6 +991,37 @@ func TestAuthLimiterPerIP(t *testing.T) {
 	}
 }
 
+func TestAuthLimiterKeysIPv6By64(t *testing.T) {
+	limiter := newAuthLimiter()
+	allow := func(remoteAddr string) bool {
+		req := httptest.NewRequest(http.MethodPost, "/login", nil)
+		req.RemoteAddr = remoteAddr
+		return limiter.allowIP(httptest.NewRecorder(), req)
+	}
+	for i := 0; i < ipAttemptLimit; i++ {
+		if !allow("[2001:db8:1:2::" + strconv.FormatInt(int64(i+1), 16) + "]:1000") {
+			t.Fatalf("IPv6 request %d refused", i)
+		}
+	}
+	if allow("[2001:db8:1:2:ffff:ffff:ffff:ffff]:1000") {
+		t.Fatal("another address in the same /64 was allowed past the limit")
+	}
+	if !allow("[2001:db8:1:3::1]:1000") {
+		t.Fatal("an address in a different /64 was refused")
+	}
+	for i := 0; i < ipAttemptLimit; i++ {
+		if !allow("198.51.100.7:1000") {
+			t.Fatalf("IPv4 request %d refused", i)
+		}
+	}
+	if allow("198.51.100.7:1001") {
+		t.Fatal("IPv4 address allowed past the limit")
+	}
+	if !allow("198.51.100.8:1000") {
+		t.Fatal("a different IPv4 address was refused")
+	}
+}
+
 func TestAuthLimiterPerAccountChecksBeforePassword(t *testing.T) {
 	api := newTestAPI(t)
 	signupForSync(t, api, "locked@example.com")

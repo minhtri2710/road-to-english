@@ -180,7 +180,7 @@ type limitWindow struct {
 	count int
 }
 
-// ponytail: in-memory, single-instance limiter; move to a shared store if the api runs more than one instance.
+// ponytail: in-memory, single-instance limiter keyed per IPv4 address or IPv6 /64; move to a shared store if the api runs more than one instance.
 type authLimiter struct {
 	mu       sync.Mutex
 	ips      map[string]*limitWindow
@@ -228,10 +228,14 @@ func writeTooManyAttempts(w http.ResponseWriter, retryAfter time.Duration) {
 }
 
 // allowIP counts one auth request for the client's RemoteAddr host; X-Forwarded-For is not trusted.
+// IPv6 clients are keyed by their /64 so rotating addresses within it cannot fill the map.
 func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		host = ip.Mask(net.CIDRMask(64, 128)).String()
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
