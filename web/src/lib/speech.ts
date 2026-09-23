@@ -3,13 +3,13 @@ export const WPM_AT_RATE_ONE = 180;
 
 let current: SpeechSynthesisUtterance | null = null;
 
-// onEnd runs only if this utterance is still current, so a cancelled or superseded
-// utterance's late onend never triggers follow-up speech.
+// onEnd and onWord run only if this utterance is still current, so a cancelled or
+// superseded utterance's late events never trigger follow-up speech or highlights.
 export function speak(
   text: string,
   targetWpm: number,
   speed: number,
-  onEnd?: () => void,
+  options: { onEnd?: () => void; onWord?: (charIndex: number) => void } = {},
 ): SpeechSynthesisUtterance {
   current = null;
   window.speechSynthesis.cancel();
@@ -21,7 +21,12 @@ export function speak(
       return;
     }
     current = null;
-    onEnd?.();
+    options.onEnd?.();
+  };
+  utterance.onboundary = (event) => {
+    if (event.name === "word" && current === utterance) {
+      options.onWord?.(event.charIndex);
+    }
   };
   current = utterance;
   window.speechSynthesis.speak(utterance);

@@ -70,6 +70,9 @@ const appStyles = stylex.create({
   sentenceWord: {
     paddingInline: "0.125rem",
   },
+  spokenWord: {
+    backgroundColor: "var(--color-warning-muted)",
+  },
   wordCorrect: {
     color: "var(--color-success)",
   },
@@ -133,12 +136,34 @@ function readDailyGoal(): DailyGoal {
   return DAILY_GOALS.find((goal) => goal === stored) ?? "10";
 }
 
+// Reference speech highlights the spoken word of its sentence. Any start or end
+// clears the highlight; speak's current-utterance guard drops superseded events.
+function playReference(
+  text: string,
+  targetWpm: number,
+  speed: number,
+  sentenceId: string,
+  setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void,
+  onEnd?: () => void,
+): SpeechSynthesisUtterance {
+  setSpokenWord(null);
+  return speak(text, targetWpm, speed, {
+    onWord: (charIndex) => setSpokenWord({ sentenceId, charIndex }),
+    onEnd: () => {
+      setSpokenWord(null);
+      onEnd?.();
+    },
+  });
+}
+
 function SentenceShadowing({
   text,
   targetWpm,
   speed,
   looping,
   setLooping,
+  sentenceId,
+  setSpokenWord,
   recordPractice,
 }: {
   text: string;
@@ -146,6 +171,8 @@ function SentenceShadowing({
   speed: number;
   looping: boolean;
   setLooping: (looping: boolean) => void;
+  sentenceId: string;
+  setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
 }) {
   const recorder = useRecorder();
@@ -171,11 +198,14 @@ function SentenceShadowing({
     }
     let latest: SpeechSynthesisUtterance | null = null;
     const repeat = () => {
-      latest = speak(text, targetWpm, speed, repeat);
+      latest = playReference(text, targetWpm, speed, sentenceId, setSpokenWord, repeat);
     };
     repeat();
-    return () => stopSpeaking(latest);
-  }, [looping, speed, targetWpm, text]);
+    return () => {
+      stopSpeaking(latest);
+      setSpokenWord(null);
+    };
+  }, [looping, speed, targetWpm, text, sentenceId, setSpokenWord]);
 
   return (
     <VStack gap={1}>
@@ -186,7 +216,7 @@ function SentenceShadowing({
           isDisabled={!speechSupported}
           onClick={() => {
             setLooping(false);
-            speak(text, targetWpm, speed);
+            playReference(text, targetWpm, speed, sentenceId, setSpokenWord);
           }}
         />
         <ToggleButton
@@ -213,7 +243,7 @@ function SentenceShadowing({
           onClick={() => {
             setLooping(false);
             setPlayBlocked(false);
-            speak(text, targetWpm, speed, () => {
+            playReference(text, targetWpm, speed, sentenceId, setSpokenWord, () => {
               audioRef.current?.play().catch(() => setPlayBlocked(true));
             });
           }}
@@ -563,32 +593,42 @@ function sentenceCard(
 
 // Splits on letter/digit runs (apostrophes kept, so "What's" is one word) and
 // renders each run whose normalize() is a single token as a button; everything
-// else stays plain text, so the sentence text reads exactly as authored.
+// else stays plain text, so the sentence text reads exactly as authored. The
+// word whose character range holds spokenChar is marked as currently spoken.
 function SentenceWords({
   text,
   selected,
+  spokenChar,
   onSelect,
 }: {
   text: string;
   selected: string | null;
+  spokenChar: number | null;
   onSelect: (text: string) => void;
 }) {
+  let start = 0;
   return (
     <Text as="p">
-      {text.split(/([A-Za-z0-9'’]+)/).map((part, index) =>
-        isCardWord(normalize(part)) ? (
+      {text.split(/([A-Za-z0-9'’]+)/).map((part, index) => {
+        const partStart = start;
+        start += part.length;
+        if (!isCardWord(normalize(part))) {
+          return part;
+        }
+        const spoken =
+          spokenChar !== null && spokenChar >= partStart && spokenChar < start;
+        return (
           <Button
             key={index}
             label={part}
             size="sm"
             variant={part === selected ? "secondary" : "ghost"}
-            xstyle={appStyles.sentenceWord}
+            aria-current={spoken ? "true" : undefined}
+            xstyle={[appStyles.sentenceWord, spoken && appStyles.spokenWord]}
             onClick={() => onSelect(part)}
           />
-        ) : (
-          part
-        ),
-      )}
+        );
+      })}
     </Text>
   );
 }
@@ -785,6 +825,10 @@ function LessonDetail({
     sentenceId: string;
     text: string;
   } | null>(null);
+  const [spokenWord, setSpokenWord] = useState<{
+    sentenceId: string;
+    charIndex: number;
+  } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -837,6 +881,7 @@ function LessonDetail({
           if (nextMode) {
             setMode(nextMode as "shadow" | "dictation");
             setLoopingSentenceId(null);
+            setSpokenWord(null);
           }
         }}
         xstyle={appStyles.modeToggle}
@@ -885,6 +930,11 @@ function LessonDetail({
                           ? selectedWord.text
                           : null
                       }
+                      spokenChar={
+                        spokenWord?.sentenceId === sentence.id
+                          ? spokenWord.charIndex
+                          : null
+                      }
                       onSelect={(text) =>
                         setSelectedWord({ sentenceId: sentence.id, text })
                       }
@@ -917,6 +967,7 @@ function LessonDetail({
                       addCard={addCard}
                       hear={() => {
                         setLoopingSentenceId(null);
+                        setSpokenWord(null);
                         speak(selectedWord.text, data.targetWpm, Number(speed));
                       }}
                     />
@@ -929,6 +980,8 @@ function LessonDetail({
                     setLooping={(looping) =>
                       setLoopingSentenceId(looping ? sentence.id : null)
                     }
+                    sentenceId={sentence.id}
+                    setSpokenWord={setSpokenWord}
                     recordPractice={recordPractice}
                   />
                   <SaveToReview

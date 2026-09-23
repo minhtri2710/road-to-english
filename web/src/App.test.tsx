@@ -129,6 +129,7 @@ interface FakeSpokenUtterance {
   text: string;
   rate: number;
   onend: (() => void) | null;
+  onboundary: ((event: { name: string; charIndex: number }) => void) | null;
 }
 
 // Models the engine: speak queues, cancel drops the queue and fires each dropped
@@ -149,6 +150,7 @@ function installSpeechFakes() {
     lang = "";
     rate = 1;
     onend: (() => void) | null = null;
+    onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
     constructor(readonly text: string) {}
   }
   vi.stubGlobal("speechSynthesis", { speak, cancel });
@@ -1131,6 +1133,63 @@ describe("App", () => {
       high.root.unmount();
     });
     high.container.remove();
+  });
+
+  it("highlights the spoken word of the playing sentence and clears it on end", async () => {
+    const speech = installSpeechFakes();
+    const { container, root } = await openLesson();
+    const spokenWords = () =>
+      Array.from(container.querySelectorAll('[aria-current="true"]')).map(
+        (element) => element.textContent,
+      );
+    const boundary = (charIndex: number) =>
+      act(async () => {
+        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex });
+      });
+
+    await act(async () => {
+      buttonsNamed(container, "Listen")[0]?.click();
+    });
+    expect(spokenWords()).toEqual([]);
+    await boundary(0);
+    expect(spokenWords()).toEqual(["Good"]);
+    await boundary(14);
+    expect(spokenWords()).toEqual(["how"]);
+    await boundary(7);
+    expect(spokenWords()).toEqual(["morning"]);
+    await act(async () => {
+      speech.finish();
+    });
+    expect(spokenWords()).toEqual([]);
+
+    await act(async () => {
+      buttonsNamed(container, "Listen")[0]?.click();
+    });
+    await act(async () => {
+      speech.finish();
+    });
+    expect(spokenWords()).toEqual([]);
+
+    await act(async () => {
+      buttonsNamed(container, "Listen")[0]?.click();
+    });
+    const first = speech.spoken.at(-1);
+    await boundary(0);
+    await act(async () => {
+      buttonsNamed(container, "Listen")[1]?.click();
+    });
+    expect(spokenWords()).toEqual([]);
+    await act(async () => {
+      first?.onboundary?.({ name: "word", charIndex: 5 });
+    });
+    expect(spokenWords()).toEqual([]);
+    await boundary(3);
+    expect(spokenWords()).toEqual(["is"]);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   it("loops a sentence until toggled off, another sentence starts, or unmount", async () => {
