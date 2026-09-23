@@ -23,11 +23,12 @@ export const greetingsLesson = {
   level: "A2",
   targetWpm: 90,
   sentences: [
-    { id: "greetings-basics-1", text: "Good morning, how are you today?" },
-    { id: "greetings-basics-2", text: "It is nice to meet you." },
+    { id: "greetings-basics-1", text: "Good morning, how are you today?", vi: "Chào buổi sáng, hôm nay bạn thế nào?" },
+    { id: "greetings-basics-2", text: "It is nice to meet you.", vi: "Rất vui được gặp bạn." },
     {
       id: "greetings-basics-3",
       text: "See you tomorrow.",
+      vi: "Hẹn gặp lại ngày mai.",
       notes: "casual sign-off",
     },
   ],

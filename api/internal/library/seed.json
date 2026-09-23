@@ -5,9 +5,66 @@
     "level": "A2",
     "targetWpm": 90,
     "sentences": [
-      { "id": "greetings-basics-1", "text": "Good morning, how are you today?" },
-      { "id": "greetings-basics-2", "text": "It is nice to meet you." },
-      { "id": "greetings-basics-3", "text": "See you tomorrow.", "notes": "casual sign-off" }
+      { "id": "greetings-basics-1", "text": "Good morning, how are you today?", "vi": "Chào buổi sáng, hôm nay bạn thế nào?" },
+      { "id": "greetings-basics-2", "text": "It is nice to meet you.", "vi": "Rất vui được gặp bạn." },
+      { "id": "greetings-basics-3", "text": "See you tomorrow.", "vi": "Hẹn gặp lại ngày mai.", "notes": "casual sign-off" },
+      { "id": "greetings-basics-4", "text": "What's your name?", "vi": "Bạn tên là gì?", "notes": "\"What's your\" often sounds like \"wotcher\"" },
+      { "id": "greetings-basics-5", "text": "I'm from Vietnam, and I live in Hanoi.", "vi": "Tôi đến từ Việt Nam và tôi sống ở Hà Nội." },
+      { "id": "greetings-basics-6", "text": "Sorry, could you say that again?", "vi": "Xin lỗi, bạn có thể nói lại được không?" },
+      { "id": "greetings-basics-7", "text": "Thanks a lot for your help.", "vi": "Cảm ơn bạn rất nhiều vì đã giúp đỡ.", "notes": "link \"thanks a lot\": thank-sa-lot" },
+      { "id": "greetings-basics-8", "text": "Have a good weekend!", "vi": "Chúc bạn cuối tuần vui vẻ!" },
+      { "id": "greetings-basics-9", "text": "Long time no see. How have you been?", "vi": "Lâu rồi không gặp. Dạo này bạn thế nào?" }
+    ]
+  },
+  {
+    "id": "shopping-basics",
+    "title": "Shopping Basics",
+    "level": "A2",
+    "targetWpm": 95,
+    "sentences": [
+      { "id": "shopping-basics-1", "text": "How much is this shirt?", "vi": "Cái áo sơ mi này bao nhiêu tiền?", "notes": "shirt /ʃɜːrt/: start with \"sh\", not \"s\"" },
+      { "id": "shopping-basics-2", "text": "Do you have it in a smaller size?", "vi": "Bạn có cỡ nhỏ hơn không?" },
+      { "id": "shopping-basics-3", "text": "Can I try it on?", "vi": "Tôi mặc thử được không?", "notes": "link \"try it on\": try-i-ton" },
+      { "id": "shopping-basics-4", "text": "I'm just looking, thanks.", "vi": "Tôi chỉ xem thôi, cảm ơn." },
+      { "id": "shopping-basics-5", "text": "Can I pay by card?", "vi": "Tôi trả bằng thẻ được không?" },
+      { "id": "shopping-basics-6", "text": "Where is the fitting room?", "vi": "Phòng thử đồ ở đâu?" },
+      { "id": "shopping-basics-7", "text": "That's a bit too expensive for me.", "vi": "Cái đó hơi đắt so với tôi." },
+      { "id": "shopping-basics-8", "text": "I'll take two of these, please.", "vi": "Cho tôi lấy hai cái này nhé." },
+      { "id": "shopping-basics-9", "text": "Could I have a bag, please?", "vi": "Cho tôi xin một cái túi được không?" }
+    ]
+  },
+  {
+    "id": "food-and-drinks",
+    "title": "Food & Drinks",
+    "level": "A2",
+    "targetWpm": 95,
+    "sentences": [
+      { "id": "food-and-drinks-1", "text": "A table for two, please.", "vi": "Cho tôi một bàn hai người." },
+      { "id": "food-and-drinks-2", "text": "Can I see the menu?", "vi": "Cho tôi xem thực đơn được không?", "notes": "menu: stress on MEN" },
+      { "id": "food-and-drinks-3", "text": "I'd like a coffee with milk, please.", "vi": "Cho tôi một ly cà phê sữa." },
+      { "id": "food-and-drinks-4", "text": "Is this dish spicy?", "vi": "Món này có cay không?" },
+      { "id": "food-and-drinks-5", "text": "I don't eat meat.", "vi": "Tôi không ăn thịt." },
+      { "id": "food-and-drinks-6", "text": "Could we have some more water?", "vi": "Cho chúng tôi thêm ít nước được không?" },
+      { "id": "food-and-drinks-7", "text": "This soup is really delicious.", "vi": "Món súp này ngon thật." },
+      { "id": "food-and-drinks-8", "text": "Can we have the bill, please?", "vi": "Cho chúng tôi tính tiền nhé." },
+      { "id": "food-and-drinks-9", "text": "Let's get something to eat after class.", "vi": "Tan học mình đi ăn gì đó nhé." }
+    ]
+  },
+  {
+    "id": "asking-directions",
+    "title": "Asking for Directions",
+    "level": "A2",
+    "targetWpm": 100,
+    "sentences": [
+      { "id": "asking-directions-1", "text": "Excuse me, where is the train station?", "vi": "Xin lỗi, ga tàu ở đâu ạ?" },
+      { "id": "asking-directions-2", "text": "Is it far from here?", "vi": "Chỗ đó có xa đây không?" },
+      { "id": "asking-directions-3", "text": "Go straight and turn left at the corner.", "vi": "Đi thẳng rồi rẽ trái ở góc đường." },
+      { "id": "asking-directions-4", "text": "It's next to the bank.", "vi": "Nó nằm cạnh ngân hàng." },
+      { "id": "asking-directions-5", "text": "You can walk there in five minutes.", "vi": "Bạn có thể đi bộ tới đó trong năm phút." },
+      { "id": "asking-directions-6", "text": "Which bus goes to the city center?", "vi": "Xe buýt nào đi vào trung tâm thành phố?" },
+      { "id": "asking-directions-7", "text": "I think I'm lost.", "vi": "Tôi nghĩ là tôi bị lạc rồi.", "notes": "lost /lɔːst/: keep the final \"st\"" },
+      { "id": "asking-directions-8", "text": "Take the second street on the right.", "vi": "Đi vào con đường thứ hai bên phải." },
+      { "id": "asking-directions-9", "text": "Can you show me on the map?", "vi": "Bạn chỉ cho tôi trên bản đồ được không?" }
     ]
   },
   {
@@ -16,9 +73,66 @@
     "level": "B1",
     "targetWpm": 110,
     "sentences": [
-      { "id": "daily-routine-1", "text": "I usually review my plans before breakfast." },
-      { "id": "daily-routine-2", "text": "A short walk helps me focus at work." },
-      { "id": "daily-routine-3", "text": "In the evening, I prepare for the next day." }
+      { "id": "daily-routine-1", "text": "I usually review my plans before breakfast.", "vi": "Tôi thường xem lại kế hoạch của mình trước bữa sáng." },
+      { "id": "daily-routine-2", "text": "A short walk helps me focus at work.", "vi": "Một cuộc đi bộ ngắn giúp tôi tập trung khi làm việc." },
+      { "id": "daily-routine-3", "text": "In the evening, I prepare for the next day.", "vi": "Buổi tối, tôi chuẩn bị cho ngày hôm sau." },
+      { "id": "daily-routine-4", "text": "My alarm goes off at six, but I hardly ever get up right away.", "vi": "Chuông báo thức reo lúc sáu giờ, nhưng tôi hầu như không bao giờ dậy ngay." },
+      { "id": "daily-routine-5", "text": "I take the bus to work because parking is a nightmare.", "vi": "Tôi đi xe buýt đi làm vì chỗ đậu xe là một cơn ác mộng." },
+      { "id": "daily-routine-6", "text": "I try to have lunch away from my desk.", "vi": "Tôi cố gắng ăn trưa xa bàn làm việc." },
+      { "id": "daily-routine-7", "text": "After work, I'm gonna pick up some groceries.", "vi": "Sau giờ làm, tôi sẽ đi mua ít đồ tạp hóa.", "notes": "\"gonna\" = going to, casual speech only" },
+      { "id": "daily-routine-8", "text": "On weekends, I sleep in and call my parents.", "vi": "Cuối tuần, tôi ngủ nướng và gọi điện cho bố mẹ." },
+      { "id": "daily-routine-9", "text": "I usually go to bed around eleven.", "vi": "Tôi thường đi ngủ khoảng mười một giờ." }
+    ]
+  },
+  {
+    "id": "travel-plans",
+    "title": "Travel Plans",
+    "level": "B1",
+    "targetWpm": 115,
+    "sentences": [
+      { "id": "travel-plans-1", "text": "We're thinking of going to Da Nang next month.", "vi": "Chúng tôi đang tính đi Đà Nẵng vào tháng tới." },
+      { "id": "travel-plans-2", "text": "I'd like to book a room for three nights.", "vi": "Tôi muốn đặt một phòng trong ba đêm." },
+      { "id": "travel-plans-3", "text": "Is breakfast included in the price?", "vi": "Giá phòng có bao gồm bữa sáng không?" },
+      { "id": "travel-plans-4", "text": "Our flight was delayed by two hours.", "vi": "Chuyến bay của chúng tôi bị hoãn hai tiếng." },
+      { "id": "travel-plans-5", "text": "Could you recommend somewhere to eat nearby?", "vi": "Bạn có thể gợi ý chỗ nào ăn gần đây không?" },
+      { "id": "travel-plans-6", "text": "I'd rather take the train than drive.", "vi": "Tôi thà đi tàu còn hơn lái xe." },
+      { "id": "travel-plans-7", "text": "Don't forget to bring your passport.", "vi": "Đừng quên mang theo hộ chiếu nhé.", "notes": "passport: stress on PASS" },
+      { "id": "travel-plans-8", "text": "What time do we need to check out?", "vi": "Mấy giờ chúng ta phải trả phòng?" },
+      { "id": "travel-plans-9", "text": "The view from the hotel was amazing.", "vi": "Cảnh nhìn từ khách sạn thật tuyệt vời." }
+    ]
+  },
+  {
+    "id": "phone-calls",
+    "title": "Phone Calls",
+    "level": "B1",
+    "targetWpm": 115,
+    "sentences": [
+      { "id": "phone-calls-1", "text": "Hi, this is Linh. Is Mark there?", "vi": "Chào, tôi là Linh đây. Có Mark ở đó không?", "notes": "on the phone, say \"this is\", not \"I am\"" },
+      { "id": "phone-calls-2", "text": "Sorry, you're breaking up. Can you hear me?", "vi": "Xin lỗi, tiếng bạn bị ngắt quãng. Bạn có nghe tôi nói không?" },
+      { "id": "phone-calls-3", "text": "Could you ask him to call me back?", "vi": "Bạn có thể nhắn anh ấy gọi lại cho tôi được không?" },
+      { "id": "phone-calls-4", "text": "I'm calling about the apartment you advertised.", "vi": "Tôi gọi về căn hộ mà bạn đã đăng quảng cáo." },
+      { "id": "phone-calls-5", "text": "Can I leave a message?", "vi": "Tôi có thể để lại lời nhắn không?" },
+      { "id": "phone-calls-6", "text": "Hold on a second, I'll put you through.", "vi": "Chờ một chút, tôi sẽ nối máy cho bạn." },
+      { "id": "phone-calls-7", "text": "Sorry, I think you've got the wrong number.", "vi": "Xin lỗi, tôi nghĩ bạn gọi nhầm số rồi." },
+      { "id": "phone-calls-8", "text": "Let me just grab a pen.", "vi": "Để tôi lấy cây bút đã." },
+      { "id": "phone-calls-9", "text": "Thanks for calling. Talk to you soon.", "vi": "Cảm ơn bạn đã gọi. Nói chuyện sau nhé." }
+    ]
+  },
+  {
+    "id": "health-visit",
+    "title": "At the Doctor's",
+    "level": "B1",
+    "targetWpm": 120,
+    "sentences": [
+      { "id": "health-visit-1", "text": "I'd like to make an appointment with a doctor.", "vi": "Tôi muốn đặt lịch hẹn với bác sĩ." },
+      { "id": "health-visit-2", "text": "I've had a sore throat since Monday.", "vi": "Tôi bị đau họng từ thứ Hai.", "notes": "throat /θroʊt/: tongue between teeth for \"th\"" },
+      { "id": "health-visit-3", "text": "My head hurts and I feel a bit dizzy.", "vi": "Tôi đau đầu và thấy hơi chóng mặt." },
+      { "id": "health-visit-4", "text": "Are you allergic to any medicine?", "vi": "Bạn có bị dị ứng với loại thuốc nào không?" },
+      { "id": "health-visit-5", "text": "Take one tablet twice a day after meals.", "vi": "Uống một viên, ngày hai lần sau bữa ăn." },
+      { "id": "health-visit-6", "text": "You should get plenty of rest and drink lots of water.", "vi": "Bạn nên nghỉ ngơi nhiều và uống nhiều nước." },
+      { "id": "health-visit-7", "text": "How long will it take to get better?", "vi": "Mất bao lâu thì tôi khỏe lại?" },
+      { "id": "health-visit-8", "text": "I need a note for my employer.", "vi": "Tôi cần một giấy xác nhận để nộp cho công ty." },
+      { "id": "health-visit-9", "text": "If it gets worse, come back and see me.", "vi": "Nếu bệnh nặng hơn, hãy quay lại gặp tôi." }
     ]
   },
   {
@@ -27,9 +141,66 @@
     "level": "B2",
     "targetWpm": 130,
     "sentences": [
-      { "id": "careful-decisions-1", "text": "She compared the options before making a commitment." },
-      { "id": "careful-decisions-2", "text": "A clear explanation can prevent an unnecessary disagreement." },
-      { "id": "careful-decisions-3", "text": "We changed the plan after considering the long-term effects." }
+      { "id": "careful-decisions-1", "text": "She compared the options before making a commitment.", "vi": "Cô ấy đã so sánh các lựa chọn trước khi cam kết." },
+      { "id": "careful-decisions-2", "text": "A clear explanation can prevent an unnecessary disagreement.", "vi": "Một lời giải thích rõ ràng có thể ngăn một bất đồng không cần thiết." },
+      { "id": "careful-decisions-3", "text": "We changed the plan after considering the long-term effects.", "vi": "Chúng tôi đã thay đổi kế hoạch sau khi cân nhắc những ảnh hưởng lâu dài." },
+      { "id": "careful-decisions-4", "text": "I'd like to sleep on it before I decide.", "vi": "Tôi muốn suy nghĩ thêm một đêm trước khi quyết định.", "notes": "\"sleep on it\" = wait a day before deciding" },
+      { "id": "careful-decisions-5", "text": "The cheaper option might cost us more in the long run.", "vi": "Lựa chọn rẻ hơn có thể khiến chúng ta tốn kém hơn về lâu dài." },
+      { "id": "careful-decisions-6", "text": "Let's weigh the pros and cons before we commit.", "vi": "Hãy cân nhắc ưu và nhược điểm trước khi chúng ta cam kết." },
+      { "id": "careful-decisions-7", "text": "He regretted rushing into the contract without reading it.", "vi": "Anh ấy hối hận vì đã vội ký hợp đồng mà không đọc kỹ." },
+      { "id": "careful-decisions-8", "text": "Whatever we choose, we should be able to explain why.", "vi": "Dù chọn gì, chúng ta cũng nên giải thích được lý do." },
+      { "id": "careful-decisions-9", "text": "Sometimes not deciding is a decision in itself.", "vi": "Đôi khi không quyết định cũng chính là một quyết định." }
+    ]
+  },
+  {
+    "id": "work-meetings",
+    "title": "Work Meetings",
+    "level": "B2",
+    "targetWpm": 140,
+    "sentences": [
+      { "id": "work-meetings-1", "text": "Let's get started, since everyone's here.", "vi": "Mọi người đã đến đủ, chúng ta bắt đầu thôi." },
+      { "id": "work-meetings-2", "text": "Could you walk us through the latest figures?", "vi": "Bạn có thể trình bày cho chúng tôi các số liệu mới nhất không?" },
+      { "id": "work-meetings-3", "text": "Sorry to interrupt, but I have a quick question.", "vi": "Xin lỗi đã ngắt lời, nhưng tôi có một câu hỏi nhanh." },
+      { "id": "work-meetings-4", "text": "We're running behind schedule on the new project.", "vi": "Chúng ta đang bị chậm tiến độ trong dự án mới.", "notes": "schedule: US /ˈskedʒuːl/, UK /ˈʃedjuːl/" },
+      { "id": "work-meetings-5", "text": "I'll follow up with the client by the end of the day.", "vi": "Tôi sẽ liên hệ lại với khách hàng trước cuối ngày." },
+      { "id": "work-meetings-6", "text": "Can we push this discussion to next week?", "vi": "Chúng ta có thể dời cuộc thảo luận này sang tuần sau không?" },
+      { "id": "work-meetings-7", "text": "Just to be clear, who's responsible for the budget?", "vi": "Để cho rõ, ai chịu trách nhiệm về ngân sách?" },
+      { "id": "work-meetings-8", "text": "I see your point, but I'm not sure it'll work in practice.", "vi": "Tôi hiểu ý bạn, nhưng tôi không chắc nó sẽ hiệu quả trong thực tế." },
+      { "id": "work-meetings-9", "text": "Let's wrap up and send out the action items.", "vi": "Chúng ta kết thúc ở đây và gửi danh sách việc cần làm nhé." }
+    ]
+  },
+  {
+    "id": "sharing-opinions",
+    "title": "Sharing Opinions",
+    "level": "B2",
+    "targetWpm": 145,
+    "sentences": [
+      { "id": "sharing-opinions-1", "text": "Personally, I think working from home has more benefits than drawbacks.", "vi": "Cá nhân tôi nghĩ làm việc tại nhà có nhiều lợi ích hơn bất lợi." },
+      { "id": "sharing-opinions-2", "text": "I couldn't agree more.", "vi": "Tôi hoàn toàn đồng ý.", "notes": "means full agreement, despite the \"not\"" },
+      { "id": "sharing-opinions-3", "text": "That's a fair point, but have you considered the cost?", "vi": "Ý đó hợp lý, nhưng bạn đã tính đến chi phí chưa?" },
+      { "id": "sharing-opinions-4", "text": "I see it a little differently.", "vi": "Tôi nhìn nhận vấn đề hơi khác một chút." },
+      { "id": "sharing-opinions-5", "text": "It depends on what you mean by success.", "vi": "Còn tùy vào việc bạn hiểu thành công là gì." },
+      { "id": "sharing-opinions-6", "text": "To be honest, I haven't made up my mind yet.", "vi": "Thành thật mà nói, tôi vẫn chưa quyết định.", "notes": "honest: silent \"h\", /ˈɑːnɪst/" },
+      { "id": "sharing-opinions-7", "text": "The way I see it, both sides have a point.", "vi": "Theo tôi thấy, cả hai bên đều có lý." },
+      { "id": "sharing-opinions-8", "text": "I used to believe that, but I've changed my mind.", "vi": "Tôi từng tin như vậy, nhưng giờ tôi đã đổi ý." },
+      { "id": "sharing-opinions-9", "text": "Let's agree to disagree on this one.", "vi": "Về chuyện này, chúng ta cứ giữ quan điểm riêng vậy." }
+    ]
+  },
+  {
+    "id": "solving-problems",
+    "title": "Solving Problems",
+    "level": "B2",
+    "targetWpm": 150,
+    "sentences": [
+      { "id": "solving-problems-1", "text": "I'm afraid there's been a mistake with my order.", "vi": "Tôi e là đơn hàng của tôi đã bị nhầm." },
+      { "id": "solving-problems-2", "text": "The heating hasn't been working properly since last week.", "vi": "Máy sưởi không hoạt động bình thường từ tuần trước." },
+      { "id": "solving-problems-3", "text": "Would it be possible to get a refund instead?", "vi": "Thay vào đó, tôi có thể được hoàn tiền không?" },
+      { "id": "solving-problems-4", "text": "I've already tried restarting it, but nothing happened.", "vi": "Tôi đã thử khởi động lại rồi, nhưng không có gì xảy ra." },
+      { "id": "solving-problems-5", "text": "Let's figure out what went wrong before we fix it.", "vi": "Hãy tìm ra chỗ sai trước khi sửa nó." },
+      { "id": "solving-problems-6", "text": "I understand your frustration, and I'll do my best to help.", "vi": "Tôi hiểu sự bực bội của bạn và tôi sẽ cố gắng hết sức để giúp." },
+      { "id": "solving-problems-7", "text": "If that doesn't work, we'll send a technician tomorrow.", "vi": "Nếu cách đó không được, chúng tôi sẽ cử kỹ thuật viên đến vào ngày mai.", "notes": "technician: stress on NI" },
+      { "id": "solving-problems-8", "text": "Could you put that in writing for me?", "vi": "Bạn có thể xác nhận điều đó bằng văn bản cho tôi không?" },
+      { "id": "solving-problems-9", "text": "Thanks for sorting this out so quickly.", "vi": "Cảm ơn bạn đã giải quyết việc này nhanh như vậy." }
     ]
   }
 ]

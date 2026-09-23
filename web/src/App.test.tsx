@@ -215,7 +215,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(29);
+    expect(container.querySelectorAll("button")).toHaveLength(30);
 
     await act(async () => {
       root.unmount();
@@ -1280,6 +1280,50 @@ describe("App", () => {
       expect(container.textContent).toContain(sentence.text);
     }
     expect(container.textContent).toContain("casual sign-off");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("toggles Vietnamese independently of the transcript", async () => {
+    installSpeechFakes();
+    const { container, root } = await openLesson();
+
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).not.toContain(sentence.vi);
+    }
+
+    await act(async () => {
+      buttonsNamed(container, "Show Vietnamese")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).toContain(sentence.vi);
+    }
+
+    await act(async () => {
+      buttonsNamed(container, "Hide transcript")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).not.toContain(sentence.text);
+      expect(container.textContent).toContain(sentence.vi);
+    }
+
+    await act(async () => {
+      buttonsNamed(container, "Hide Vietnamese")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).not.toContain(sentence.vi);
+    }
+
+    await act(async () => {
+      buttonsNamed(container, "Show transcript")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).toContain(sentence.text);
+      expect(container.textContent).not.toContain(sentence.vi);
+    }
 
     await act(async () => {
       root.unmount();

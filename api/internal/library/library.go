@@ -18,6 +18,7 @@ const (
 type Sentence struct {
 	ID    string `json:"id"`
 	Text  string `json:"text"`
+	VI    string `json:"vi"`
 	Notes string `json:"notes,omitempty"`
 }
 
@@ -86,6 +87,9 @@ func NewStore(lessons []Lesson) (*Store, error) {
 			}
 			if sentence.Text == "" {
 				return nil, fmt.Errorf("lesson %q sentence %q has empty text", lesson.ID, sentence.ID)
+			}
+			if sentence.VI == "" {
+				return nil, fmt.Errorf("lesson %q sentence %q has empty vi", lesson.ID, sentence.ID)
 			}
 			if _, exists := sentenceIDs[sentence.ID]; exists {
 				return nil, fmt.Errorf("lesson %q has duplicate sentence id %q", lesson.ID, sentence.ID)

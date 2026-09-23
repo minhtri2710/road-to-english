@@ -3,6 +3,7 @@ export type Level = "A2" | "B1" | "B2";
 export interface Sentence {
   id: string;
   text: string;
+  vi: string;
   notes?: string;
 }
 

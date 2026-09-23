@@ -666,6 +666,7 @@ function LessonDetail({
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>("1");
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
+  const [showVietnamese, setShowVietnamese] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -745,6 +746,11 @@ function LessonDetail({
             variant="ghost"
             onClick={() => setShowTranscript((shown) => !shown)}
           />
+          <Button
+            label={showVietnamese ? "Hide Vietnamese" : "Show Vietnamese"}
+            variant="ghost"
+            onClick={() => setShowVietnamese((shown) => !shown)}
+          />
         </HStack>
       )}
       <VStack as="ol" gap={2} padding={0}>
@@ -757,6 +763,11 @@ function LessonDetail({
                   {showTranscript && sentence.notes && (
                     <Text as="p" type="supporting">
                       {sentence.notes}
+                    </Text>
+                  )}
+                  {showVietnamese && (
+                    <Text as="p" type="supporting">
+                      {sentence.vi}
                     </Text>
                   )}
                   <SentenceShadowing
