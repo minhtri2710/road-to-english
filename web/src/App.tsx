@@ -26,7 +26,7 @@ import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
-import { diffWords, normalize, type WordDiff } from "./lib/dictation";
+import { blankFor, diffWords, normalize, splitWords, type WordDiff } from "./lib/dictation";
 import { capNewCards, cardId, isCardWord, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { lookupWord, type Definition } from "./lib/dictionary";
@@ -376,6 +376,82 @@ function SentenceDictation({
   );
 }
 
+function SentenceBlank({
+  id,
+  text,
+  targetWpm,
+  recordPractice,
+}: {
+  id: string;
+  text: string;
+  targetWpm: number;
+  recordPractice: (options: { newCard: boolean }) => Promise<void>;
+}) {
+  const [typed, setTyped] = useState("");
+  const [correct, setCorrect] = useState<boolean | null>(null);
+  const { parts, index, answer } = blankFor(text);
+  const speechSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
+
+  if (index === -1) {
+    return <Text as="p">{text}</Text>;
+  }
+
+  const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCorrect(normalize(typed) === answer);
+    void recordPractice({ newCard: false });
+  };
+
+  const tryAgain = () => {
+    setTyped("");
+    setCorrect(null);
+  };
+
+  return (
+    <VStack gap={1}>
+      <Text as="p">
+        {parts.map((part, i) => (i === index ? "____" : part)).join("")}
+      </Text>
+      <Button
+        label="Play"
+        variant="secondary"
+        isDisabled={!speechSupported}
+        onClick={() => speak(text, targetWpm, 1)}
+      />
+      {!speechSupported && (
+        <Text as="p" type="supporting">
+          Play disabled: speech synthesis is not supported in this browser.
+        </Text>
+      )}
+      <form onSubmit={checkAnswer}>
+        <VStack gap={1}>
+          <label htmlFor={`blank-${id}`}>
+            <Text as="span" type="supporting">
+              Which word fills the blank?
+            </Text>
+          </label>
+          <input
+            id={`blank-${id}`}
+            className={stylex.props(appStyles.dictationInput).className}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+          <Button label="Check" variant="primary" type="submit" />
+        </VStack>
+      </form>
+      {correct !== null && (
+        <VStack gap={1}>
+          <Text as="p" weight="semibold">
+            {correct ? "Correct" : `Not quite — the word was ${parts[index]}`}
+          </Text>
+          <Button label="Try again" variant="ghost" onClick={tryAgain} />
+        </VStack>
+      )}
+    </VStack>
+  );
+}
+
 function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   const message = error instanceof NotFoundError ? "not found" : error.message;
 
@@ -621,7 +697,7 @@ function SentenceWords({
   let start = 0;
   return (
     <Text as="p">
-      {text.split(/([A-Za-z0-9'’]+)/).map((part, index) => {
+      {splitWords(text).map((part, index) => {
         const partStart = start;
         start += part.length;
         if (!isCardWord(normalize(part))) {
@@ -810,6 +886,8 @@ function ReviewDeck({
   );
 }
 
+type LessonMode = "shadow" | "dictation" | "blank";
+
 function LessonDetail({
   id,
   onBack,
@@ -828,7 +906,7 @@ function LessonDetail({
   markLessonComplete: (lessonId: string) => Promise<void>;
 }) {
   const { data, loading, error } = useLesson(id);
-  const [mode, setMode] = useState<"shadow" | "dictation">("shadow");
+  const [mode, setMode] = useState<LessonMode>("shadow");
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>("1");
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
@@ -891,7 +969,7 @@ function LessonDetail({
         value={mode}
         onChange={(nextMode) => {
           if (nextMode) {
-            setMode(nextMode as "shadow" | "dictation");
+            setMode(nextMode as LessonMode);
             setLoopingSentenceId(null);
             setSpokenWord(null);
           }
@@ -900,6 +978,7 @@ function LessonDetail({
       >
         <ToggleButton value="shadow" label="Shadow" />
         <ToggleButton value="dictation" label="Dictation" />
+        <ToggleButton value="blank" label="Fill the blank" />
       </ToggleButtonGroup>
       {mode === "shadow" && (
         <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
@@ -1005,13 +1084,22 @@ function LessonDetail({
                 </VStack>
               ) : (
                 <VStack gap={1}>
-                  <SentenceDictation
-                    id={sentence.id}
-                    text={sentence.text}
-                    notes={sentence.notes}
-                    targetWpm={data.targetWpm}
-                    recordPractice={recordPractice}
-                  />
+                  {mode === "dictation" ? (
+                    <SentenceDictation
+                      id={sentence.id}
+                      text={sentence.text}
+                      notes={sentence.notes}
+                      targetWpm={data.targetWpm}
+                      recordPractice={recordPractice}
+                    />
+                  ) : (
+                    <SentenceBlank
+                      id={sentence.id}
+                      text={sentence.text}
+                      targetWpm={data.targetWpm}
+                      recordPractice={recordPractice}
+                    />
+                  )}
                   <SaveToReview
                     card={sentenceCard(data.id, sentence)}
                     label="Save to review"

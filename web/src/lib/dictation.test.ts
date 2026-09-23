@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { diffWords, normalize } from "./dictation";
+import { blankFor, diffWords, normalize } from "./dictation";
 
 describe("normalize", () => {
   it.each([
@@ -86,5 +86,32 @@ describe("diffWords", () => {
       { kind: "replaced", word: "good", typed: "morning" },
       { kind: "replaced", word: "morning", typed: "good" },
     ]);
+  });
+});
+
+describe("blankFor", () => {
+  it.each([
+    ["longest word", "I like apples a lot", 5, "apples"],
+    ["earliest on a tie", "cats and dogs", 1, "cats"],
+    ["apostrophe", "What's up?", 1, "whats"],
+    ["punctuation", "Hi, everyone!", 3, "everyone"],
+    ["seed: greeting", "Good morning, how are you today?", 3, "morning"],
+    ["seed: introduction", "I'm from Vietnam, and I live in Hanoi.", 5, "vietnam"],
+    ["seed: request", "Sorry, could you say that again?", 1, "sorry"],
+  ])("picks the %s", (_name, text, index, answer) => {
+    const blank = blankFor(text);
+    expect(blank.index).toBe(index);
+    expect(blank.answer).toBe(answer);
+    expect(blank.parts.join("")).toBe(text);
+  });
+
+  it("is deterministic", () => {
+    expect(blankFor("Thanks a lot for your help.")).toEqual(
+      blankFor("Thanks a lot for your help."),
+    );
+  });
+
+  it.each(["", "...", " - ! "])("returns -1 for no-word text %j", (text) => {
+    expect(blankFor(text).index).toBe(-1);
   });
 });

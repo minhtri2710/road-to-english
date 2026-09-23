@@ -1,3 +1,5 @@
+import { isCardWord } from "./vocab";
+
 export function normalize(s: string): string {
   return s
     .toLowerCase()
@@ -65,4 +67,25 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
     }
   }
   return diff;
+}
+
+// Letter/digit runs (apostrophes kept) and the text between them, in order.
+export function splitWords(text: string): string[] {
+  return text.split(/([A-Za-z0-9'’]+)/);
+}
+
+// Picks the longest word token (earliest on a tie) from the splitWords split
+// SentenceWords uses; index -1 when the text has no word token.
+export function blankFor(text: string): { parts: string[]; index: number; answer: string } {
+  const parts = splitWords(text);
+  let index = -1;
+  let answer = "";
+  parts.forEach((part, i) => {
+    const word = normalize(part);
+    if (isCardWord(word) && word.length > answer.length) {
+      index = i;
+      answer = word;
+    }
+  });
+  return { parts, index, answer };
 }

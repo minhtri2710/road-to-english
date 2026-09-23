@@ -218,8 +218,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 34 controls (incl. the 5/10/20 daily-goal toggle and Export CSV) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(49);
+    // 35 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle and Export CSV) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(50);
 
     await act(async () => {
       root.unmount();
@@ -377,6 +377,65 @@ describe("App", () => {
 
     expect(await getPracticeDays()).toHaveLength(1);
     expect(container.textContent).toContain("1 day streak");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("drills fill-the-blank: hides the word, checks, records, resets, and plays", async () => {
+    const speak = vi.fn();
+    class FakeUtterance {
+      lang = "";
+      rate = 1;
+      constructor(readonly text: string) {}
+    }
+    vi.stubGlobal("speechSynthesis", { speak, cancel: vi.fn() });
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const { container, root } = await openLesson();
+    const [first, second] = greetingsLesson.sentences;
+    const button = (label: string) =>
+      Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.includes(label),
+      );
+    const submit = async (input: HTMLInputElement, value: string) => {
+      await act(async () => {
+        setInputValue(input, value);
+        input.form?.requestSubmit();
+      });
+    };
+
+    await act(async () => {
+      button("Fill the blank")?.click();
+    });
+    expect(container.textContent).toContain("Good ____, how are you today?");
+    expect(container.textContent).not.toContain("morning");
+    expect(container.querySelector(`label[for="blank-${first.id}"]`)).not.toBeNull();
+    expect(container.textContent).toContain("Goal 0/10");
+
+    await act(async () => {
+      button("Play")?.click();
+    });
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: first.text }));
+
+    const input = container.querySelector<HTMLInputElement>(`#blank-${first.id}`);
+    if (!input) throw new Error("blank input not found");
+    await submit(input, " MORNING! ");
+    expect(container.textContent).toContain("Correct");
+    await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
+
+    await act(async () => {
+      button("Try again")?.click();
+    });
+    expect(input.value).toBe("");
+    expect(container.textContent).not.toContain("Correct");
+
+    const secondInput = container.querySelector<HTMLInputElement>(`#blank-${second.id}`);
+    if (!secondInput) throw new Error("second blank input not found");
+    await submit(secondInput, "meet");
+    expect(container.textContent).toContain("Not quite — the word was nice");
+    await waitForCondition(() => container.textContent?.includes("Goal 2/10") ?? false);
 
     await act(async () => {
       root.unmount();
