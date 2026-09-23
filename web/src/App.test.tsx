@@ -104,6 +104,15 @@ function removeBrowserGlobals(): void {
   delete (navigator as unknown as Record<string, unknown>).mediaDevices;
 }
 
+async function reopenGreetings(container: HTMLElement): Promise<void> {
+  const row = () =>
+    Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Greetings & Basics"));
+  await waitForCondition(() => row() !== undefined);
+  await act(async () => {
+    row()?.click();
+  });
+}
+
 async function openLesson(lesson = greetingsLesson) {
   fetchMock.mockImplementation(async (input) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -181,6 +190,7 @@ function buttonsNamed(container: HTMLElement, name: string): HTMLButtonElement[]
 
 describe("App", () => {
   afterEach(() => {
+    window.history.replaceState(null, "", "/");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     fetchMock.mockReset();
@@ -1678,12 +1688,17 @@ describe("App", () => {
         buttonsNamed(container, name)[0]?.click();
       });
     };
+    // Library lists the lessons, so going back to the lesson reopens it from its row.
+    const reopenLesson = async () => {
+      await showView("Library");
+      await reopenGreetings(container);
+    };
     const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
     const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
 
     await showView("Review");
     await waitForCondition(() => dueBadge() === "1");
-    await showView("Library");
+    await reopenLesson();
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     const toggle = buttonsNamed(container, "Saved")[0]!;
     expect(toggle.getAttribute("aria-label")).toBe("Saved, remove from review deck");
@@ -1698,7 +1713,7 @@ describe("App", () => {
     await waitForCondition(() => document.body.textContent?.includes("Removed from your review deck.") ?? false);
     await showView("Review");
     await waitForCondition(() => dueBadge() === "0");
-    await showView("Library");
+    await reopenLesson();
 
     const undo = buttonsNamed(document.body, "Undo")[0];
     if (!undo) throw new Error("Undo button not found");
@@ -1711,7 +1726,7 @@ describe("App", () => {
     expect(Date.parse(restored!.updatedAt)).toBeGreaterThan(created.getTime());
     await showView("Review");
     await waitForCondition(() => dueBadge() === "1");
-    await showView("Library");
+    await reopenLesson();
 
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     await act(async () => {
@@ -1747,12 +1762,17 @@ describe("App", () => {
         buttonsNamed(container, name)[0]?.click();
       });
     };
+    // Library lists the lessons, so going back to the lesson reopens it from its row.
+    const reopenLesson = async () => {
+      await showView("Library");
+      await reopenGreetings(container);
+    };
     const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
     const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
 
     await showView("Review");
     await waitForCondition(() => dueBadge() === "1");
-    await showView("Library");
+    await reopenLesson();
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     // Earlier tests can leave toasts in document.body; this test's toast is the newest Undo.
     const undoCount = buttonsNamed(document.body, "Undo").length;
@@ -1815,6 +1835,7 @@ describe("App", () => {
       await act(async () => {
         buttonsNamed(container, "Library")[0]?.click();
       });
+      await reopenGreetings(container);
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       const earlier = new Set(buttonsNamed(document.body, "Undo"));
       const newUndo = () => buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
@@ -2532,6 +2553,8 @@ describe("App", () => {
       expect(lessonFetches()).toEqual([]);
       await unmount(first);
 
+      // The route keeps the created lesson open on a reload; a fresh visit to the app root lists it.
+      window.history.replaceState(null, "", "/");
       const second = await renderApp();
       await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
       expect(second.container.textContent).toContain("B2 · 3 sentences");
@@ -2610,6 +2633,8 @@ describe("App", () => {
       await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
       await unmount(first);
 
+      // The route keeps the created lesson open on a reload; a fresh visit to the app root lists it.
+      window.history.replaceState(null, "", "/");
       const second = await renderApp();
       await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
       expect(
@@ -2654,6 +2679,8 @@ describe("App", () => {
         input.dispatchEvent(new Event("change", { bubbles: true }));
       });
       await waitForCondition(() => !(view.container.textContent?.includes("Back to lessons") ?? true));
+      expect(window.location.hash).toBe("#/");
+      expect(document.activeElement).toBe(view.container.querySelector("main h1"));
       expect(view.container.textContent).toContain("Your lessons");
       expect(view.container.textContent).not.toContain("I like green tea.");
       expect(await listUserLessons()).toEqual([]);
@@ -4071,6 +4098,21 @@ describe("App", () => {
       await unmount();
     });
 
+    it("moves focus from Retry to the library h1 before Retry unmounts into the loading line", async () => {
+      let fail = true;
+      const { container, unmount } = await renderApp((path) =>
+        path === "/lessons" && fail ? new Response("boom", { status: 500 }) : responseFor(path),
+      );
+      await waitForCondition(hasText(container, "Unable to load lessons"));
+      fail = false;
+      buttonsNamed(container, "Retry")[0]!.focus();
+      await click(container, "Retry");
+      expect(document.activeElement).toBe(container.querySelector("main h1"));
+      await waitForCondition(hasText(container, "Greetings & Basics"));
+      expect(document.activeElement).toBe(container.querySelector("main h1"));
+      await unmount();
+    });
+
     it("shows the no-cards empty state and Go to library switches the view", async () => {
       const { container, unmount } = await renderApp();
       await click(container, "Review");
@@ -4507,8 +4549,10 @@ describe("App", () => {
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       // Astryx buttons carry their own empty aria-live status spans; the app's regions are the others.
+      // The goal region stays quiet on practice; the Goal badge sits outside it.
       const goal = container.querySelector('header [role="status"]:not([aria-live])');
-      expect(goal?.textContent).toContain("Goal 0/10");
+      expect(goal?.textContent).toBe("");
+      expect(container.querySelector("header")?.textContent).toContain("Goal 0/10");
 
       await click(container, "Dictation");
       const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1");
@@ -4525,8 +4569,9 @@ describe("App", () => {
       expect(card.querySelector('[role="status"]:not([aria-live])')).toBe(region);
       expect(region?.textContent).toContain("Not quite");
       expect(region?.querySelector("button")).toBeNull();
-      await waitForCondition(() => goal?.textContent?.includes("Goal 1/10") ?? false);
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 1/10") ?? false);
       expect(container.querySelector('header [role="status"]:not([aria-live])')).toBe(goal);
+      expect(goal?.textContent).toBe("");
 
       await click(card, "Try again");
       expect(region?.textContent).toBe("");
@@ -4626,6 +4671,132 @@ describe("App", () => {
       expect(document.activeElement).toBe(buttonsNamed(container, "Enable")[0]);
       await click(container, "Cancel");
       expect(document.activeElement).toBe(buttonsNamed(container, "Pronunciation check")[0]);
+      await close(view);
+    });
+
+    it("restores the view from the route on load without taking focus", async () => {
+      window.history.replaceState(null, "", "#/lesson/greetings-basics");
+      const lesson = await renderApp();
+      await waitForCondition(() => h1Texts(lesson.container)[0] === "Greetings & Basics");
+      expect(document.activeElement).toBe(document.body);
+      expect(document.title).toBe("Greetings & Basics · Road to English");
+      await close(lesson);
+
+      window.history.replaceState(null, "", "#/review");
+      const review = await renderApp();
+      expect(h1Texts(review.container)).toEqual(["Review deck"]);
+      expect(document.title).toBe("Review deck · Road to English");
+      expect(document.activeElement).toBe(document.body);
+      await close(review);
+    });
+
+    it("falls back to the library with replaceState for a malformed route or an unknown user lesson", async () => {
+      for (const hash of ["#/nowhere", "#/lesson/", "#/my/user-missing"]) {
+        window.history.replaceState(null, "", hash);
+        const length = window.history.length;
+        const view = await renderApp();
+        await waitForCondition(() => window.location.hash === "#/");
+        expect(h1Texts(view.container)).toEqual(["Lesson library"]);
+        expect(window.history.length).toBe(length);
+        await close(view);
+      }
+    });
+
+    it("pushes a history entry per view change and follows browser Back and Forward", async () => {
+      const view = await renderApp();
+      const { container } = view;
+      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      expect(document.title).toBe("Lesson library · Road to English");
+      await act(async () => {
+        Array.from(container.querySelectorAll("main li button"))
+          .find((button) => button.textContent?.includes("Greetings & Basics"))
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      expect(window.location.hash).toBe("#/lesson/greetings-basics");
+
+      // Browser Back: the library, with focus on the row of the lesson just left.
+      await act(async () => {
+        window.history.back();
+      });
+      await waitForCondition(() => h1Texts(container)[0] === "Lesson library");
+      await waitForCondition(() => document.activeElement?.textContent?.includes("Greetings & Basics") ?? false);
+      expect(document.activeElement?.tagName).toBe("BUTTON");
+
+      // Browser Forward: the lesson again, with focus on its h1.
+      await act(async () => {
+        window.history.forward();
+      });
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      expect(document.activeElement).toBe(container.querySelector("main h1"));
+
+      await click(container, "Review");
+      expect(window.location.hash).toBe("#/review");
+      await act(async () => {
+        window.history.back();
+      });
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      expect(document.activeElement).toBe(container.querySelector("main h1"));
+      await close(view);
+    });
+
+    it("shows no due count in the Today strip while the deck is loading", async () => {
+      vi.spyOn(vocabStore, "getAllCards").mockReturnValue(new Promise(() => undefined));
+      const view = await renderApp();
+      await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
+      const strip = todayStrip(view.container)!;
+      expect(strip.textContent).toContain("Goal 0/10");
+      expect(strip.textContent).not.toContain("due");
+      await close(view);
+    });
+
+    it("leaves focus where the user moved it while an Undo was saving", async () => {
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
+      await click(container, "Save to review");
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      // Earlier tests can leave toasts behind, and the viewport caps how many show.
+      const earlier = new Set(buttonsNamed(document.body, "Undo"));
+      const newUndo = () => buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
+      await click(container, "Saved");
+      await waitForCondition(() => newUndo() !== undefined);
+      const undo = newUndo()!;
+      const elsewhere = buttonsNamed(container, "Dictation")[0]!;
+      undo.focus();
+      await act(async () => {
+        undo.click();
+        elsewhere.focus();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      expect(document.activeElement).toBe(elsewhere);
+      await close(view);
+    });
+
+    it("announces the daily goal only when it becomes met, not on each practice action", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 3; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      const goal = container.querySelector('header [role="status"]:not([aria-live])')!;
+      await click(container, "Dictation");
+      const submit = async (id: string) => {
+        const input = container.querySelector<HTMLInputElement>(`#dictation-${id}`)!;
+        await act(async () => {
+          setInputValue(input, "Good morning");
+          input.form?.requestSubmit();
+        });
+      };
+      await submit("greetings-basics-1");
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 4/5") ?? false);
+      expect(goal.textContent).toBe("");
+      await submit("greetings-basics-2");
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
+      expect(goal.textContent).toBe("Daily goal met.");
+      localStorage.removeItem("road-to-english.dailyGoal");
       await close(view);
     });
 

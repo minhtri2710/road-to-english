@@ -696,8 +696,17 @@ function SentenceBlank({
   );
 }
 
-// The page's one h1 names the current view and takes focus when the user changes view.
-function ViewHeading({ children, takeFocus }: { children: ReactNode; takeFocus: () => boolean }) {
+const APP_TITLE = "Road to English";
+
+// The page's one h1 names the current view and the document title, and takes focus when the user changes view.
+function ViewHeading({ children, takeFocus }: { children: string; takeFocus: () => boolean }) {
+  useEffect(() => {
+    document.title = `${children} · ${APP_TITLE}`;
+    return () => {
+      document.title = APP_TITLE;
+    };
+  }, [children]);
+
   return (
     <Heading
       level={1}
@@ -971,7 +980,16 @@ function LessonList({
         <Text as="p" type="supporting">
           Your own lessons below still work offline.
         </Text>
-        <Button label="Retry" variant="secondary" xstyle={appStyles.viewToggle} onClick={retry} />
+        <Button
+          label="Retry"
+          variant="secondary"
+          xstyle={appStyles.viewToggle}
+          onClick={(event) => {
+            // Retry unmounts into the loading line, so focus moves to the view's h1 first.
+            event.currentTarget.closest("main")?.querySelector("h1")?.focus();
+            retry();
+          }}
+        />
       </VStack>
     );
   } else if (!data || data.length === 0) {
@@ -1187,7 +1205,8 @@ function SaveToReview({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const showToast = useToast();
 
-  const undo = async (tombstone: VocabCard, dismiss: () => void) => {
+  const undo = async (tombstone: VocabCard, dismiss: () => void, undoButton: HTMLElement) => {
+    const toast = undoButton.closest("[data-toast-id]") ?? undoButton;
     dismiss();
     try {
       if (!(await undoRemove(tombstone))) {
@@ -1196,8 +1215,12 @@ function SaveToReview({
     } catch {
       showToast({ body: "Couldn't undo. Try again." });
     }
-    // The dismissed toast took the focused Undo with it; the toggle it undid is the next target.
-    buttonRef.current?.focus();
+    // The dismissed toast took the focused Undo with it; the toggle it undid is the next target,
+    // unless the user moved focus elsewhere during the await.
+    const active = document.activeElement;
+    if (active === null || active === document.body || toast.contains(active)) {
+      buttonRef.current?.focus();
+    }
   };
 
   const toggle = async () => {
@@ -1213,7 +1236,7 @@ function SaveToReview({
         const tombstone = await removeCard(cardId(card.source));
         const dismiss = showToast({
           body: "Removed from your review deck.",
-          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={() => void undo(tombstone, dismiss)} />,
+          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={(event) => void undo(tombstone, dismiss, event.currentTarget)} />,
         });
       } else {
         await addCard(card);
@@ -1963,13 +1986,58 @@ function LessonDetail({
   );
 }
 
+// The hash route is the one source of truth for the view and the open lesson. Hash URLs need no
+// server fallback, so any static host serves them.
+type Route =
+  | { view: "library" }
+  | { view: "review" }
+  | { view: "lesson"; id: string }
+  | { view: "my"; id: string };
+
+function routeHash(route: Route): string {
+  switch (route.view) {
+    case "library":
+      return "#/";
+    case "review":
+      return "#/review";
+    default:
+      return `#/${route.view}/${encodeURIComponent(route.id)}`;
+  }
+}
+
+function parseRoute(hash: string): Route | null {
+  if (hash === "" || hash === "#" || hash === "#/") {
+    return { view: "library" };
+  }
+  if (hash === "#/review") {
+    return { view: "review" };
+  }
+  const match = /^#\/(lesson|my)\/([^/]+)$/.exec(hash);
+  if (!match) {
+    return null;
+  }
+  try {
+    return { view: match[1] as "lesson" | "my", id: decodeURIComponent(match[2]) };
+  } catch {
+    return null;
+  }
+}
+
+// A malformed hash falls back to the library and replaces its history entry.
+function readRoute(): Route {
+  const route = parseRoute(window.location.hash);
+  if (route) {
+    return route;
+  }
+  window.history.replaceState(null, "", routeHash({ view: "library" }));
+  return { view: "library" };
+}
+
 export function App() {
-  const [selected, setSelected] = useState<
-    { kind: "library"; id: string } | { kind: "user"; lesson: Lesson } | null
-  >(null);
+  const [route, setRoute] = useState(readRoute);
+  const shownRoute = useRef(route);
   const [userLessons, setUserLessons] = useState<Lesson[] | Error | null>(null);
   const [deleteFailedId, setDeleteFailedId] = useState<string | null>(null);
-  const [view, setView] = useState<"library" | "review">("library");
   const [backupError, setBackupError] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
@@ -1989,18 +2057,44 @@ export function App() {
   const [storageKept, setStorageKept] = useState<boolean | null>(null);
   const persistRequested = useRef(false);
 
+  // A user view change focuses the new h1, or the row of the lesson being left when returnTo names it.
   // A pending return focus is dropped once the user moves on, so a late row mount cannot steal focus.
-  const showView = (nextView: "library" | "review") => {
-    returnFocusId.current = null;
-    headingFocus.current = true;
-    setView(nextView);
+  const show = (next: Route, returnTo: string | null) => {
+    returnFocusId.current = returnTo;
+    headingFocus.current = returnTo === null;
+    shownRoute.current = next;
+    setRoute(next);
   };
 
-  const select = (next: { kind: "library"; id: string } | { kind: "user"; lesson: Lesson }) => {
-    returnFocusId.current = null;
-    headingFocus.current = true;
-    setSelected(next);
+  // In-app navigation pushes an entry, so browser Back retraces it. In-app Back also pushes the
+  // library rather than calling history.back(): after a deep link that would leave the app.
+  const navigate = (next: Route, returnTo: string | null = null) => {
+    if (routeHash(next) !== window.location.hash) {
+      window.history.pushState(null, "", routeHash(next));
+    }
+    show(next, returnTo);
   };
+
+  const lessonId = (at: Route) => (at.view === "lesson" || at.view === "my" ? at.id : null);
+
+  // Browser Back/Forward and hash edits are user view changes; returning to the library from a
+  // lesson focuses that lesson's row. Both events can fire for one change, so a repeat is ignored.
+  useEffect(() => {
+    const follow = () => {
+      const next = readRoute();
+      const previous = shownRoute.current;
+      if (routeHash(next) === routeHash(previous)) {
+        return;
+      }
+      show(next, next.view === "library" ? lessonId(previous) : null);
+    };
+    window.addEventListener("popstate", follow);
+    window.addEventListener("hashchange", follow);
+    return () => {
+      window.removeEventListener("popstate", follow);
+      window.removeEventListener("hashchange", follow);
+    };
+  }, []);
 
   const takeHeadingFocus = () => {
     const take = headingFocus.current;
@@ -2099,7 +2193,7 @@ export function App() {
   const createLesson = async (lesson: Lesson) => {
     await putUserLesson(lesson);
     await reloadUserLessons();
-    select({ kind: "user", lesson });
+    navigate({ view: "my", id: lesson.id });
   };
 
   const deleteLesson = async (lesson: Lesson) => {
@@ -2155,18 +2249,34 @@ export function App() {
       }
       await replaceAll(data);
       await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
-      setSelected(null);
+      // The open lesson may be gone or replaced, so the view goes to the library.
+      if (lessonId(shownRoute.current) !== null) {
+        navigate({ view: "library" });
+      }
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
     }
   };
 
+  const userLesson =
+    route.view === "my" && Array.isArray(userLessons)
+      ? userLessons.find((lesson) => lesson.id === route.id)
+      : undefined;
+  // A user-lesson route whose lesson is unknown or deleted shows the library, and the URL follows.
+  const missingUserLesson = route.view === "my" && userLessons !== null && userLesson === undefined;
+  const view = missingUserLesson ? "library" : route.view;
+
+  useEffect(() => {
+    if (missingUserLesson) {
+      const library: Route = { view: "library" };
+      window.history.replaceState(null, "", routeHash(library));
+      shownRoute.current = library;
+      setRoute(library);
+    }
+  }, [missingUserLesson]);
+
   const detailProps: LessonDetailProps = {
-    onBack: () => {
-      returnFocusId.current = selected?.kind === "user" ? selected.lesson.id : (selected?.id ?? null);
-      headingFocus.current = false;
-      setSelected(null);
-    },
+    onBack: () => navigate({ view: "library" }, lessonId(route)),
     savedCardIds: deck.savedCardIds,
     addCard: deck.addCard,
     removeCard: deck.removeCard,
@@ -2188,13 +2298,11 @@ export function App() {
                   label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
                   variant="info"
                 />
-                <HStack as="span" gap={1} align="center" role="status" xstyle={appStyles.shadowingControls}>
-                  <Badge label={`${progress.xp} XP`} variant="info" />
-                  <Badge
-                    label={`Goal ${progress.actionsToday}/${dailyGoal}`}
-                    variant={goalMet ? "success" : "info"}
-                  />
-                </HStack>
+                <Badge label={`${progress.xp} XP`} variant="info" />
+                <Badge
+                  label={`Goal ${progress.actionsToday}/${dailyGoal}`}
+                  variant={goalMet ? "success" : "info"}
+                />
                 <Badge label={`Freezes ${progress.freezes}/2`} variant="info" />
                 <Badge
                   label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
@@ -2215,6 +2323,10 @@ export function App() {
                   ))}
                 </ToggleButtonGroup>
               </HStack>
+              {/* The badges change on every practice action; only reaching the goal is announced. */}
+              <Status>
+                {goalMet && <Text type="supporting">Daily goal met.</Text>}
+              </Status>
               <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
                 <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
                 <Button label="Export CSV" variant="secondary" onClick={() => void exportCsv()} />
@@ -2261,10 +2373,10 @@ export function App() {
             <nav aria-label="Views" className={stylex.props(appStyles.viewToggle).className}>
               <ToggleButtonGroup
                 label="App view"
-                value={view}
+                value={view === "review" ? "review" : "library"}
                 onChange={(nextView) => {
                   if (nextView) {
-                    showView(nextView as "library" | "review");
+                    navigate({ view: nextView as "library" | "review" });
                   }
                 }}
               >
@@ -2273,7 +2385,7 @@ export function App() {
               </ToggleButtonGroup>
             </nav>
             <VStack as="main" gap={4}>
-              {(view === "review" || selected === null) && (
+              {(view === "review" || view === "library") && (
                 <VStack gap={1}>
                   <ViewHeading takeFocus={takeHeadingFocus}>
                     {view === "library" ? "Lesson library" : "Review deck"}
@@ -2297,27 +2409,27 @@ export function App() {
                     loadFailed={deck.error !== null}
                     review={deck.review}
                     recordPractice={progress.recordPractice}
-                    onGoToLibrary={() => showView("library")}
+                    onGoToLibrary={() => navigate({ view: "library" })}
                   />
                 </VStack>
-              ) : selected === null ? (
+              ) : view === "library" ? (
                 <VStack gap={4}>
                   <LessonList
-                    onSelect={(id) => select({ kind: "library", id })}
+                    onSelect={(id) => navigate({ view: "lesson", id })}
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
                     today={{
-                      due: deck.error === null ? reviewDeck.length : null,
+                      due: deck.error === null && !deck.loading ? reviewDeck.length : null,
                       actionsToday: progress.actionsToday,
                       dailyGoal,
-                      onReview: () => showView("review"),
+                      onReview: () => navigate({ view: "review" }),
                     }}
                   />
                   <VStack gap={2}>
                     <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
                     <UserLessonList
                       lessons={userLessons}
-                      onSelect={(lesson) => select({ kind: "user", lesson })}
+                      onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
                       onDelete={(lesson) => void deleteLesson(lesson)}
                       deleteFailedId={deleteFailedId}
                       completedLessons={progress.completedLessons}
@@ -2326,10 +2438,12 @@ export function App() {
                   </VStack>
                   <ImportTextForm onCreate={createLesson} />
                 </VStack>
-              ) : selected.kind === "library" ? (
-                <LibraryLessonDetail id={selected.id} {...detailProps} />
+              ) : route.view === "lesson" ? (
+                <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
+              ) : userLesson ? (
+                <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
               ) : (
-                <LessonDetail lesson={selected.lesson} {...detailProps} />
+                <Text as="p">Loading lesson...</Text>
               )}
             </VStack>
           </VStack>
