@@ -29,6 +29,7 @@ import { useVocabDeck } from "./hooks/vocab";
 import { blankFor, diffWords, normalize, splitWords, type WordDiff } from "./lib/dictation";
 import { capNewCards, cardId, isCardWord, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
+import { recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
@@ -156,6 +157,12 @@ function readDailyGoal(): DailyGoal {
   return DAILY_GOALS.find((goal) => goal === stored) ?? "10";
 }
 
+const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";
+
+function readPronunciationCheck(): boolean {
+  return localStorage.getItem(PRONUNCIATION_CHECK_KEY) === "on";
+}
+
 // Reference speech highlights the spoken word of its sentence. Any start or end
 // clears the highlight; speak's current-utterance guard drops superseded events.
 function playReference(
@@ -185,6 +192,7 @@ function SentenceShadowing({
   sentenceId,
   setSpokenWord,
   recordPractice,
+  pronunciationCheck,
 }: {
   text: string;
   targetWpm: number;
@@ -194,10 +202,18 @@ function SentenceShadowing({
   sentenceId: string;
   setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
+  pronunciationCheck: boolean;
 }) {
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playBlocked, setPlayBlocked] = useState(false);
+  const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
+  const [check, setCheck] = useState<
+    | { status: "idle" }
+    | { status: "listening" }
+    | { status: "heard"; transcript: string }
+    | { status: "failed"; message: string }
+  >({ status: "idle" });
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
   const recordingSupported =
@@ -226,6 +242,37 @@ function SentenceShadowing({
       setSpokenWord(null);
     };
   }, [looping, speed, targetWpm, text, sentenceId, setSpokenWord]);
+
+  useEffect(() => {
+    if (!pronunciationCheck) {
+      return;
+    }
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      setCheck({ status: "idle" });
+    };
+  }, [pronunciationCheck]);
+
+  const checkPronunciation = () => {
+    setLooping(false);
+    setCheck({ status: "listening" });
+    const recognition = recognizeOnce();
+    recognitionRef.current = recognition;
+    recognition.result.then(
+      (transcript) => {
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        setCheck({ status: "heard", transcript });
+        void recordPractice({ newCard: false });
+      },
+      (error: Error) => {
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        setCheck({ status: "failed", message: error.message });
+      },
+    );
+  };
 
   return (
     <VStack gap={1}>
@@ -268,6 +315,14 @@ function SentenceShadowing({
             });
           }}
         />
+        {pronunciationCheck && (
+          <Button
+            label={check.status === "listening" ? "Listening…" : "Check pronunciation"}
+            variant="secondary"
+            isDisabled={check.status === "listening"}
+            onClick={checkPronunciation}
+          />
+        )}
       </HStack>
       {!speechSupported && (
         <Text as="p" type="supporting">
@@ -290,21 +345,79 @@ function SentenceShadowing({
           Press play to hear your recording.
         </Text>
       )}
+      {check.status === "heard" && (
+        <WordDiffResult
+          text={text}
+          answer={check.transcript}
+          verb="said"
+          onTryAgain={() => setCheck({ status: "idle" })}
+        />
+      )}
+      {check.status === "failed" && (
+        <VStack gap={1}>
+          <Text as="p" color="primary" xstyle={appStyles.error}>
+            {check.message}
+          </Text>
+          <Button label="Try again" variant="ghost" onClick={() => setCheck({ status: "idle" })} />
+        </VStack>
+      )}
     </VStack>
   );
 }
 
-function wordLabel(entry: WordDiff): string {
+function wordLabel(entry: WordDiff, verb: "typed" | "said"): string {
   switch (entry.kind) {
     case "correct":
       return entry.word;
     case "missed":
       return `${entry.word} (missed)`;
     case "replaced":
-      return `${entry.word} (you typed "${entry.typed}")`;
+      return `${entry.word} (you ${verb} "${entry.typed}")`;
     case "extra":
       return `${entry.typed} (extra)`;
   }
+}
+
+function WordDiffResult({
+  text,
+  answer,
+  verb,
+  notes,
+  onTryAgain,
+}: {
+  text: string;
+  answer: string;
+  verb: "typed" | "said";
+  notes?: string;
+  onTryAgain: () => void;
+}) {
+  const diff = diffWords(answer, text);
+  return (
+    <VStack gap={1}>
+      <Text as="p">Reference: {text}</Text>
+      <Text as="p">
+        You {verb}: {answer}
+      </Text>
+      <Text as="p">
+        {diff.map((entry, index) => (
+          <Text
+            key={index}
+            as="span"
+            color="primary"
+            xstyle={entry.kind === "correct" ? appStyles.wordCorrect : appStyles.error}
+          >
+            {index > 0 && " "}
+            {wordLabel(entry, verb)}
+          </Text>
+        ))}
+      </Text>
+      {notes && <Text as="p" type="supporting">{notes}</Text>}
+      <Text as="p" weight="semibold">
+        {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
+      </Text>
+      <Button label="Try again" variant="ghost" onClick={onTryAgain} />
+    </VStack>
+  );
 }
 
 function SentenceDictation({
@@ -321,19 +434,19 @@ function SentenceDictation({
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
 }) {
   const [typed, setTyped] = useState("");
-  const [diff, setDiff] = useState<WordDiff[] | null>(null);
+  const [checked, setChecked] = useState<string | null>(null);
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
 
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setDiff(diffWords(typed, text));
+    setChecked(typed);
     void recordPractice({ newCard: false });
   };
 
   const tryAgain = () => {
     setTyped("");
-    setDiff(null);
+    setChecked(null);
   };
 
   return (
@@ -366,29 +479,14 @@ function SentenceDictation({
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
       </form>
-      {diff !== null && (
-        <VStack gap={1}>
-          <Text as="p">Reference: {text}</Text>
-          <Text as="p">You typed: {typed}</Text>
-          <Text as="p">
-            {diff.map((entry, index) => (
-              <Text
-                key={index}
-                as="span"
-                color="primary"
-                xstyle={entry.kind === "correct" ? appStyles.wordCorrect : appStyles.error}
-              >
-                {index > 0 && " "}
-                {wordLabel(entry)}
-              </Text>
-            ))}
-          </Text>
-          {notes && <Text as="p" type="supporting">{notes}</Text>}
-          <Text as="p" weight="semibold">
-            {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
-          </Text>
-          <Button label="Try again" variant="ghost" onClick={tryAgain} />
-        </VStack>
+      {checked !== null && (
+        <WordDiffResult
+          text={text}
+          answer={checked}
+          verb="typed"
+          notes={notes}
+          onTryAgain={tryAgain}
+        />
       )}
     </VStack>
   );
@@ -1111,6 +1209,9 @@ function LessonDetail({
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(false);
+  const [pronunciationCheck, setPronunciationCheck] = useState(readPronunciationCheck);
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
+  const pronunciationSupported = recognitionSupported();
   const [selectedWord, setSelectedWord] = useState<{
     sentenceId: string;
     text: string;
@@ -1188,7 +1289,48 @@ function LessonDetail({
             variant="ghost"
             onClick={() => setShowVietnamese((shown) => !shown)}
           />
+          <ToggleButton
+            label="Pronunciation check"
+            isPressed={pronunciationSupported && pronunciationCheck}
+            isDisabled={!pronunciationSupported || disclosureOpen}
+            onPressedChange={(pressed) => {
+              if (pressed) {
+                setDisclosureOpen(true);
+              } else {
+                localStorage.removeItem(PRONUNCIATION_CHECK_KEY);
+                setPronunciationCheck(false);
+              }
+            }}
+          />
         </HStack>
+      )}
+      {mode === "shadow" && !pronunciationSupported && (
+        <Text as="p" type="supporting">
+          Pronunciation check disabled: speech recognition is not supported in this browser.
+        </Text>
+      )}
+      {mode === "shadow" && disclosureOpen && (
+        <Card padding={3} xstyle={appStyles.sentence}>
+          <VStack gap={1}>
+            <Text as="p">
+              Pronunciation check uses your browser's speech recognition. In Chrome, your
+              voice may be sent to Google's servers to be transcribed unless the browser
+              recognises it on this device. Nothing is sent to road-to-english.
+            </Text>
+            <HStack gap={1}>
+              <Button
+                label="Enable"
+                variant="primary"
+                onClick={() => {
+                  localStorage.setItem(PRONUNCIATION_CHECK_KEY, "on");
+                  setPronunciationCheck(true);
+                  setDisclosureOpen(false);
+                }}
+              />
+              <Button label="Cancel" variant="ghost" onClick={() => setDisclosureOpen(false)} />
+            </HStack>
+          </VStack>
+        </Card>
       )}
       <VStack as="ol" gap={2} padding={0}>
         {data.sentences.map((sentence) => (
@@ -1257,6 +1399,7 @@ function LessonDetail({
                     sentenceId={sentence.id}
                     setSpokenWord={setSpokenWord}
                     recordPractice={recordPractice}
+                    pronunciationCheck={pronunciationSupported && pronunciationCheck}
                   />
                   <SaveToReview
                     card={sentenceCard(data.id, sentence)}

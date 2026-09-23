@@ -220,8 +220,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 35 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle and Export CSV) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(50);
+    // 36 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV and the Pronunciation check toggle) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(51);
 
     await act(async () => {
       root.unmount();
@@ -2144,6 +2144,195 @@ describe("App", () => {
       expect(view.container.textContent).toContain("Correct");
       expect(lessonFetches()).toEqual([]);
       await unmount(view);
+    });
+  });
+
+  describe("pronunciation check", () => {
+    class FakeRecognition {
+      static instances: FakeRecognition[] = [];
+      lang = "";
+      continuous = true;
+      interimResults = true;
+      maxAlternatives = 5;
+      processLocally = false;
+      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.instances.push(this);
+      }
+    }
+
+    const hasText = (container: HTMLElement, text: string) => () =>
+      container.textContent?.includes(text) ?? false;
+
+    async function openShadow() {
+      installSpeechFakes();
+      FakeRecognition.instances = [];
+      vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+      return openLesson();
+    }
+
+    async function close({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
+    async function click(container: HTMLElement, name: string) {
+      await act(async () => {
+        buttonsNamed(container, name)[0]?.click();
+      });
+    }
+
+    async function enable(container: HTMLElement) {
+      await click(container, "Pronunciation check");
+      await click(container, "Enable");
+    }
+
+    async function checkFirstSentence(container: HTMLElement) {
+      await click(container, "Check pronunciation");
+      const recognition = FakeRecognition.instances.at(-1);
+      if (!recognition) throw new Error("recognition not started");
+      return recognition;
+    }
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("is off by default with no Check buttons", async () => {
+      const view = await openShadow();
+      expect(buttonsNamed(view.container, "Pronunciation check")).toHaveLength(1);
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
+      await close(view);
+    });
+
+    it("shows the disclosure first, keeps it off on Cancel, and persists Enable", async () => {
+      const view = await openShadow();
+      await click(view.container, "Pronunciation check");
+      expect(view.container.textContent).toContain("speech recognition");
+      expect(view.container.textContent).toContain("sent to Google's servers");
+      expect(view.container.textContent).toContain("Nothing is sent to road-to-english.");
+      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+
+      await click(view.container, "Cancel");
+      expect(view.container.textContent).not.toContain("Nothing is sent to road-to-english.");
+      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+
+      await enable(view.container);
+      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBe("on");
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
+      await close(view);
+
+      const remounted = await openShadow();
+      expect(buttonsNamed(remounted.container, "Check pronunciation")).toHaveLength(3);
+      await close(remounted);
+    });
+
+    it("shows what was said, the diff, and counts one practice", async () => {
+      const view = await openShadow();
+      await waitForCondition(hasText(view.container, "Goal 0/10"));
+      await enable(view.container);
+      await click(view.container, "Loop");
+      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
+      const recognition = await checkFirstSentence(view.container);
+      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+      expect(recognition.processLocally).toBe(true);
+      expect(buttonsNamed(view.container, "Listening…")[0]?.disabled).toBe(true);
+
+      await act(async () => {
+        recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
+        recognition.onend?.();
+      });
+      expect(view.container.textContent).toContain("You said: good morning how are you today");
+      expect(view.container.textContent).toContain("Correct");
+      await waitForCondition(hasText(view.container, "Goal 1/10"));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(view.container.textContent).toContain("Goal 1/10");
+
+      await click(view.container, "Try again");
+      expect(view.container.textContent).not.toContain("You said:");
+      await close(view);
+    });
+
+    it("labels a wrong word with what was said", async () => {
+      const view = await openShadow();
+      await enable(view.container);
+      const recognition = await checkFirstSentence(view.container);
+      await act(async () => {
+        recognition.onresult?.({ results: [[{ transcript: "good morning how are you tomorrow" }]] });
+      });
+      expect(view.container.textContent).toContain('today (you said "tomorrow")');
+      expect(view.container.textContent).toContain("Not quite");
+      await close(view);
+    });
+
+    it("shows a recognition error", async () => {
+      const view = await openShadow();
+      await enable(view.container);
+      const recognition = await checkFirstSentence(view.container);
+      await act(async () => {
+        recognition.onerror?.({ error: "language-not-supported" });
+        recognition.onend?.();
+      });
+      expect(view.container.textContent).toContain(
+        "On-device English recognition is unavailable in this browser.",
+      );
+      expect(FakeRecognition.instances).toHaveLength(1);
+      await click(view.container, "Try again");
+      expect(view.container.textContent).not.toContain("On-device English recognition");
+      await close(view);
+    });
+
+    it("disables the toggle with a reason when recognition is unsupported", async () => {
+      localStorage.setItem("road-to-english.pronunciationCheck", "on");
+      installSpeechFakes();
+      const view = await openLesson();
+      expect(buttonsNamed(view.container, "Pronunciation check")[0]?.disabled).toBe(true);
+      expect(view.container.textContent).toContain(
+        "Pronunciation check disabled: speech recognition is not supported in this browser.",
+      );
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+      await close(view);
+    });
+
+    it("hides the Check buttons and aborts listening when turned off", async () => {
+      const view = await openShadow();
+      await enable(view.container);
+      const recognition = await checkFirstSentence(view.container);
+      await click(view.container, "Pronunciation check");
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
+      expect(recognition.abort).toHaveBeenCalled();
+      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
+      await close(view);
+    });
+
+    it("keeps dictation wording as you typed with the setting on", async () => {
+      const view = await openShadow();
+      await enable(view.container);
+      await click(view.container, "Dictation");
+      const input = view.container.querySelector<HTMLInputElement>(
+        `#dictation-${greetingsLesson.sentences[0].id}`,
+      );
+      if (!input) throw new Error("dictation input not found");
+      await act(async () => {
+        setInputValue(input, "Good morning, how are you tomorrow?");
+        input.form?.requestSubmit();
+      });
+      expect(view.container.textContent).toContain("You typed: Good morning, how are you tomorrow?");
+      expect(view.container.textContent).toContain('today (you typed "tomorrow")');
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+      await close(view);
     });
   });
 });
