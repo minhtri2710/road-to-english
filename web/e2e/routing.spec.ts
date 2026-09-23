@@ -45,3 +45,14 @@ test("a user lesson deep link opens it after it is created", async ({ page }) =>
   await page.goto(url);
   await expect(page.getByRole("heading", { level: 1, name: USER_LESSON })).toBeVisible();
 });
+
+test("Back to lessons after a deep link stays in the app and focuses the lesson's row", async ({ page }) => {
+  await page.goto("about:blank");
+  await page.goto("/#/lesson/greetings-basics");
+  await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+  await expect(page).toHaveURL(/\/#\/$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Lesson library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeFocused();
+});

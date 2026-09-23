@@ -4702,6 +4702,21 @@ describe("App", () => {
       }
     });
 
+    it("returns from a deep-linked lesson with Back to lessons by pushing the library, not leaving the app", async () => {
+      window.history.replaceState(null, "", "#/lesson/greetings-basics");
+      const view = await renderApp();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      const length = window.history.length;
+      await click(container, "Back to lessons");
+      await waitForCondition(() => h1Texts(container)[0] === "Lesson library");
+      expect(window.location.hash).toBe("#/");
+      expect(window.history.length).toBe(length + 1);
+      await waitForCondition(() => document.activeElement?.textContent?.includes("Greetings & Basics") ?? false);
+      expect(document.activeElement?.tagName).toBe("BUTTON");
+      await close(view);
+    });
+
     it("pushes a history entry per view change and follows browser Back and Forward", async () => {
       const view = await renderApp();
       const { container } = view;
@@ -4770,6 +4785,18 @@ describe("App", () => {
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       expect(document.activeElement).toBe(elsewhere);
+      await close(view);
+    });
+
+    it("does not announce a daily goal that was already met when the page loads", async () => {
+      for (let index = 0; index < 12; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const view = await renderApp();
+      const { container } = view;
+      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 12/10") ?? false);
+      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
       await close(view);
     });
 

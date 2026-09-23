@@ -959,11 +959,13 @@ function LessonList({
   onSelect,
   completedLessons,
   takeFocus,
+  focusHeading,
   today,
 }: {
   onSelect: (id: string) => void;
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
+  focusHeading: () => void;
   today: Omit<Parameters<typeof TodayStrip>[0], "nextLesson" | "onStart">;
 }) {
   const { data, loading, error, retry } = useLessons();
@@ -984,9 +986,9 @@ function LessonList({
           label="Retry"
           variant="secondary"
           xstyle={appStyles.viewToggle}
-          onClick={(event) => {
-            // Retry unmounts into the loading line, so focus moves to the view's h1 first.
-            event.currentTarget.closest("main")?.querySelector("h1")?.focus();
+          onClick={() => {
+            // Retry unmounts into the loading line, so focus moves to the view's h1 in the same render.
+            focusHeading();
             retry();
           }}
         />
@@ -2047,12 +2049,21 @@ export function App() {
     deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = progress.actionsToday >= Number(dailyGoal);
+  // Only a practice action or a goal change can announce the goal, so loading a met goal stays quiet.
+  const goalArmed = useRef(false);
+  const goalMetBefore = useRef(goalMet);
+  const [goalAnnounced, setGoalAnnounced] = useState(false);
+  const recordPractice = (options: { newCard: boolean }) => {
+    goalArmed.current = true;
+    return progress.recordPractice(options);
+  };
   const auth = useAuth();
   const { expire } = auth;
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const returnFocusId = useRef<string | null>(null);
   const headingFocus = useRef(false);
+  const [, setHeadingFocusRequest] = useState(0);
   const userLessonsHeading = useRef<HTMLHeadingElement>(null);
   const [storageKept, setStorageKept] = useState<boolean | null>(null);
   const persistRequested = useRef(false);
@@ -2095,6 +2106,19 @@ export function App() {
       window.removeEventListener("hashchange", follow);
     };
   }, []);
+
+  // Focuses the current view's h1 when it has not changed: the re-render hands it takeHeadingFocus again.
+  const focusHeading = () => {
+    headingFocus.current = true;
+    setHeadingFocusRequest((request) => request + 1);
+  };
+
+  useEffect(() => {
+    if (goalMet !== goalMetBefore.current) {
+      goalMetBefore.current = goalMet;
+      setGoalAnnounced(goalMet && goalArmed.current);
+    }
+  }, [goalMet]);
 
   const takeHeadingFocus = () => {
     const take = headingFocus.current;
@@ -2281,7 +2305,7 @@ export function App() {
     addCard: deck.addCard,
     removeCard: deck.removeCard,
     undoRemove: deck.undoRemove,
-    recordPractice: progress.recordPractice,
+    recordPractice,
     completedLessons: progress.completedLessons,
     markLessonComplete: progress.markLessonComplete,
     takeHeadingFocus,
@@ -2313,6 +2337,7 @@ export function App() {
                   value={dailyGoal}
                   onChange={(nextGoal) => {
                     if (nextGoal) {
+                      goalArmed.current = true;
                       localStorage.setItem(DAILY_GOAL_KEY, nextGoal);
                       setDailyGoal(nextGoal as DailyGoal);
                     }
@@ -2325,7 +2350,7 @@ export function App() {
               </HStack>
               {/* The badges change on every practice action; only reaching the goal is announced. */}
               <Status>
-                {goalMet && <Text type="supporting">Daily goal met.</Text>}
+                {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
               </Status>
               <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
                 <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
@@ -2408,7 +2433,7 @@ export function App() {
                     loading={deck.loading}
                     loadFailed={deck.error !== null}
                     review={deck.review}
-                    recordPractice={progress.recordPractice}
+                    recordPractice={recordPractice}
                     onGoToLibrary={() => navigate({ view: "library" })}
                   />
                 </VStack>
@@ -2418,6 +2443,7 @@ export function App() {
                     onSelect={(id) => navigate({ view: "lesson", id })}
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
+                    focusHeading={focusHeading}
                     today={{
                       due: deck.error === null && !deck.loading ? reviewDeck.length : null,
                       actionsToday: progress.actionsToday,
