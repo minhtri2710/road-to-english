@@ -33,6 +33,8 @@ import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
 import { exportAll, replaceAll } from "./lib/backupStore";
+import { cardsCsv, cardsCsvFileName } from "./lib/csv";
+import { getAllCards } from "./lib/vocabStore";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
@@ -591,6 +593,16 @@ function sentenceCard(
   };
 }
 
+function downloadText(text: string, type: string, fileName: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  link.remove();
+  URL.revokeObjectURL?.(url);
+}
+
 // Splits on letter/digit runs (apostrophes kept, so "What's" is one word) and
 // renders each run whose normalize() is a single token as a button; everything
 // else stays plain text, so the sentence text reads exactly as authored. The
@@ -1061,17 +1073,17 @@ export function App() {
 
   const exportBackup = async () => {
     try {
-      const text = exportData(await exportAll(), new Date());
-      const blob = new Blob([text], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = backupFileName(new Date());
-      link.click();
-      link.remove();
-      URL.revokeObjectURL?.(url);
+      downloadText(exportData(await exportAll(), new Date()), "application/json", backupFileName(new Date()));
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
+    }
+  };
+
+  const exportCsv = async () => {
+    try {
+      downloadText(cardsCsv(await getAllCards()), "text/csv;charset=utf-8", cardsCsvFileName(new Date()));
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to export CSV.");
     }
   };
 
@@ -1141,6 +1153,7 @@ export function App() {
               </HStack>
               <HStack gap={1} align="center">
                 <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
+                <Button label="Export CSV" variant="secondary" onClick={() => void exportCsv()} />
                 <Button
                   label="Import"
                   variant="secondary"

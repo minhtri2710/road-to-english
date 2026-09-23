@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { exportData } from "./lib/backup";
+import { cardsCsv } from "./lib/csv";
 import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
 import { createCard, State } from "./lib/vocab";
@@ -217,8 +218,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 33 controls (incl. the 5/10/20 daily-goal toggle) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(48);
+    // 34 controls (incl. the 5/10/20 daily-goal toggle and Export CSV) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(49);
 
     await act(async () => {
       root.unmount();
@@ -700,6 +701,43 @@ describe("App", () => {
     container.remove();
   });
 
+  it("exports all stored cards as a CSV download", async () => {
+    await putCard(
+      createCard(
+        { front: 'say "hi"', back: "chào, bạn", source: { lessonId: "l", sentenceId: "s", word: "" } },
+        new Date(),
+      ),
+    );
+    const blobs: Blob[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn((blob: Blob) => {
+        blobs.push(blob);
+        return "blob:csv";
+      }),
+    });
+    const downloads: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      buttonsNamed(container, "Export CSV")[0]?.click();
+    });
+    await waitForCondition(() => downloads.length > 0);
+
+    expect(blobs).toHaveLength(1);
+    expect(blobs[0]?.type).toBe("text/csv;charset=utf-8");
+    expect(await blobs[0]?.text()).toBe(cardsCsv(await getAllCards()));
+    expect(downloads).toEqual([`road-to-english-cards-${todayKey(new Date())}.csv`]);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
   it("imports a backup through the UI and refreshes the deck and streak", async () => {
     const existing = createCard(
       {
@@ -1153,6 +1191,8 @@ describe("App", () => {
     expect(spokenWords()).toEqual([]);
     await boundary(0);
     expect(spokenWords()).toEqual(["Good"]);
+    await boundary(4);
+    expect(spokenWords()).toEqual([]);
     await boundary(14);
     expect(spokenWords()).toEqual(["how"]);
     await boundary(7);
