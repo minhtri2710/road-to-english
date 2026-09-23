@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createCard, Rating, reviewCard, State } from "./vocab";
+import { capNewCards, createCard, Rating, reviewCard, State } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -93,5 +93,52 @@ describe("vocabulary cards", () => {
     expect(reviewCard(card, Rating.Good, now)).toEqual(
       reviewCard(card, Rating.Good, now),
     );
+  });
+});
+
+describe("capNewCards", () => {
+  const newCards = Array.from({ length: 25 }, (_, index) =>
+    createCard(
+      { ...input, source: { ...input.source, sentenceId: `new-${index}` } },
+      now,
+    ),
+  );
+  const reviewCards = [0, 1, 2].map((index) =>
+    reviewCard(
+      createCard({ ...input, source: { ...input.source, sentenceId: `review-${index}` } }, now),
+      Rating.Good,
+      now,
+    ),
+  );
+  // Review cards interleaved with New cards, in due order.
+  const due = [reviewCards[0], ...newCards.slice(0, 10), reviewCards[1], ...newCards.slice(10), reviewCards[2]];
+  const ids = (cards: typeof due) => cards.map((card) => card.id);
+  const newCount = (cards: typeof due) =>
+    cards.filter((card) => card.fsrs.state === State.New).length;
+
+  it("keeps 20 New cards and every review card when none were introduced", () => {
+    const capped = capNewCards(due, 0);
+
+    expect(newCount(capped)).toBe(20);
+    expect(capped).toHaveLength(23);
+    expect(ids(capped)).toEqual(
+      ids(due.filter((card) => card.fsrs.state !== State.New || newCards.slice(0, 20).includes(card))),
+    );
+  });
+
+  it("keeps only the first 2 New cards after 18 were introduced", () => {
+    const capped = capNewCards(due, 18);
+
+    expect(ids(capped)).toEqual([
+      reviewCards[0].id,
+      newCards[0].id,
+      newCards[1].id,
+      reviewCards[1].id,
+      reviewCards[2].id,
+    ]);
+  });
+
+  it("keeps no New cards past the limit but all review cards", () => {
+    expect(ids(capNewCards(due, 25))).toEqual(ids(reviewCards));
   });
 });

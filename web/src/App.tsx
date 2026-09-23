@@ -27,7 +27,7 @@ import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
 import { diffWords, normalize, type WordDiff } from "./lib/dictation";
-import { cardId, isCardWord, Rating, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
+import { capNewCards, cardId, isCardWord, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
@@ -124,6 +124,15 @@ const appStyles = stylex.create({
 
 const SPEEDS = ["0.5", "0.75", "1"] as const;
 
+const DAILY_GOALS = ["5", "10", "20"] as const;
+type DailyGoal = (typeof DAILY_GOALS)[number];
+const DAILY_GOAL_KEY = "road-to-english.dailyGoal";
+
+function readDailyGoal(): DailyGoal {
+  const stored = localStorage.getItem(DAILY_GOAL_KEY);
+  return DAILY_GOALS.find((goal) => goal === stored) ?? "10";
+}
+
 function SentenceShadowing({
   text,
   targetWpm,
@@ -137,7 +146,7 @@ function SentenceShadowing({
   speed: number;
   looping: boolean;
   setLooping: (looping: boolean) => void;
-  recordPractice: () => Promise<void>;
+  recordPractice: (options: { newCard: boolean }) => Promise<void>;
 }) {
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -152,7 +161,7 @@ function SentenceShadowing({
 
   useEffect(() => {
     if (recorder.state === "ready") {
-      void recordPractice();
+      void recordPractice({ newCard: false });
     }
   }, [recordPractice, recorder.state]);
 
@@ -259,7 +268,7 @@ function SentenceDictation({
   text: string;
   notes?: string;
   targetWpm: number;
-  recordPractice: () => Promise<void>;
+  recordPractice: (options: { newCard: boolean }) => Promise<void>;
 }) {
   const [typed, setTyped] = useState("");
   const [diff, setDiff] = useState<WordDiff[] | null>(null);
@@ -269,7 +278,7 @@ function SentenceDictation({
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDiff(diffWords(typed, text));
-    void recordPractice();
+    void recordPractice({ newCard: false });
   };
 
   const tryAgain = () => {
@@ -660,7 +669,7 @@ function ReviewDeck({
   due: VocabCard[];
   loading: boolean;
   review: (card: VocabCard, rating: Grade) => Promise<void>;
-  recordPractice: () => Promise<void>;
+  recordPractice: (options: { newCard: boolean }) => Promise<void>;
 }) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isRating, setIsRating] = useState(false);
@@ -690,9 +699,11 @@ function ReviewDeck({
 
     isRatingRef.current = true;
     setIsRating(true);
+    // Read before rating: the review moves the card out of New.
+    const newCard = card.fsrs.state === State.New;
     try {
       await review(card, rating);
-      await recordPractice();
+      await recordPractice({ newCard });
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -760,7 +771,7 @@ function LessonDetail({
   onBack: () => void;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
-  recordPractice: () => Promise<void>;
+  recordPractice: (options: { newCard: boolean }) => Promise<void>;
   completed: boolean;
   markLessonComplete: (lessonId: string) => Promise<void>;
 }) {
@@ -959,6 +970,9 @@ export function App() {
   const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
   const progress = useProgress();
+  const reviewDeck = capNewCards(deck.due, progress.newCardsToday);
+  const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
+  const goalMet = progress.actionsToday >= Number(dailyGoal);
   const auth = useAuth();
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -1051,6 +1065,24 @@ export function App() {
                   label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
                   variant={progress.practicedToday ? "success" : "info"}
                 />
+                <Badge
+                  label={`Goal ${progress.actionsToday}/${dailyGoal}`}
+                  variant={goalMet ? "success" : "info"}
+                />
+                <ToggleButtonGroup
+                  label="Daily goal"
+                  value={dailyGoal}
+                  onChange={(nextGoal) => {
+                    if (nextGoal) {
+                      localStorage.setItem(DAILY_GOAL_KEY, nextGoal);
+                      setDailyGoal(nextGoal as DailyGoal);
+                    }
+                  }}
+                >
+                  {DAILY_GOALS.map((value) => (
+                    <ToggleButton key={value} value={value} label={value} />
+                  ))}
+                </ToggleButtonGroup>
               </HStack>
               <HStack gap={1} align="center">
                 <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
@@ -1094,12 +1126,15 @@ export function App() {
               <ToggleButton value="review" label="Review" />
             </ToggleButtonGroup>
             {view === "review" ? (
-              <ReviewDeck
-                due={deck.due}
-                loading={deck.loading}
-                review={deck.review}
-                recordPractice={progress.recordPractice}
-              />
+              <VStack gap={2}>
+                <Badge label={`${reviewDeck.length} due`} variant="info" />
+                <ReviewDeck
+                  due={reviewDeck}
+                  loading={deck.loading}
+                  review={deck.review}
+                  recordPractice={progress.recordPractice}
+                />
+              </VStack>
             ) : selectedLessonId === null ? (
               <LessonList
                 onSelect={setSelectedLessonId}

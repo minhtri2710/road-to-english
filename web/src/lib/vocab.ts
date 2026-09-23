@@ -3,6 +3,7 @@ import {
   fsrs,
   generatorParameters,
 } from "ts-fsrs";
+import { State } from "ts-fsrs";
 import type { Card, Grade } from "ts-fsrs";
 
 export { Rating, State } from "ts-fsrs";
@@ -49,4 +50,23 @@ export function createCard(input: NewCard, now: Date): VocabCard {
 
 export function reviewCard(card: VocabCard, rating: Grade, now: Date): VocabCard {
   return { ...card, fsrs: scheduler.next(card.fsrs, now, rating).card };
+}
+
+// Keeps every non-New due card and at most `limit - introducedToday` New cards, in due order.
+export function capNewCards(
+  due: VocabCard[],
+  introducedToday: number,
+  limit = 20,
+): VocabCard[] {
+  let newLeft = Math.max(0, limit - introducedToday);
+  return due.filter((card) => {
+    if (card.fsrs.state !== State.New) {
+      return true;
+    }
+    if (newLeft === 0) {
+      return false;
+    }
+    newLeft -= 1;
+    return true;
+  });
 }

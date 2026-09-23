@@ -30,7 +30,7 @@ describe("backup store", () => {
     const saved = card("saved");
     saved.fsrs.last_review = new Date("2026-01-04T12:00:00.000Z");
     await putCard(saved);
-    await recordPractice("2026-01-05");
+    await recordPractice("2026-01-05", { newCard: false });
     await markLessonComplete("lesson-1");
 
     const exported = await exportAll();
@@ -81,7 +81,7 @@ describe("backup store", () => {
 
   it("replaces rather than merges existing rows", async () => {
     await putCard(card("old"));
-    await recordPractice("2026-01-04");
+    await recordPractice("2026-01-04", { newCard: false });
     await markLessonComplete("old-lesson");
 
     const imported = {

@@ -7,6 +7,14 @@ export interface AppDatabase extends DBSchema {
   practiceDays: { key: string; value: { date: string } };
   lessonCompletion: { key: string; value: { lessonId: string } };
   meta: { key: string; value: { key: string; ownerId: string } };
+  // Local-only: not synced, not in backup.
+  dailyCounts: { key: string; value: DailyCount };
+}
+
+export interface DailyCount {
+  date: string;
+  actions: number;
+  newCards: number;
 }
 
 export function openAppDatabase(): Promise<IDBPDatabase<AppDatabase>> {
@@ -20,6 +28,7 @@ export function openAppDatabase(): Promise<IDBPDatabase<AppDatabase>> {
       db.createObjectStore("practiceDays", { keyPath: "date" });
       db.createObjectStore("lessonCompletion", { keyPath: "lessonId" });
       db.createObjectStore("meta", { keyPath: "key" });
+      db.createObjectStore("dailyCounts", { keyPath: "date" });
     },
   });
 }

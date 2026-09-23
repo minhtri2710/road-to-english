@@ -6,7 +6,7 @@ import { App } from "./App";
 import { exportData } from "./lib/backup";
 import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
-import { createCard } from "./lib/vocab";
+import { createCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
 import { greetingsLesson, lessonSummaries } from "./test/fixtures";
 
@@ -215,8 +215,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 30 controls plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(45);
+    // 33 controls (incl. the 5/10/20 daily-goal toggle) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(48);
 
     await act(async () => {
       root.unmount();
@@ -708,7 +708,7 @@ describe("App", () => {
       new Date(),
     );
     await putCard(existing);
-    await recordPractice("2025-01-01");
+    await recordPractice("2025-01-01", { newCard: false });
 
     const importedCard = createCard(
       {
@@ -1596,6 +1596,134 @@ describe("App", () => {
         root.unmount();
       });
       container.remove();
+    });
+  });
+
+  describe("daily goal and new-card cap", () => {
+    const start = new Date(2026, 0, 5, 12, 0, 0);
+
+    async function renderApp() {
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return responseFor(new URL(url, "http://localhost").pathname);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      const unmount = async () => {
+        await act(async () => {
+          root.unmount();
+        });
+        container.remove();
+      };
+      return { container, unmount };
+    }
+
+    async function seedNewCards(count: number) {
+      for (let index = 0; index < count; index += 1) {
+        await putCard(
+          createCard(
+            {
+              front: `front ${index}`,
+              back: `back ${index}`,
+              source: { lessonId: "lesson-1", sentenceId: `s-${String(index).padStart(2, "0")}`, word: "" },
+            },
+            start,
+          ),
+        );
+      }
+    }
+
+    async function openReview(container: HTMLElement) {
+      await act(async () => {
+        buttonsNamed(container, "Review")[0]?.click();
+      });
+    }
+
+    const hasText = (container: HTMLElement, text: string) => () =>
+      container.textContent?.includes(text) ?? false;
+
+    afterEach(() => {
+      vi.useRealTimers();
+      localStorage.clear();
+    });
+
+    it("shows the capped due count and shrinks the New allowance after rating a New card", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(start);
+      await seedNewCards(21);
+      const { container, unmount } = await renderApp();
+      await openReview(container);
+      await waitForCondition(hasText(container, "20 due"));
+
+      await act(async () => {
+        buttonsNamed(container, "Show answer")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(container, "Good")[0]?.click();
+      });
+      await waitForCondition(hasText(container, "19 due"));
+
+      const cards = await getAllCards();
+      expect(cards.filter((card) => card.fsrs.state === State.New)).toHaveLength(20);
+      expect(container.textContent).toContain("Goal 1/10");
+      await unmount();
+    });
+
+    it("restores the New-card cap on the next local day", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(start);
+      await seedNewCards(21);
+      for (let index = 0; index < 20; index += 1) {
+        await recordPractice(todayKey(start), { newCard: true });
+      }
+      const first = await renderApp();
+      await openReview(first.container);
+      await waitForCondition(hasText(first.container, "0 due"));
+      expect(first.container.textContent).toContain("Nothing due");
+      await first.unmount();
+
+      vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
+      const second = await renderApp();
+      await openReview(second.container);
+      await waitForCondition(hasText(second.container, "20 due"));
+      expect(second.container.textContent).toContain("Goal 0/10");
+      await second.unmount();
+    });
+
+    it("shows goal progress, switches the goal, and persists it", async () => {
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, "Goal 2/10"));
+
+      await act(async () => {
+        buttonsNamed(container, "5")[0]?.click();
+      });
+
+      expect(container.textContent).toContain("Goal 2/5");
+      expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("5");
+      await unmount();
+
+      const remounted = await renderApp();
+      await waitForCondition(hasText(remounted.container, "Goal 2/5"));
+      await remounted.unmount();
+    });
+
+    it("reads a missing or invalid stored goal as 10", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "7");
+      const { container, unmount } = await renderApp();
+
+      expect(container.textContent).toContain("Goal 0/10");
+      await unmount();
     });
   });
 });
