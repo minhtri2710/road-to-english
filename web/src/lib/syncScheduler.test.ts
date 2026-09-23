@@ -87,9 +87,8 @@ describe("sync scheduler", () => {
     setSyncTrigger(scheduler.trigger);
 
     await putCard(card("2026-01-02T00:00:00Z"));
-    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(syncMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
     scheduler.stop();
   });
 
@@ -107,20 +106,20 @@ describe("sync scheduler", () => {
     const second = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[] }>();
     syncMock.mockImplementationOnce(async () => first.promise);
     syncMock.mockImplementationOnce(async () => second.promise);
-    const scheduler = createSyncScheduler("user-1", async () => undefined, () => undefined);
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
     scheduler.trigger();
     scheduler.trigger();
     expect(syncMock).toHaveBeenCalledTimes(1);
 
     first.resolve({ cards: [], practiceDays: [], lessonCompletion: [] });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(syncMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(2));
 
     second.resolve({ cards: [], practiceDays: [], lessonCompletion: [] });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => expect(statuses).toEqual(["synced", "synced"]));
     expect(syncMock).toHaveBeenCalledTimes(2);
     scheduler.stop();
   });
@@ -133,9 +132,10 @@ describe("sync scheduler", () => {
     await claimOwner("another-user");
 
     syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [] });
-    const scheduler = createSyncScheduler("user-1", async () => undefined, () => undefined);
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => expect(statuses).toEqual(["ownerMismatch"]));
 
     expect(syncMock).not.toHaveBeenCalled();
     expect(await getAllCards()).toEqual([existing]);
@@ -150,16 +150,13 @@ describe("sync scheduler", () => {
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(statuses).toEqual(["failed"]);
+    await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
 
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(statuses).toEqual(["failed", "signedOut"]);
+    await vi.waitFor(() => expect(statuses).toEqual(["failed", "signedOut"]));
 
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(statuses).toEqual(["failed", "signedOut", "synced"]);
+    await vi.waitFor(() => expect(statuses).toEqual(["failed", "signedOut", "synced"]));
     scheduler.stop();
   });
 
@@ -169,8 +166,7 @@ describe("sync scheduler", () => {
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(statuses).toEqual(["failed"]);
+    await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
     scheduler.stop();
   });
 });
