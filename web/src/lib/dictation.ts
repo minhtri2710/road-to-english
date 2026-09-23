@@ -1,4 +1,4 @@
-import { isCardWord } from "./vocab";
+import { cardWord, isCardWord } from "./vocab";
 
 export function normalize(s: string): string {
   return s
@@ -69,23 +69,30 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
   return diff;
 }
 
-// Letter/digit runs (apostrophes kept) and the text between them, in order.
+// Letter/digit runs (apostrophes kept, internal hyphens joining runs into one
+// compound such as "T-shirt") and the text between them, in order.
 export function splitWords(text: string): string[] {
-  return text.split(/([A-Za-z0-9'’]+)/);
+  return text.split(/([A-Za-z0-9'’]+(?:-[A-Za-z0-9'’]+)*)/);
 }
 
-// Picks the longest word token (earliest on a tie) from the splitWords split
-// SentenceWords uses; index -1 when the text has no word token.
+// Picks the longest card word (earliest on a tie) from the splitWords split
+// SentenceWords uses; index -1 when the text has no word. The answer may be a
+// compound ("t-shirt"); check typed text with blankMatches.
 export function blankFor(text: string): { parts: string[]; index: number; answer: string } {
   const parts = splitWords(text);
   let index = -1;
   let answer = "";
   parts.forEach((part, i) => {
-    const word = normalize(part);
+    const word = cardWord(part);
     if (isCardWord(word) && word.length > answer.length) {
       index = i;
       answer = word;
     }
   });
   return { parts, index, answer };
+}
+
+// normalize() turns a hyphen into a space, so "t-shirt" and "t shirt" both match "t-shirt".
+export function blankMatches(typed: string, answer: string): boolean {
+  return normalize(typed) === normalize(answer);
 }

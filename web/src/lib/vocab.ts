@@ -12,7 +12,7 @@ export type { Grade, Card } from "ts-fsrs";
 export interface CardSource {
   lessonId: string;
   sentenceId: string;
-  // "" for a sentence card; one normalize() token ([a-z0-9]+) for a word card.
+  // "" for a sentence card; one cardWord() for a word card (see isCardWord).
   word: string;
 }
 
@@ -35,9 +35,14 @@ export function isText(value: unknown): value is string {
   return typeof value === "string" && !value.includes("\u0000");
 }
 
-// A word card's word: one non-empty normalize() token.
+// A word card's word: lowercase letter/digit runs joined by single hyphens ("t-shirt").
 export function isCardWord(word: string): boolean {
-  return /^[a-z0-9]+$/.test(word);
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(word);
+}
+
+// The card word for a splitWords part: lowercase, apostrophes dropped, hyphens kept.
+export function cardWord(part: string): string {
+  return part.toLowerCase().replace(/['’]/g, "");
 }
 
 export function cardId({ lessonId, sentenceId, word }: CardSource): string {

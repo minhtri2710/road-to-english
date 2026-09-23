@@ -46,3 +46,16 @@ test("remove a saved word with the Saved toggle, then Undo puts it back in Revie
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("morning", { exact: true })).toBeVisible();
 });
+
+test("save a hyphenated compound as one word and review it", async ({ page }) => {
+  await openLibraryLesson(page, "Weather & Clothes");
+
+  await expect(page.getByRole("button", { name: "T", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "T-shirt", exact: true }).click();
+  await page.getByRole("button", { name: "Save word" }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
+
+  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page.getByText("1 due")).toBeVisible();
+  await expect(page.getByText("T-shirt", { exact: true })).toBeVisible();
+});

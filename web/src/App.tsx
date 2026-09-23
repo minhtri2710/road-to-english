@@ -28,8 +28,8 @@ import { useAuth, type AuthState } from "./hooks/auth";
 import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
-import { blankFor, diffWords, normalize, splitWords, type WordDiff } from "./lib/dictation";
-import { capNewCards, cardId, isCardWord, NEW_CARDS_PER_DAY, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
+import { blankFor, blankMatches, diffWords, splitWords, type WordDiff } from "./lib/dictation";
+import { capNewCards, cardId, cardWord, isCardWord, NEW_CARDS_PER_DAY, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
@@ -632,7 +632,7 @@ function SentenceBlank({
 
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setCorrect(normalize(typed) === answer);
+    setCorrect(blankMatches(typed, answer));
     if (typed.trim()) {
       practice("blank");
     }
@@ -1293,8 +1293,9 @@ function downloadText(text: string, type: string, fileName: string): void {
   URL.revokeObjectURL?.(url);
 }
 
-// Splits on letter/digit runs (apostrophes kept, so "What's" is one word) and
-// renders each run whose normalize() is a single token as a button; everything
+// Splits on letter/digit runs (apostrophes kept, so "What's" is one word;
+// hyphens inside join a compound, so "T-shirt" is one word) and renders each
+// run whose cardWord() is a card word as a button; everything
 // else stays plain text, so the sentence text reads exactly as authored. The
 // word whose character range holds spokenChar is marked as currently spoken.
 function SentenceWords({
@@ -1314,7 +1315,7 @@ function SentenceWords({
       {splitWords(text).map((part, index) => {
         const partStart = start;
         start += part.length;
-        if (!isCardWord(normalize(part))) {
+        if (!isCardWord(cardWord(part))) {
           return part;
         }
         const spoken =
@@ -1354,7 +1355,7 @@ function WordPanel({
 }) {
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
-  // Lookups keep an inner apostrophe ("don't") but drop quote marks; the card id uses the normalised word.
+  // Lookups keep an inner apostrophe ("don't") but drop quote marks and keep hyphens ("t-shirt"); the card id uses cardWord().
   const word = text.toLowerCase().replace(/’/g, "'").replace(/^'+|'+$/g, "");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
   const [lookup, setLookup] = useState<"idle" | "pending" | "unreachable" | Definition | null>("idle");
@@ -1904,7 +1905,7 @@ function LessonDetail({
                   )}
                   {showTranscript && selectedWord?.sentenceId === sentence.id && (
                     <WordPanel
-                      key={normalize(selectedWord.text)}
+                      key={cardWord(selectedWord.text)}
                       text={selectedWord.text}
                       card={{
                         front: selectedWord.text,
@@ -1912,7 +1913,7 @@ function LessonDetail({
                         source: {
                           lessonId: data.id,
                           sentenceId: sentence.id,
-                          word: normalize(selectedWord.text),
+                          word: cardWord(selectedWord.text),
                         },
                       }}
                       savedCardIds={savedCardIds}

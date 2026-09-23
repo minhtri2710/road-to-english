@@ -406,7 +406,7 @@ func validateSyncState(state storage.State) bool {
 	return true
 }
 
-var cardWordPattern = regexp.MustCompile(`^[a-z0-9]+$`)
+var cardWordPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 func validCardWord(word string) bool {
 	return word == "" || cardWordPattern.MatchString(word)

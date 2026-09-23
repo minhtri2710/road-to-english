@@ -1674,6 +1674,35 @@ describe("App", () => {
     second.container.remove();
   });
 
+  it("renders a hyphenated compound as one word button and saves it as one card", async () => {
+    installSpeechFakes();
+    const sentence = {
+      id: "weather-and-clothes-9",
+      text: "I wear a T-shirt and shorts.",
+      vi: "Tôi mặc áo phông và quần soóc.",
+    };
+    const { container, root } = await openLesson({ ...greetingsLesson, sentences: [sentence] });
+
+    expect(buttonsNamed(container, "T-shirt")).toHaveLength(1);
+    expect(buttonsNamed(container, "T")).toHaveLength(0);
+    expect(buttonsNamed(container, "shirt")).toHaveLength(0);
+    await act(async () => {
+      buttonsNamed(container, "T-shirt")[0]?.click();
+    });
+    await act(async () => {
+      buttonsNamed(container, "Save word")[0]?.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    const [card] = await getAllCards();
+    expect(card?.id).toBe(`greetings-basics:${sentence.id}:t-shirt`);
+    expect(card?.source.word).toBe("t-shirt");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
   it("removes a saved card with the Saved toggle, offers Undo that restores it, and re-saves it fresh", async () => {
     const sentence = greetingsLesson.sentences[0];
     const created = new Date("2026-01-01T00:00:00.000Z");

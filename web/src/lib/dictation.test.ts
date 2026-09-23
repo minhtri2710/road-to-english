@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blankFor, diffWords, normalize } from "./dictation";
+import { blankFor, blankMatches, diffWords, normalize, splitWords } from "./dictation";
 
 describe("normalize", () => {
   it.each([
@@ -98,6 +98,7 @@ describe("blankFor", () => {
     ["seed: greeting", "Good morning, how are you today?", 3, "morning"],
     ["seed: introduction", "I'm from Vietnam, and I live in Hanoi.", 5, "vietnam"],
     ["seed: request", "Sorry, could you say that again?", 1, "sorry"],
+    ["compound", "I wear a T-shirt and shorts.", 7, "t-shirt"],
   ])("picks the %s", (_name, text, index, answer) => {
     const blank = blankFor(text);
     expect(blank.index).toBe(index);
@@ -113,5 +114,30 @@ describe("blankFor", () => {
 
   it.each(["", "...", " - ! "])("returns -1 for no-word text %j", (text) => {
     expect(blankFor(text).index).toBe(-1);
+  });
+});
+
+describe("splitWords", () => {
+  it.each([
+    ["I wear a T-shirt and shorts.", ["", "I", " ", "wear", " ", "a", " ", "T-shirt", " ", "and", " ", "shorts", "."]],
+    ["twenty-five", ["", "twenty-five", ""]],
+    ["a - b", ["", "a", " - ", "b", ""]],
+    ["word-", ["", "word", "-"]],
+  ])("splits %j", (text, parts) => {
+    expect(splitWords(text)).toEqual(parts);
+  });
+});
+
+describe("blankMatches", () => {
+  it.each(["t-shirt", "T-shirt", "t shirt", " T-Shirt "])("accepts %j for t-shirt", (typed) => {
+    expect(blankMatches(typed, "t-shirt")).toBe(true);
+  });
+
+  it.each(["tshirt", "shirt", ""])("rejects %j for t-shirt", (typed) => {
+    expect(blankMatches(typed, "t-shirt")).toBe(false);
+  });
+
+  it("accepts a typed apostrophe for an apostrophe answer", () => {
+    expect(blankMatches("What's", blankFor("What's up?").answer)).toBe(true);
   });
 });

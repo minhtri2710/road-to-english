@@ -158,6 +158,11 @@ describe("sync state validation", () => {
           id: "lesson-1:sentence-1:hello",
           source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" },
         },
+        {
+          ...state().cards[0],
+          id: "lesson-1:sentence-1:t-shirt",
+          source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "t-shirt" },
+        },
       ],
     })).not.toThrow();
   });

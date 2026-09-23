@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { capNewCards, createCard, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
+import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -39,8 +39,13 @@ describe("vocabulary cards", () => {
     expect(card.source.word).toBe("hello");
   });
 
-  it("rejects a word that is not a single normalized token", () => {
-    for (const word of ["Hello", "a:b", "a b"]) {
+  it("appends a hyphenated word to a word card id", () => {
+    const card = createCard({ ...input, source: { ...input.source, word: "t-shirt" } }, now);
+    expect(card.id).toBe("lesson-1:sentence-1:t-shirt");
+  });
+
+  it("rejects a word that is not a card word", () => {
+    for (const word of ["Hello", "a:b", "a b", "-a", "a--b"]) {
       expect(() => createCard({ ...input, source: { ...input.source, word } }, now)).toThrow();
     }
   });
@@ -161,5 +166,24 @@ describe("capNewCards", () => {
 
   it("keeps no New cards past the limit but all review cards", () => {
     expect(ids(capNewCards(due, 25))).toEqual(ids(reviewCards));
+  });
+});
+
+describe("card words", () => {
+  it.each(["t-shirt", "twenty-five", "well-known", "a", "dont"])("accepts %j", (word) => {
+    expect(isCardWord(word)).toBe(true);
+  });
+
+  it.each(["-a", "a-", "a--b", "a b", "", "T-shirt", "Hello"])("rejects %j", (word) => {
+    expect(isCardWord(word)).toBe(false);
+  });
+
+  it.each([
+    ["T-shirt", "t-shirt"],
+    ["don't", "dont"],
+    ["It's", "its"],
+    ["It’s", "its"],
+  ])("derives %j as %j", (part, word) => {
+    expect(cardWord(part)).toBe(word);
   });
 });

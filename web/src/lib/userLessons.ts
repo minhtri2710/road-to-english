@@ -1,7 +1,7 @@
 import type { Lesson, Level } from "../api/lessons";
 import { openAppDatabase } from "./db";
-import { normalize, splitWords } from "./dictation";
-import { isCardWord, isText } from "./vocab";
+import { splitWords } from "./dictation";
+import { cardWord, isCardWord, isText } from "./vocab";
 import { isYouTubeId, parseTranscript, parseYouTubeId } from "./youtube";
 
 export const USER_LEVELS = ["A1", "A2", "B1", "B2"] as const satisfies readonly Level[];
@@ -20,7 +20,7 @@ export function segmentText(text: string): string[] {
     .flatMap((paragraph) =>
       Array.from(segmenter.segment(paragraph.replace(/\s+/g, " ")), ({ segment }) => segment.trim()),
     )
-    .filter((segment) => splitWords(segment).some((part) => isCardWord(normalize(part))));
+    .filter((segment) => splitWords(segment).some((part) => isCardWord(cardWord(part))));
 }
 
 export function isValidTitle(value: unknown): value is string {

@@ -642,6 +642,30 @@ func TestSyncRoundTripsWordCard(t *testing.T) {
 	}
 }
 
+func TestSyncValidatesCardWord(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-card-word@example.com")
+	body := func(word string) string {
+		return `{"cards":[{"id":"lesson-1:sentence-1:` + word + `","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"` + word + `"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
+	}
+	for word, want := range map[string]int{
+		"t-shirt": http.StatusOK,
+		"-a":      http.StatusBadRequest,
+		"a-":      http.StatusBadRequest,
+		"a--b":    http.StatusBadRequest,
+		"T-shirt": http.StatusBadRequest,
+	} {
+		t.Run(word, func(t *testing.T) {
+			if got := cardWordPattern.MatchString(word); got != (want == http.StatusOK) {
+				t.Fatalf("cardWordPattern.MatchString(%q) = %v", word, got)
+			}
+			if response := syncWithCookie(api.handler, body(word), cookie); response.Code != want {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, want, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestSyncRejectsInvalidState(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-invalid@example.com")
