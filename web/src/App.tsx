@@ -27,7 +27,7 @@ import { useLesson, useLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
 import { blankFor, diffWords, normalize, splitWords, type WordDiff } from "./lib/dictation";
-import { capNewCards, cardId, isCardWord, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
+import { capNewCards, cardId, isCardWord, NEW_CARDS_PER_DAY, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
 import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
@@ -69,6 +69,13 @@ const appStyles = stylex.create({
     width: "100%",
     justifyContent: "space-between",
     textAlign: "start",
+    // The row grows to its two-line content; badges wrap below the title when space runs out.
+    height: "auto",
+    paddingBlock: "0.5rem",
+    whiteSpace: "normal",
+  },
+  lessonRowContent: {
+    flexWrap: "wrap",
   },
   sentence: {
     padding: "1rem",
@@ -728,7 +735,7 @@ function LessonRow({
       xstyle={appStyles.lessonButton}
       onClick={onSelect}
     >
-      <HStack justify="between" align="center" width="100%">
+      <HStack justify="between" align="center" width="100%" xstyle={appStyles.lessonRowContent}>
         <VStack gap={0.5} align="start">
           <Text weight="semibold">{title}</Text>
           <Text type="supporting">
@@ -753,14 +760,22 @@ function LessonList({
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
 }) {
-  const { data, loading, error } = useLessons();
+  const { data, loading, error, retry } = useLessons();
 
   if (loading) {
     return <Text as="p">Loading lessons...</Text>;
   }
 
   if (error) {
-    return <ErrorMessage error={error} subject="lessons" />;
+    return (
+      <VStack gap={1}>
+        <ErrorMessage error={error} subject="lessons" />
+        <Text as="p" type="supporting">
+          Your own lessons below still work offline.
+        </Text>
+        <Button label="Retry" variant="secondary" xstyle={appStyles.viewToggle} onClick={retry} />
+      </VStack>
+    );
   }
 
   if (!data || data.length === 0) {
@@ -790,17 +805,23 @@ function UserLessonList({
   lessons,
   onSelect,
   onDelete,
+  deleteFailedId,
   completedLessons,
   takeFocus,
 }: {
-  lessons: Lesson[] | null;
+  lessons: Lesson[] | Error | null;
   onSelect: (lesson: Lesson) => void;
   onDelete: (lesson: Lesson) => void;
+  deleteFailedId: string | null;
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
 }) {
   if (lessons === null) {
     return <Text as="p">Loading your lessons...</Text>;
+  }
+
+  if (lessons instanceof Error) {
+    return <ErrorMessage error={lessons} subject="your lessons" />;
   }
 
   if (lessons.length === 0) {
@@ -828,6 +849,11 @@ function UserLessonList({
               onClick={() => onDelete(lesson)}
             />
           </HStack>
+          {deleteFailedId === lesson.id && (
+            <Text as="p" color="primary" xstyle={appStyles.error}>
+              Couldn't delete. Try again.
+            </Text>
+          )}
         </li>
       ))}
     </VStack>
@@ -949,6 +975,7 @@ function SaveToReview({
   addCard: (input: NewCard) => Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
   const isSavingRef = useRef(false);
 
   const save = async () => {
@@ -958,8 +985,11 @@ function SaveToReview({
 
     isSavingRef.current = true;
     setIsSaving(true);
+    setFailed(false);
     try {
       await addCard(card);
+    } catch {
+      setFailed(true);
     } finally {
       isSavingRef.current = false;
       setIsSaving(false);
@@ -967,14 +997,21 @@ function SaveToReview({
   };
 
   return (
-    <Button
-      label={saved ? "Saved" : label}
-      variant="ghost"
-      isDisabled={saved || isSaving}
-      // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-      tooltip={saved ? "Already in your review deck" : isSaving ? "Saving…" : undefined}
-      onClick={() => void save()}
-    />
+    <>
+      <Button
+        label={saved ? "Saved" : label}
+        variant="ghost"
+        isDisabled={saved || isSaving}
+        // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+        tooltip={saved ? "Already in your review deck" : isSaving ? "Saving…" : undefined}
+        onClick={() => void save()}
+      />
+      {failed && (
+        <Text as="p" color="primary" xstyle={appStyles.error}>
+          Couldn't save. Try again.
+        </Text>
+      )}
+    </>
   );
 }
 
@@ -1111,17 +1148,26 @@ function WordPanel({
 
 function ReviewDeck({
   due,
+  hiddenNew,
+  hasCards,
   loading,
+  loadFailed,
   review,
   recordPractice,
+  onGoToLibrary,
 }: {
   due: VocabCard[];
+  hiddenNew: number;
+  hasCards: boolean;
   loading: boolean;
+  loadFailed: boolean;
   review: (card: VocabCard, rating: Grade) => Promise<void>;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
+  onGoToLibrary: () => void;
 }) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [isRating, setIsRating] = useState(false);
+  const [rateFailed, setRateFailed] = useState(false);
   const isRatingRef = useRef(false);
   // Show answer and rating remove the focused button, so focus moves to what replaced it.
   const [focusTarget, setFocusTarget] = useState<"answer" | "prompt" | null>(null);
@@ -1145,11 +1191,29 @@ function ReviewDeck({
     return <Text as="p">Loading review deck...</Text>;
   }
 
+  if (loadFailed) {
+    return (
+      <VStack gap={2}>
+        <Text as="p" ref={promptRef} tabIndex={-1}>
+          Your review deck couldn't be loaded.
+        </Text>
+        <Button label="Go to library" variant="secondary" xstyle={appStyles.viewToggle} onClick={onGoToLibrary} />
+      </VStack>
+    );
+  }
+
   if (!card) {
     return (
-      <Text as="p" ref={promptRef} tabIndex={-1}>
-        Nothing due — save sentences from a lesson to build your deck.
-      </Text>
+      <VStack gap={2}>
+        <Text as="p" ref={promptRef} tabIndex={-1}>
+          {!hasCards
+            ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
+            : hiddenNew > 0
+              ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
+              : "All caught up. Come back later for your next review."}
+        </Text>
+        <Button label="Go to library" variant="secondary" xstyle={appStyles.viewToggle} onClick={onGoToLibrary} />
+      </VStack>
     );
   }
 
@@ -1162,10 +1226,14 @@ function ReviewDeck({
     setIsRating(true);
     // Read before rating: the review moves the card out of New.
     const newCard = card.fsrs.state === State.New;
+    setRateFailed(false);
     try {
       await review(card, rating);
+      // Resolves even when the write fails; the header storage line reports it.
       await recordPractice({ newCard });
       setFocusTarget("prompt");
+    } catch {
+      setRateFailed(true);
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -1217,6 +1285,11 @@ function ReviewDeck({
               />
             </HStack>
           )}
+          {rateFailed && (
+            <Text as="p" color="primary" xstyle={appStyles.error}>
+              Couldn't save. Try again.
+            </Text>
+          )}
         </VStack>
       </Card>
     </VStack>
@@ -1237,10 +1310,6 @@ interface LessonDetailProps {
 function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string }) {
   const { data, loading, error } = useLesson(id);
 
-  if (loading) {
-    return <Text as="p">Loading lesson...</Text>;
-  }
-
   if (error) {
     return (
       <VStack gap={3}>
@@ -1250,8 +1319,9 @@ function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string 
     );
   }
 
-  if (!data) {
-    return <Text as="p">Lesson unavailable.</Text>;
+  // useLesson starts loading for an id, so data is null only while loading.
+  if (loading || !data) {
+    return <Text as="p">Loading lesson...</Text>;
   }
 
   return <LessonDetail lesson={data} {...props} />;
@@ -1283,6 +1353,7 @@ function LessonDetail({
     sentenceId: string;
     charIndex: number;
   } | null>(null);
+  const [completeFailed, setCompleteFailed] = useState(false);
   const video = useYouTubePlayer(data.videoId);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -1328,8 +1399,16 @@ function LessonDetail({
         label={completed ? "Completed" : "Mark complete"}
         variant="secondary"
         isDisabled={completed}
-        onClick={() => void markLessonComplete(data.id)}
+        onClick={() => {
+          setCompleteFailed(false);
+          markLessonComplete(data.id).catch(() => setCompleteFailed(true));
+        }}
       />
+      {completeFailed && (
+        <Text as="p" color="primary" xstyle={appStyles.error}>
+          Couldn't save. Try again.
+        </Text>
+      )}
       <ToggleButtonGroup
         label="Lesson mode"
         value={mode}
@@ -1546,19 +1625,33 @@ export function App() {
   const [selected, setSelected] = useState<
     { kind: "library"; id: string } | { kind: "user"; lesson: Lesson } | null
   >(null);
-  const [userLessons, setUserLessons] = useState<Lesson[] | null>(null);
+  const [userLessons, setUserLessons] = useState<Lesson[] | Error | null>(null);
+  const [deleteFailedId, setDeleteFailedId] = useState<string | null>(null);
   const [view, setView] = useState<"library" | "review">("library");
   const [backupError, setBackupError] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
   const progress = useProgress();
   const reviewDeck = capNewCards(deck.due, progress.newCardsToday);
+  const storageError =
+    deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = progress.actionsToday >= Number(dailyGoal);
   const auth = useAuth();
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const returnFocusId = useRef<string | null>(null);
+
+  // A pending return focus is dropped once the user moves on, so a late row mount cannot steal focus.
+  const showView = (nextView: "library" | "review") => {
+    returnFocusId.current = null;
+    setView(nextView);
+  };
+
+  const select = (next: { kind: "library"; id: string } | { kind: "user"; lesson: Lesson }) => {
+    returnFocusId.current = null;
+    setSelected(next);
+  };
 
   const takeReturnFocus = (id: string) => {
     if (returnFocusId.current !== id) {
@@ -1597,13 +1690,18 @@ export function App() {
     };
   }, [auth.user, deck.reload, progress.reload]);
 
+  const loadUserLessons = () =>
+    listUserLessons().catch((loadError: unknown) =>
+      loadError instanceof Error ? loadError : new Error("Unable to load your lessons"),
+    );
+
   const reloadUserLessons = async () => {
-    setUserLessons(await listUserLessons());
+    setUserLessons(await loadUserLessons());
   };
 
   useEffect(() => {
     let active = true;
-    void listUserLessons().then((lessons) => {
+    void loadUserLessons().then((lessons) => {
       if (active) {
         setUserLessons(lessons);
       }
@@ -1616,18 +1714,25 @@ export function App() {
   const createLesson = async (lesson: Lesson) => {
     await putUserLesson(lesson);
     await reloadUserLessons();
-    setSelected({ kind: "user", lesson });
+    select({ kind: "user", lesson });
   };
 
   const deleteLesson = async (lesson: Lesson) => {
     if (!window.confirm(`Delete "${lesson.title}"? Cards saved from it stay in your deck.`)) {
       return;
     }
-    await deleteUserLesson(lesson.id);
+    setDeleteFailedId(null);
+    try {
+      await deleteUserLesson(lesson.id);
+    } catch {
+      setDeleteFailedId(lesson.id);
+      return;
+    }
     await reloadUserLessons();
   };
 
   const exportBackup = async () => {
+    setBackupError(null);
     try {
       downloadText(exportData(await exportBackupData(), new Date()), "application/json", backupFileName(new Date()));
     } catch (error) {
@@ -1636,6 +1741,7 @@ export function App() {
   };
 
   const exportCsv = async () => {
+    setBackupError(null);
     try {
       downloadText(cardsCsv(await getAllCards()), "text/csv;charset=utf-8", cardsCsvFileName(new Date()));
     } catch (error) {
@@ -1644,6 +1750,7 @@ export function App() {
   };
 
   const importBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    setBackupError(null);
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) {
@@ -1658,7 +1765,6 @@ export function App() {
       await replaceAll(data);
       await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
       setSelected(null);
-      setBackupError(null);
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
     }
@@ -1737,6 +1843,11 @@ export function App() {
                   onChange={(event) => void importBackup(event)}
                 />
               </HStack>
+              {storageError && (
+                <Text as="p" color="primary" xstyle={appStyles.error}>
+                  Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
+                </Text>
+              )}
               {backupError && (
                 <Text as="p" color="primary" xstyle={appStyles.error}>
                   Backup error: {backupError}
@@ -1754,7 +1865,7 @@ export function App() {
               value={view}
               onChange={(nextView) => {
                 if (nextView) {
-                  setView(nextView as "library" | "review");
+                  showView(nextView as "library" | "review");
                 }
               }}
               xstyle={appStyles.viewToggle}
@@ -1767,15 +1878,19 @@ export function App() {
                 <Badge label={`${reviewDeck.length} due`} variant="info" />
                 <ReviewDeck
                   due={reviewDeck}
+                  hiddenNew={deck.due.length - reviewDeck.length}
+                  hasCards={deck.savedCardIds.size > 0}
                   loading={deck.loading}
+                  loadFailed={deck.error !== null}
                   review={deck.review}
                   recordPractice={progress.recordPractice}
+                  onGoToLibrary={() => showView("library")}
                 />
               </VStack>
             ) : selected === null ? (
               <VStack gap={4}>
                 <LessonList
-                  onSelect={(id) => setSelected({ kind: "library", id })}
+                  onSelect={(id) => select({ kind: "library", id })}
                   completedLessons={progress.completedLessons}
                   takeFocus={takeReturnFocus}
                 />
@@ -1783,8 +1898,9 @@ export function App() {
                   <Heading level={2}>Your lessons</Heading>
                   <UserLessonList
                     lessons={userLessons}
-                    onSelect={(lesson) => setSelected({ kind: "user", lesson })}
+                    onSelect={(lesson) => select({ kind: "user", lesson })}
                     onDelete={(lesson) => void deleteLesson(lesson)}
+                    deleteFailedId={deleteFailedId}
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
                   />

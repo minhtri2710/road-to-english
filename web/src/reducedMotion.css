@@ -1,0 +1,10 @@
+/* Applies app-wide, including Astryx components, whose own transitions ignore the preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

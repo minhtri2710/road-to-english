@@ -57,11 +57,13 @@ export function reviewCard(card: VocabCard, rating: Grade, now: Date): VocabCard
   return { ...card, fsrs: scheduler.next(card.fsrs, now, rating).card };
 }
 
+export const NEW_CARDS_PER_DAY = 20;
+
 // Keeps every non-New due card and at most `limit - introducedToday` New cards, in due order.
 export function capNewCards(
   due: VocabCard[],
   introducedToday: number,
-  limit = 20,
+  limit = NEW_CARDS_PER_DAY,
 ): VocabCard[] {
   let newLeft = Math.max(0, limit - introducedToday);
   return due.filter((card) => {

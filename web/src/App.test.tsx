@@ -10,8 +10,12 @@ import { recordPractice, getPracticeDays } from "./lib/progressStore";
 import { createCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
 import { blankFor } from "./lib/dictation";
-import { listUserLessons } from "./lib/userLessons";
-import { greetingsLesson, lessonSummaries } from "./test/fixtures";
+import * as backupStore from "./lib/backupStore";
+import * as progressStore from "./lib/progressStore";
+import * as userLessonsStore from "./lib/userLessons";
+import * as vocabStore from "./lib/vocabStore";
+import { listUserLessons, putUserLesson } from "./lib/userLessons";
+import { greetingsLesson, lessonSummaries, userLesson } from "./test/fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
 const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
@@ -810,7 +814,7 @@ describe("App", () => {
     await act(async () => {
       buttonsNamed(container, "Good")[0]?.click();
     });
-    await waitForCondition(() => document.activeElement?.textContent?.includes("Nothing due") ?? false);
+    await waitForCondition(() => document.activeElement?.textContent?.includes("All caught up") ?? false);
 
     await act(async () => {
       root.unmount();
@@ -1646,7 +1650,7 @@ describe("App", () => {
     await act(async () => {
       buttonsNamed(second.container, "Good")[0]?.click();
     });
-    await waitForCondition(() => second.container.textContent?.includes("Nothing due") ?? false);
+    await waitForCondition(() => second.container.textContent?.includes("All caught up") ?? false);
     const [reviewed] = await getAllCards();
     expect(reviewed?.fsrs.reps).toBe(1);
 
@@ -1905,7 +1909,9 @@ describe("App", () => {
       const first = await renderApp();
       await openReview(first.container);
       await waitForCondition(hasText(first.container, "0 due"));
-      expect(first.container.textContent).toContain("Nothing due");
+      expect(first.container.textContent).toContain(
+        "Daily limit of 20 new cards reached. 21 new cards are waiting.",
+      );
       await first.unmount();
 
       vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
@@ -2844,6 +2850,331 @@ describe("App", () => {
       expect(view.container.textContent).toContain('today (you typed "tomorrow")');
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
       await close(view);
+    });
+  });
+
+  describe("storage failures, retry, and dead ends", () => {
+    const storageLine = "Your saved data couldn't be read or saved on this device";
+
+    async function renderApp(route: (path: string) => Response | Promise<Response> = (path) => responseFor(path)) {
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return route(new URL(url, "http://localhost").pathname);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      const unmount = async () => {
+        await act(async () => {
+          root.unmount();
+        });
+        container.remove();
+      };
+      return { container, unmount };
+    }
+
+    const hasText = (container: HTMLElement, text: string) => () =>
+      container.textContent?.includes(text) ?? false;
+
+    async function click(container: HTMLElement, name: string, index = 0) {
+      const button = buttonsNamed(container, name)[index];
+      if (!button) throw new Error(`${name} button not found`);
+      await act(async () => {
+        button.click();
+      });
+      return button;
+    }
+
+    async function openGreetings(container: HTMLElement) {
+      await waitForCondition(() => buttonsNamed(container, "Greetings & Basics").length > 0 || hasText(container, "Greetings & Basics")());
+      await act(async () => {
+        Array.from(container.querySelectorAll("button"))
+          .find((button) => button.textContent?.includes("Greetings & Basics"))
+          ?.click();
+      });
+      await waitForCondition(() => container.querySelector("h2")?.textContent === "Greetings & Basics");
+    }
+
+    it("shows the storage line and no endless loading when the deck fails to load", async () => {
+      vi.spyOn(vocabStore, "getAllCards").mockRejectedValue(new Error("IndexedDB is unavailable"));
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, storageLine));
+      expect(container.textContent).toContain(`${storageLine}: IndexedDB is unavailable. Reload to try again.`);
+
+      await click(container, "Review");
+      expect(container.textContent).not.toContain("Loading review deck...");
+      expect(container.textContent).toContain("Your review deck couldn't be loaded.");
+      expect(container.textContent).not.toContain("Nothing to review yet");
+      await unmount();
+    });
+
+    it("shows the storage line when progress fails to load", async () => {
+      vi.spyOn(progressStore, "getPracticeDays").mockRejectedValue(new Error("progress store broke"));
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, `${storageLine}: progress store broke.`));
+      expect(container.textContent).toContain("Greetings & Basics");
+      await unmount();
+    });
+
+    it("shows an error instead of loading forever when your lessons fail to load", async () => {
+      vi.spyOn(userLessonsStore, "listUserLessons").mockRejectedValue(new Error("lessons store broke"));
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, "Unable to load your lessons: lessons store broke"));
+      expect(container.textContent).not.toContain("Loading your lessons...");
+      expect(container.textContent).toContain(`${storageLine}: lessons store broke.`);
+      await unmount();
+    });
+
+    it("recovers Save to review and Save word after a failed write", async () => {
+      installSpeechFakes();
+      const { container, unmount } = await renderApp();
+      await openGreetings(container);
+      const putCard = vi.spyOn(vocabStore, "putCard").mockRejectedValueOnce(new Error("quota"));
+
+      const save = await click(container, "Save to review");
+      await waitForCondition(hasText(container, "Couldn't save. Try again."));
+      expect(save.getAttribute("aria-disabled")).not.toBe("true");
+      expect(save.disabled).toBe(false);
+      await click(container, "Save to review");
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      expect(container.textContent).not.toContain("Couldn't save.");
+
+      await click(container, "morning");
+      putCard.mockRejectedValueOnce(new Error("quota"));
+      await click(container, "Save word");
+      await waitForCondition(hasText(container, "Couldn't save. Try again."));
+      await click(container, "Save word");
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 2);
+      expect(container.textContent).not.toContain("Couldn't save.");
+      await unmount();
+    });
+
+    it("recovers rating in Review after a failed write", async () => {
+      await putCard(
+        createCard({ front: "front", back: "back", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date()),
+      );
+      const { container, unmount } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      await click(container, "Show answer");
+      vi.spyOn(vocabStore, "putCard").mockRejectedValueOnce(new Error("quota"));
+      await click(container, "Good");
+      await waitForCondition(hasText(container, "Couldn't save. Try again."));
+      expect(buttonsNamed(container, "Good")[0]?.disabled).toBe(false);
+      await click(container, "Good");
+      await waitForCondition(hasText(container, "All caught up"));
+      expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
+      await unmount();
+    });
+
+    it("reports a failed progress write after a saved rating in the header, not as a rating failure", async () => {
+      await putCard(
+        createCard({ front: "front", back: "back", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date()),
+      );
+      const { container, unmount } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      await click(container, "Show answer");
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("quota"));
+      await click(container, "Good");
+      await waitForCondition(hasText(container, `${storageLine}: quota.`));
+      await waitForCondition(hasText(container, "All caught up"));
+      expect(container.textContent).not.toContain("Couldn't save.");
+      expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
+      await unmount();
+    });
+
+    it("shows the header line when a dictation practice write fails", async () => {
+      const { container, unmount } = await renderApp();
+      await openGreetings(container);
+      await click(container, "Dictation");
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
+      const input = container.querySelector<HTMLInputElement>(`#dictation-${greetingsLesson.sentences[0].id}`);
+      if (!input) throw new Error("dictation input not found");
+      await act(async () => {
+        setInputValue(input, "Good morning");
+        input.form?.requestSubmit();
+      });
+      await waitForCondition(hasText(container, `${storageLine}: disk full. Reload to try again.`));
+      expect(container.textContent).toContain("Goal 0/10");
+      await unmount();
+    });
+
+    it("recovers Mark complete after a failed write", async () => {
+      const { container, unmount } = await renderApp();
+      await openGreetings(container);
+      vi.spyOn(progressStore, "markLessonComplete").mockRejectedValueOnce(new Error("quota"));
+      await click(container, "Mark complete");
+      await waitForCondition(hasText(container, "Couldn't save. Try again."));
+      await click(container, "Mark complete");
+      await waitForCondition(() => buttonsNamed(container, "Completed").length === 1);
+      expect(container.textContent).not.toContain("Couldn't save.");
+      await unmount();
+    });
+
+    it("recovers Delete lesson after a failed write", async () => {
+      await putUserLesson(userLesson);
+      vi.stubGlobal("confirm", () => true);
+      const { container, unmount } = await renderApp();
+      await waitForCondition(hasText(container, userLesson.title));
+      vi.spyOn(userLessonsStore, "deleteUserLesson").mockRejectedValueOnce(new Error("quota"));
+      const del = () => container.querySelector<HTMLButtonElement>(`button[aria-label="Delete ${userLesson.title}"]`);
+      await act(async () => {
+        del()?.click();
+      });
+      await waitForCondition(hasText(container, "Couldn't delete. Try again."));
+      await act(async () => {
+        del()?.click();
+      });
+      await waitForCondition(hasText(container, "No lessons of your own yet."));
+      expect(container.textContent).not.toContain("Couldn't delete.");
+      await unmount();
+    });
+
+    it("keeps the Create error line when saving a lesson fails", async () => {
+      vi.spyOn(userLessonsStore, "putUserLesson").mockRejectedValueOnce(new Error("quota exceeded"));
+      const { container, unmount } = await renderApp();
+      const title = container.querySelector<HTMLInputElement>("#import-title");
+      const text = container.querySelector<HTMLTextAreaElement>("#import-text");
+      if (!title || !text) throw new Error("import form not found");
+      await act(async () => {
+        setInputValue(title, "Mine");
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        setter?.call(text, "I like tea. You like coffee.");
+        text.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await click(container, "Create");
+      await waitForCondition(hasText(container, "quota exceeded"));
+      await click(container, "Create");
+      await waitForCondition(() => container.querySelector("h2")?.textContent === "Mine");
+      await unmount();
+    });
+
+    it("Retry re-fetches the library after a failure", async () => {
+      let fail = true;
+      let release: () => void = () => undefined;
+      const { container, unmount } = await renderApp(async (path) => {
+        if (path === "/lessons" && fail) {
+          return new Response("boom", { status: 500 });
+        }
+        if (path === "/lessons") {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return responseFor(path);
+      });
+      await waitForCondition(hasText(container, "Unable to load lessons"));
+      expect(container.textContent).toContain("Your own lessons below still work offline.");
+
+      fail = false;
+      await click(container, "Retry");
+      expect(container.textContent).toContain("Loading lessons...");
+      await act(async () => {
+        release();
+      });
+      await waitForCondition(hasText(container, "Greetings & Basics"));
+      expect(container.textContent).not.toContain("Unable to load lessons");
+      await unmount();
+    });
+
+    it("shows the no-cards empty state and Go to library switches the view", async () => {
+      const { container, unmount } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(
+        hasText(container, "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."),
+      );
+      await click(container, "Go to library");
+      expect(container.querySelector("h1")?.textContent).toBe("Lesson library");
+      await waitForCondition(hasText(container, "Greetings & Basics"));
+      await unmount();
+    });
+
+    it("shows All caught up when cards exist but none are due", async () => {
+      const card = createCard({ front: "f", back: "b", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date());
+      await putCard({ ...card, fsrs: { ...card.fsrs, due: new Date(Date.now() + 86_400_000), state: State.Review } });
+      const { container, unmount } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(hasText(container, "All caught up. Come back later for your next review."));
+      const line = Array.from(container.querySelectorAll("p")).find((p) => p.textContent?.startsWith("All caught up"));
+      expect(line?.tabIndex).toBe(-1);
+      expect(buttonsNamed(container, "Go to library")).toHaveLength(1);
+      await unmount();
+    });
+
+    it("says how many new cards the daily cap hides", async () => {
+      for (let index = 0; index < 3; index += 1) {
+        await putCard(
+          createCard({ front: `f${index}`, back: "b", source: { lessonId: "l", sentenceId: `s${index}`, word: "" } }, new Date()),
+        );
+      }
+      for (let index = 0; index < 20; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: true });
+      }
+      const { container, unmount } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(hasText(container, "Daily limit of 20 new cards reached. 3 new cards are waiting."));
+      expect(container.textContent).toContain("0 due");
+      await unmount();
+    });
+
+    it("never paints Lesson unavailable while a library lesson loads", async () => {
+      const seen: string[] = [];
+      const { container, unmount } = await renderApp();
+      const observer = new MutationObserver(() => seen.push(container.textContent ?? ""));
+      observer.observe(container, { childList: true, subtree: true, characterData: true });
+      await openGreetings(container);
+      observer.disconnect();
+      expect(seen.some((text) => text.includes("Loading lesson..."))).toBe(true);
+      expect(seen.some((text) => text.includes("Lesson unavailable"))).toBe(false);
+      await unmount();
+    });
+
+    it("clears a backup error on the next successful export", async () => {
+      Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:backup") });
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+      vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
+      const { container, unmount } = await renderApp();
+      await click(container, "Export");
+      await waitForCondition(hasText(container, "Backup error: export broke"));
+      await click(container, "Export");
+      await waitForCondition(() => !hasText(container, "Backup error")());
+      await click(container, "Export CSV");
+      expect(container.textContent).not.toContain("Backup error");
+      await unmount();
+    });
+
+    it("drops a pending return focus when the view changes before the rows mount", async () => {
+      let release: () => void = () => undefined;
+      let lessonsCalls = 0;
+      const { container, unmount } = await renderApp(async (path) => {
+        if (path === "/lessons" && ++lessonsCalls > 2) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return responseFor(path);
+      });
+      await openGreetings(container);
+      await click(container, "Back to lessons");
+      expect(container.textContent).toContain("Loading lessons...");
+      await click(container, "Review");
+      const libraryToggle = await click(container, "Library");
+      libraryToggle.focus();
+      await act(async () => {
+        release();
+      });
+      await waitForCondition(hasText(container, "Daily Routine"));
+      expect(document.activeElement).toBe(libraryToggle);
+      await unmount();
     });
   });
 });

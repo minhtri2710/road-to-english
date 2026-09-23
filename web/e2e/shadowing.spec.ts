@@ -20,5 +20,5 @@ test("shadow a library lesson, save a word, review it", async ({ page }) => {
   await page.getByRole("button", { name: "Show answer" }).click();
   await page.getByRole("button", { name: "Good" }).click();
   await expect(page.getByText("0 due")).toBeVisible();
-  await expect(page.getByText(/Nothing due/)).toBeVisible();
+  await expect(page.getByText(/All caught up/)).toBeVisible();
 });

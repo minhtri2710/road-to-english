@@ -12,15 +12,21 @@ import { dueCards, getAllCards, putCard } from "../lib/vocabStore";
 export function useVocabDeck() {
   const [cards, setCards] = useState<VocabCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
   // ponytail: due-ness advances only on refresh, so cards becoming due while Review is open appear after the next action; upgrade = timer or visibility refresh.
   const [now, setNow] = useState(() => new Date());
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const nextCards = await getAllCards();
-    setCards(nextCards);
-    setNow(new Date());
-    setLoading(false);
+    try {
+      setCards(await getAllCards());
+      setNow(new Date());
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError : new Error("Unable to load cards"));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -49,5 +55,5 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  return { due, savedCardIds, loading, addCard, review, reload: refresh };
+  return { due, savedCardIds, loading, error, addCard, review, reload: refresh };
 }

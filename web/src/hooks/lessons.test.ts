@@ -68,4 +68,31 @@ describe("lesson hooks", () => {
     });
     container.remove();
   });
+
+  it("starts useLesson loading for an id and idle for null", async () => {
+    const first: Record<string, boolean> = {};
+    function FirstPaint({ id }: { id: string | null }) {
+      const { loading } = useLesson(id);
+      first[String(id)] ??= loading;
+      return null;
+    }
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        createElement(
+          StrictMode,
+          null,
+          createElement(FirstPaint, { id: "greetings-basics" }),
+          createElement(FirstPaint, { id: null }),
+        ),
+      );
+    });
+
+    expect(first).toEqual({ "greetings-basics": true, null: false });
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

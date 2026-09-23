@@ -191,7 +191,7 @@ test.describe("keyboard", () => {
     await tabTo(page, page.getByRole("button", { name: "Good" }));
     await page.keyboard.press("Enter");
     await expect(page.getByText("0 due")).toBeVisible();
-    await expect.poll(() => focusedName(page)).toContain("Nothing due");
+    await expect.poll(() => focusedName(page)).toContain("All caught up");
   });
 
   test("Back returns focus to the lesson row that opened the lesson", async ({ page }) => {
@@ -205,6 +205,32 @@ test.describe("keyboard", () => {
     await page.keyboard.press("Enter");
     await expect(row).toBeFocused();
   });
+});
+
+// Every drawn text element of the row lies inside the row's box and nothing scrolls.
+async function rowOverflow(page: Page, title: string): Promise<string[]> {
+  return page.getByRole("button", { name: title, exact: true }).evaluate((button) => {
+    const outer = button.getBoundingClientRect();
+    return [button, ...button.querySelectorAll<HTMLElement>("*")].flatMap((el) => {
+      const rect = el.getBoundingClientRect();
+      const problems: string[] = [];
+      if (el.scrollWidth > el.clientWidth) {
+        problems.push(`${el.tagName} scrolls: ${el.scrollWidth} > ${el.clientWidth}`);
+      }
+      // Astryx's 1px visually hidden span is not drawn text.
+      if (el.textContent && rect.height > 1 && (rect.top < outer.top || rect.bottom > outer.bottom || rect.right > outer.right)) {
+        problems.push(`${el.tagName} outside the row: ${el.textContent.trim()}`);
+      }
+      return problems;
+    });
+  });
+}
+
+test("desktop lesson rows keep their meta line inside the row", async ({ page }) => {
+  await createUserLesson(page);
+  for (const title of [LIBRARY_LESSON, USER_LESSON]) {
+    expect(await rowOverflow(page, title), `${title} row`).toEqual([]);
+  }
 });
 
 async function layoutProblems(page: Page): Promise<string[]> {
@@ -257,25 +283,57 @@ test.describe("mobile 375x667", () => {
       expect(await layoutProblems(page)).toEqual([]);
     });
   }
+
+  test("lesson rows keep their text unclipped and Delete at least 24x24", async ({ page }) => {
+    await createUserLesson(page);
+    for (const title of [LIBRARY_LESSON, USER_LESSON]) {
+      expect(await rowOverflow(page, title), `${title} row`).toEqual([]);
+    }
+    const box = await page.getByRole("button", { name: `Delete ${USER_LESSON}` }).boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(24);
+    expect(box?.height).toBeGreaterThanOrEqual(24);
+  });
 });
 
 async function motion(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    // Finding A1 (library): Astryx Button and Link keep a 125ms transition under
-    // prefers-reduced-motion. Exempt only those two components' transitions.
-    const exempt = ".astryx-button, .astryx-link";
-    const found = document
+    // Deterministic: computed styles, not whatever happens to be running now. Astryx zeroes its
+    // Button and ToggleButton motion itself but not Link's 125ms transition, and a Link only renders
+    // in some states, so a probe with its own inline motion checks the global rule in every state.
+    const found: string[] = [];
+    const probe = document.createElement("a");
+    probe.className = "astryx-link";
+    probe.style.transition = "color 0.125s";
+    probe.style.animation = "probe 1s infinite";
+    document.body.append(probe);
+    for (const [selector, required] of [
+      [".astryx-button", true],
+      [".astryx-toggle-button", true],
+      [".astryx-link", true],
+    ] as const) {
+      const elements = document.querySelectorAll<HTMLElement>(selector);
+      if (required && elements.length === 0) {
+        found.push(`no ${selector} to inspect`);
+      }
+      for (const el of elements) {
+        const style = getComputedStyle(el);
+        const still =
+          style.transitionProperty === "none" ||
+          style.transitionDuration.split(",").every((value) => parseFloat(value) === 0);
+        if (!still || style.animationName !== "none") {
+          found.push(`${selector} transition ${style.transitionProperty} ${style.transitionDuration} animation ${style.animationName}`);
+        }
+      }
+    }
+    probe.remove();
+    found.push(...document
       .getAnimations()
       .filter((animation) => animation.playState === "running")
-      .filter((animation) => !(animation instanceof CSSTransition && (animation.effect as KeyframeEffect | null)?.target?.matches(exempt)))
       .map((animation) => {
         const target = (animation.effect as KeyframeEffect | null)?.target;
         return `running animation ${(animation as CSSAnimation).animationName ?? ""} on ${target?.tagName}.${target?.className}`;
-      });
+      }));
     for (const el of document.querySelectorAll<HTMLElement>("*")) {
-      if (el.matches(exempt)) {
-        continue;
-      }
       const durations = getComputedStyle(el).transitionDuration.split(",").map((value) => {
         const trimmed = value.trim();
         return trimmed.endsWith("ms") ? parseFloat(trimmed) / 1000 : parseFloat(trimmed);

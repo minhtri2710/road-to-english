@@ -13,10 +13,11 @@ export interface AsyncData<T> {
   error: Error | null;
 }
 
-export function useLessons(): AsyncData<LessonSummary[]> {
+export function useLessons(): AsyncData<LessonSummary[]> & { retry: () => void } {
   const [data, setData] = useState<LessonSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -48,14 +49,14 @@ export function useLessons(): AsyncData<LessonSummary[]> {
     return () => {
       active = false;
     };
-  }, []);
+  }, [attempt]);
 
-  return { data, loading, error };
+  return { data, loading, error, retry: () => setAttempt((count) => count + 1) };
 }
 
 export function useLesson(id: string | null): AsyncData<Lesson> {
   const [data, setData] = useState<Lesson | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(id !== null);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {

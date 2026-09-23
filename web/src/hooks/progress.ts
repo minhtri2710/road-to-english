@@ -18,26 +18,38 @@ export function useProgress() {
   );
   const [dailyCount, setDailyCount] = useState<DailyCount | null>(null);
   const [allCounts, setAllCounts] = useState<DailyCount[]>([]);
+  const [error, setError] = useState<Error | null>(null);
 
   const refresh = useCallback(async () => {
-    const [days, lessons, count, counts] = await Promise.all([
-      getPracticeDays(),
-      getCompletedLessons(),
-      getDailyCount(todayKey(new Date())),
-      getAllDailyCounts(),
-    ]);
-    setPracticeDays(days);
-    setCompletedLessons(new Set(lessons));
-    setDailyCount(count);
-    setAllCounts(counts);
+    try {
+      const [days, lessons, count, counts] = await Promise.all([
+        getPracticeDays(),
+        getCompletedLessons(),
+        getDailyCount(todayKey(new Date())),
+        getAllDailyCounts(),
+      ]);
+      setPracticeDays(days);
+      setCompletedLessons(new Set(lessons));
+      setDailyCount(count);
+      setAllCounts(counts);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError : new Error("Unable to load progress"));
+    }
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // Practice is recorded in the background; a failed write surfaces as `error`, not a rejection.
   const recordPractice = useCallback(async (options: { newCard: boolean }) => {
-    await savePractice(todayKey(new Date()), options);
+    try {
+      await savePractice(todayKey(new Date()), options);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError : new Error("Unable to save progress"));
+      return;
+    }
     await refresh();
   }, [refresh]);
 
@@ -62,6 +74,7 @@ export function useProgress() {
     xp: xp(allCounts),
     practicedToday: practiceDays.includes(today),
     completedLessons,
+    error,
     recordPractice,
     markLessonComplete,
     reload: refresh,
