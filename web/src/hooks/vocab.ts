@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   createCard,
+  deleteCard,
+  restoreCard,
   reviewCard,
   type Grade,
   type NewCard,
@@ -35,7 +37,7 @@ export function useVocabDeck() {
 
   const due = useMemo(() => dueCards(cards, now), [cards, now]);
   const savedCardIds = useMemo(
-    () => new Set(cards.map((card) => card.id)),
+    () => new Set(cards.filter((card) => card.deletedAt === null).map((card) => card.id)),
     [cards],
   );
 
@@ -55,5 +57,27 @@ export function useVocabDeck() {
     [refresh],
   );
 
-  return { due, savedCardIds, loading, error, addCard, review, reload: refresh };
+  // Returns the card as it was before the delete, for Undo.
+  const removeCard = useCallback(
+    async (id: string) => {
+      const card = cards.find((stored) => stored.id === id && stored.deletedAt === null);
+      if (!card) {
+        throw new Error(`No saved card ${id}`);
+      }
+      await putCard(deleteCard(card, new Date()));
+      await refresh();
+      return card;
+    },
+    [cards, refresh],
+  );
+
+  const undoRemove = useCallback(
+    async (card: VocabCard) => {
+      await putCard(restoreCard(card, new Date()));
+      await refresh();
+    },
+    [refresh],
+  );
+
+  return { due, savedCardIds, loading, error, addCard, removeCard, undoRemove, review, reload: refresh };
 }

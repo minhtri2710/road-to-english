@@ -27,6 +27,8 @@ interface SerializedCard {
   back: string;
   source: CardSource;
   fsrs: SerializedFsrs;
+  updatedAt: string;
+  deletedAt: string | null;
 }
 
 interface SerializedState {
@@ -126,7 +128,9 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
     (source.word !== "" && !isCardWord(source.word)) ||
     value.id !== cardId({ lessonId: source.lessonId, sentenceId: source.sentenceId, word: source.word }) ||
     !isRecord(fsrs) ||
-    !isValidTimestamp(fsrs.due)
+    !isValidTimestamp(fsrs.due) ||
+    !isValidTimestamp(value.updatedAt) ||
+    (value.deletedAt !== null && !isValidTimestamp(value.deletedAt))
   ) {
     throw new Error(`Invalid card at index ${index}.`);
   }

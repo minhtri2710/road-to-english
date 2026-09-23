@@ -1,16 +1,12 @@
 import type { VocabCard } from "./vocab";
 
-function reviewTime(card: VocabCard): number | null {
-  const review = card.fsrs.last_review;
-  return review instanceof Date ? review.getTime() : null;
-}
-
-// ponytail: LWW on client wall-clock last_review; upgrade = server-assigned per-card version / fsrs merge.
-export function newerCard(a: VocabCard, b: VocabCard): boolean {
-  const aTime = reviewTime(a);
-  const bTime = reviewTime(b);
-  if (aTime === null) {
-    return bTime !== null;
-  }
-  return bTime !== null && bTime > aTime;
+// ponytail: LWW on device wall-clock updatedAt, so clock skew between devices can pick the wrong write; upgrade = server-assigned per-card version.
+// The api syncCard upsert WHERE implements this same rule.
+export function newerCard(stored: VocabCard, incoming: VocabCard): boolean {
+  const storedTime = Date.parse(stored.updatedAt);
+  const incomingTime = Date.parse(incoming.updatedAt);
+  return (
+    incomingTime > storedTime ||
+    (incomingTime === storedTime && incoming.deletedAt !== null && stored.deletedAt === null)
+  );
 }

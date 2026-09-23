@@ -781,7 +781,7 @@ describe("App", () => {
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === index + 1);
       expect(document.activeElement).toBe(save);
-      expect(save.getAttribute("aria-disabled")).toBe("true");
+      expect(save.getAttribute("aria-label")).toBe("Saved, remove from review deck");
     }
 
     await act(async () => {
@@ -1658,6 +1658,75 @@ describe("App", () => {
       second.root.unmount();
     });
     second.container.remove();
+  });
+
+  it("removes a saved card with the Saved toggle, offers Undo that restores it, and re-saves it fresh", async () => {
+    const sentence = greetingsLesson.sentences[0];
+    const created = new Date("2026-01-01T00:00:00.000Z");
+    const original = createCard(
+      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
+      created,
+    );
+    await putCard(original);
+    const { container, root } = await openLesson();
+    const showView = async (name: "Review" | "Library") => {
+      await act(async () => {
+        buttonsNamed(container, name)[0]?.click();
+      });
+    };
+    const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
+    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
+
+    await showView("Review");
+    await waitForCondition(() => dueBadge() === "1");
+    await showView("Library");
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    const toggle = buttonsNamed(container, "Saved")[0]!;
+    expect(toggle.getAttribute("aria-label")).toBe("Saved, remove from review deck");
+    toggle.focus();
+    await act(async () => {
+      toggle.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle.getAttribute("aria-label")).toBeNull();
+    expect((await stored())?.deletedAt).not.toBeNull();
+    await waitForCondition(() => document.body.textContent?.includes("Removed from your review deck.") ?? false);
+    await showView("Review");
+    await waitForCondition(() => dueBadge() === "0");
+    await showView("Library");
+
+    const undo = buttonsNamed(document.body, "Undo")[0];
+    if (!undo) throw new Error("Undo button not found");
+    await act(async () => {
+      undo.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    const restored = await stored();
+    expect(restored).toMatchObject({ fsrs: original.fsrs, deletedAt: null });
+    expect(Date.parse(restored!.updatedAt)).toBeGreaterThan(created.getTime());
+    await showView("Review");
+    await waitForCondition(() => dueBadge() === "1");
+    await showView("Library");
+
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    await act(async () => {
+      buttonsNamed(container, "Saved")[0]!.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
+    await act(async () => {
+      buttonsNamed(container, "Save to review")[0]!.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    const resaved = await stored();
+    expect(resaved?.deletedAt).toBeNull();
+    expect(resaved?.fsrs.due.getTime()).toBeGreaterThan(created.getTime());
+    expect(await getAllCards()).toHaveLength(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   it("removes word buttons and the word panel when the transcript is hidden", async () => {

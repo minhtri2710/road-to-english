@@ -36,7 +36,7 @@ async function selectWord(page: Page): Promise<void> {
 async function openReviewWithDueCard(page: Page): Promise<void> {
   await selectWord(page);
   await page.getByRole("button", { name: "Save word" }).click();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
   await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByText("1 due")).toBeVisible();
 }
@@ -168,7 +168,7 @@ test.describe("keyboard", () => {
 
     await tabTo(page, page.getByRole("button", { name: "Save word" }));
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: "Saved" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
     await expect(page.getByRole("button", { name: "Saved" })).toBeFocused();
 
     await tabTo(page, page.getByRole("button", { name: "Listen" }).first());

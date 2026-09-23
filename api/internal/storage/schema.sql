@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS cards (
     sentence_id TEXT NOT NULL,
     word TEXT NOT NULL,
     fsrs JSON NOT NULL,
-    last_review TIMESTAMPTZ NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ NULL,
     PRIMARY KEY (user_id, id)
 );
 

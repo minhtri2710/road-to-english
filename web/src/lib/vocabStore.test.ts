@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createCard } from "./vocab";
+import { createCard, deleteCard } from "./vocab";
 import { dueCards, getAllCards, putCard } from "./vocabStore";
 
 const now = new Date("2026-01-01T00:00:00Z");
@@ -43,5 +43,11 @@ describe("vocabulary store", () => {
       late.id,
       early.id,
     ]);
+  });
+
+  it("never selects a deleted card", () => {
+    const card = createCard(input, new Date("2025-12-31T00:00:00Z"));
+
+    expect(dueCards([deleteCard(card, now)], now)).toEqual([]);
   });
 });

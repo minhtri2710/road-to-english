@@ -241,6 +241,17 @@ func validateSyncState(state storage.State) bool {
 		if !validFSRS(card.Fsrs) {
 			return false
 		}
+		if _, err := storage.ParseTimestamp(card.UpdatedAt); err != nil {
+			return false
+		}
+		if !card.DeletedAt.Present {
+			return false
+		}
+		if card.DeletedAt.Value != nil {
+			if _, err := storage.ParseTimestamp(*card.DeletedAt.Value); err != nil {
+				return false
+			}
+		}
 	}
 
 	for _, practiceDay := range state.PracticeDays {
@@ -290,7 +301,7 @@ func validFSRS(raw json.RawMessage) bool {
 	if rawDue, ok := object["due"]; !ok || json.Unmarshal(rawDue, &due) != nil {
 		return false
 	}
-	if _, err := storage.ParseFSRSTimestamp(due); err != nil {
+	if _, err := storage.ParseTimestamp(due); err != nil {
 		return false
 	}
 	if _, err := storage.FSRSLastReview(raw); err != nil {

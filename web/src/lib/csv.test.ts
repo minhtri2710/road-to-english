@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { cardsCsv, cardsCsvFileName } from "./csv";
-import { createCard } from "./vocab";
+import { createCard, deleteCard } from "./vocab";
 
 const due = new Date("2026-09-23T10:20:30.000Z");
 const card = (front: string, back: string, sentenceId: string) =>
@@ -39,6 +39,12 @@ describe("cardsCsv", () => {
 
   it("writes the due ISO string", () => {
     expect(cardsCsv([card("x", "y", "s1")])).toContain('"2026-09-23T10:20:30.000Z"');
+  });
+
+  it("leaves out deleted cards", () => {
+    expect(cardsCsv([card("kept", "a", "s1"), deleteCard(card("gone", "b", "s2"), due)])).toBe(
+      '\uFEFF"front","back","due"\r\n"kept","a","' + due.toISOString() + '"\r\n',
+    );
   });
 
   it("returns the BOM and header for no cards", () => {

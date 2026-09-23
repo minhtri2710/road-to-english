@@ -11,6 +11,8 @@ function state(overrides: Record<string, unknown> = {}) {
         back: "answer",
         source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
         fsrs: { due: "2026-01-01T00:00:00Z" },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        deletedAt: null,
       },
     ],
     practiceDays: [{ date: "2026-01-01" }],
@@ -79,6 +81,11 @@ describe("sync state validation", () => {
     ["word card with sentence id", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" } }],
     ["word with colon", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "a:b" }, id: "lesson-1:sentence-1:a:b" }],
     ["uppercase word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "Hello" }, id: "lesson-1:sentence-1:Hello" }],
+    ["missing updatedAt", { updatedAt: undefined }],
+    ["null updatedAt", { updatedAt: null }],
+    ["invalid updatedAt", { updatedAt: "2026-01-01T00:00:00+07:00" }],
+    ["missing deletedAt", { deletedAt: undefined }],
+    ["invalid deletedAt", { deletedAt: "yesterday" }],
     ["null cards", { cards: null }],
     ["null practice days", { practiceDays: null }],
     ["null lesson completion", { lessonCompletion: null }],
@@ -110,6 +117,22 @@ describe("sync state validation", () => {
       "lessonCompletion",
       "practiceDays",
     ]);
+  });
+
+  it("accepts live and tombstone cards", () => {
+    const revived = reviveSyncState({
+      ...state(),
+      cards: [
+        state().cards[0],
+        {
+          ...state().cards[0],
+          id: "lesson-1:sentence-1:hello",
+          source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" },
+          deletedAt: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(revived.cards.map((card) => card.deletedAt)).toEqual([null, "2026-01-02T00:00:00.000Z"]);
   });
 
   it("accepts an empty card back", () => {

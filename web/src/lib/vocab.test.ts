@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { capNewCards, createCard, Rating, reviewCard, State } from "./vocab";
+import { capNewCards, createCard, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -21,6 +21,8 @@ describe("vocabulary cards", () => {
     expect(card.fsrs.due.getTime()).toBe(now.getTime());
     expect(card.fsrs.reps).toBe(0);
     expect(card.fsrs.lapses).toBe(0);
+    expect(card.updatedAt).toBe(now.toISOString());
+    expect(card.deletedAt).toBeNull();
   });
 
   it("uses the lesson and sentence as the deterministic card id", () => {
@@ -50,6 +52,25 @@ describe("vocabulary cards", () => {
     expect(card.fsrs.due.getTime()).toBeGreaterThan(now.getTime());
     expect(card.fsrs.reps).toBe(1);
     expect(card.fsrs.last_review?.getTime()).toBe(now.getTime());
+  });
+
+  it("stamps updatedAt on review and keeps the card live", () => {
+    const later = new Date("2026-01-03T00:00:00Z");
+    const card = reviewCard(newCard(), Rating.Good, later);
+
+    expect(card.updatedAt).toBe(later.toISOString());
+    expect(card.deletedAt).toBeNull();
+  });
+
+  it("stamps delete and restore, and restore keeps the exact FSRS state", () => {
+    const reviewed = reviewCard(newCard(), Rating.Good, now);
+    const deletedAt = new Date("2026-01-02T00:00:00Z");
+    const restoredAt = new Date("2026-01-03T00:00:00Z");
+    const deleted = deleteCard(reviewed, deletedAt);
+    const restored = restoreCard(reviewed, restoredAt);
+
+    expect(deleted).toEqual({ ...reviewed, updatedAt: deletedAt.toISOString(), deletedAt: deletedAt.toISOString() });
+    expect(restored).toEqual({ ...reviewed, updatedAt: restoredAt.toISOString(), deletedAt: null });
   });
 
   it("orders review grades from Easy to Again", () => {

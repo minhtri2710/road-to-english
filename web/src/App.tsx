@@ -14,6 +14,7 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Link } from "@astryxdesign/core/Link";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Theme } from "@astryxdesign/core/theme";
+import { useToast } from "@astryxdesign/core/Toast";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
@@ -968,18 +969,32 @@ function SaveToReview({
   label,
   saved,
   addCard,
+  removeCard,
+  undoRemove,
 }: {
   card: NewCard;
   label: string;
   saved: boolean;
   addCard: (input: NewCard) => Promise<void>;
+  removeCard: (id: string) => Promise<VocabCard>;
+  undoRemove: (card: VocabCard) => Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const isSavingRef = useRef(false);
+  const showToast = useToast();
 
-  const save = async () => {
-    if (saved || isSavingRef.current) {
+  const undo = async (previous: VocabCard, dismiss: () => void) => {
+    dismiss();
+    try {
+      await undoRemove(previous);
+    } catch {
+      setFailed(true);
+    }
+  };
+
+  const toggle = async () => {
+    if (isSavingRef.current) {
       return;
     }
 
@@ -987,7 +1002,15 @@ function SaveToReview({
     setIsSaving(true);
     setFailed(false);
     try {
-      await addCard(card);
+      if (saved) {
+        const previous = await removeCard(cardId(card.source));
+        const dismiss = showToast({
+          body: "Removed from your review deck.",
+          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={() => void undo(previous, dismiss)} />,
+        });
+      } else {
+        await addCard(card);
+      }
     } catch {
       setFailed(true);
     } finally {
@@ -1000,11 +1023,12 @@ function SaveToReview({
     <>
       <Button
         label={saved ? "Saved" : label}
+        aria-label={saved ? "Saved, remove from review deck" : undefined}
         variant="ghost"
-        isDisabled={saved || isSaving}
+        isDisabled={isSaving}
         // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-        tooltip={saved ? "Already in your review deck" : isSaving ? "Saving…" : undefined}
-        onClick={() => void save()}
+        tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
+        onClick={() => void toggle()}
       />
       {failed && (
         <Text as="p" color="primary" xstyle={appStyles.error}>
@@ -1083,12 +1107,16 @@ function WordPanel({
   card,
   savedCardIds,
   addCard,
+  removeCard,
+  undoRemove,
   hear,
 }: {
   text: string;
   card: NewCard;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
+  removeCard: (id: string) => Promise<VocabCard>;
+  undoRemove: (card: VocabCard) => Promise<void>;
   hear: () => void;
 }) {
   const speechSupported =
@@ -1118,6 +1146,8 @@ function WordPanel({
           label="Save word"
           saved={savedCardIds.has(cardId(card.source))}
           addCard={addCard}
+          removeCard={removeCard}
+          undoRemove={undoRemove}
         />
         <Button
           label="Define"
@@ -1302,6 +1332,8 @@ interface LessonDetailProps {
   onBack: () => void;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
+  removeCard: (id: string) => Promise<VocabCard>;
+  undoRemove: (card: VocabCard) => Promise<void>;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   completedLessons: Set<string>;
   markLessonComplete: (lessonId: string) => Promise<void>;
@@ -1332,6 +1364,8 @@ function LessonDetail({
   onBack,
   savedCardIds,
   addCard,
+  removeCard,
+  undoRemove,
   recordPractice,
   completedLessons,
   markLessonComplete,
@@ -1559,6 +1593,8 @@ function LessonDetail({
                       }}
                       savedCardIds={savedCardIds}
                       addCard={addCard}
+                      removeCard={removeCard}
+                      undoRemove={undoRemove}
                       hear={() => {
                         setLoopingSentenceId(null);
                         setSpokenWord(null);
@@ -1585,6 +1621,8 @@ function LessonDetail({
                     label="Save to review"
                     saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
                     addCard={addCard}
+                    removeCard={removeCard}
+                    undoRemove={undoRemove}
                   />
                 </VStack>
               ) : (
@@ -1610,6 +1648,8 @@ function LessonDetail({
                     label="Save to review"
                     saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
                     addCard={addCard}
+                    removeCard={removeCard}
+                    undoRemove={undoRemove}
                   />
                 </VStack>
               )}
@@ -1777,6 +1817,8 @@ export function App() {
     },
     savedCardIds: deck.savedCardIds,
     addCard: deck.addCard,
+    removeCard: deck.removeCard,
+    undoRemove: deck.undoRemove,
     recordPractice: progress.recordPractice,
     completedLessons: progress.completedLessons,
     markLessonComplete: progress.markLessonComplete,

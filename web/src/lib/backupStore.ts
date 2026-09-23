@@ -33,7 +33,6 @@ export async function exportBackupData(): Promise<BackupData> {
   }
 }
 
-// ponytail: no deletes, so no tombstones; adding deletion requires tombstones or rows resurrect.
 export async function replaceAll(data: BackupData): Promise<void> {
   const db = await openAppDatabase();
   try {

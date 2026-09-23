@@ -27,6 +27,6 @@ export function dueCards(cards: VocabCard[], now: Date): VocabCard[] {
 
   // ponytail: linear scan + JS sort; add a by-due index if decks grow large.
   return cards
-    .filter((card) => card.fsrs.due.getTime() <= nowTime)
+    .filter((card) => card.deletedAt === null && card.fsrs.due.getTime() <= nowTime)
     .sort((left, right) => left.fsrs.due.getTime() - right.fsrs.due.getTime());
 }

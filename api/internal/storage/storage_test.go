@@ -10,8 +10,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func newTestRepo(t *testing.T) *Repository {
@@ -56,7 +54,7 @@ func createTestUser(t *testing.T, repo *Repository, email string) User {
 }
 
 func testCard(id, lessonID, sentenceID, front, back string, fsrs []byte) Card {
-	card := Card{ID: id, Front: front, Back: back, Fsrs: fsrs}
+	card := Card{ID: id, Front: front, Back: back, Fsrs: fsrs, UpdatedAt: "2026-01-01T00:00:00Z", DeletedAt: DeletedAt{Present: true}}
 	card.Source.LessonID = lessonID
 	card.Source.SentenceID = sentenceID
 	card.Source.Word = new(string)
@@ -137,112 +135,75 @@ func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestCardLastReviewColumnDerived(t *testing.T) {
+func tombstone(card Card, deletedAt string) Card {
+	card.UpdatedAt = deletedAt
+	card.DeletedAt = DeletedAt{Present: true, Value: &deletedAt}
+	return card
+}
+
+func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "derived-last-review@example.com")
-	reviewed := testCard("lesson-reviewed:sentence-1", "lesson-reviewed", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
-	nullReview := testCard("lesson-null:sentence-1", "lesson-null", "sentence-1", "null", "review", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":null}`))
-	absentReview := testCard("lesson-absent:sentence-1", "lesson-absent", "sentence-1", "absent", "review", []byte(`{"due":"2026-01-03T00:00:00Z"}`))
+	user := createTestUser(t, repo, "card-times@example.com")
+	live := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "live", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
+	live.UpdatedAt = "2026-01-02T03:04:05.123Z"
+	deleted := tombstone(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "deleted", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`)), "2026-01-03T00:00:00.5Z")
 
-	syncState(t, repo, user.ID, State{Cards: []Card{reviewed, nullReview, absentReview}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	var gotReviewed pgtype.Timestamptz
-	if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.ID, reviewed.ID).Scan(&gotReviewed); err != nil {
-		t.Fatalf("query reviewed last_review: %v", err)
-	}
-	expected, err := ParseFSRSTimestamp("2026-01-04T00:00:00Z")
-	if err != nil {
-		t.Fatalf("ParseFSRSTimestamp() error = %v", err)
-	}
-	if !gotReviewed.Valid || !gotReviewed.Time.Equal(expected) {
-		t.Fatalf("reviewed last_review = %#v, want %v", gotReviewed, expected)
+	got := syncState(t, repo, user.ID, State{Cards: []Card{live, deleted}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	if !reflect.DeepEqual(got.Cards, []Card{live, deleted}) {
+		t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{live, deleted})
 	}
 
-	for _, card := range []Card{nullReview, absentReview} {
-		var got pgtype.Timestamptz
-		if err := repo.pool.QueryRow(context.Background(), "SELECT last_review FROM cards WHERE user_id = $1 AND id = $2", user.ID, card.ID).Scan(&got); err != nil {
-			t.Fatalf("query %s last_review: %v", card.ID, err)
-		}
-		if got.Valid {
-			t.Fatalf("%s last_review = %#v, want NULL", card.ID, got)
-		}
+	var updatedAt time.Time
+	var deletedAt *time.Time
+	if err := repo.pool.QueryRow(context.Background(), "SELECT updated_at, deleted_at FROM cards WHERE user_id = $1 AND id = $2", user.ID, deleted.ID).Scan(&updatedAt, &deletedAt); err != nil {
+		t.Fatalf("query tombstone columns: %v", err)
+	}
+	want := time.Date(2026, 1, 3, 0, 0, 0, 500_000_000, time.UTC)
+	if !updatedAt.Equal(want) || deletedAt == nil || !deletedAt.Equal(want) {
+		t.Fatalf("tombstone columns = %v, %v, want %v, %v", updatedAt, deletedAt, want, want)
+	}
+	if err := repo.pool.QueryRow(context.Background(), "SELECT deleted_at FROM cards WHERE user_id = $1 AND id = $2", user.ID, live.ID).Scan(&deletedAt); err != nil {
+		t.Fatalf("query live deleted_at: %v", err)
+	}
+	if deletedAt != nil {
+		t.Fatalf("live deleted_at = %v, want NULL", deletedAt)
 	}
 }
 
-func TestCardUpsertOverwrites(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "upsert@example.com")
-	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "one", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
-	newer := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "newer", "value", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":2}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{newer}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{newer}) {
-		t.Fatalf("newer card = %#v, want %#v", got.Cards, []Card{newer})
+func TestCardUpsertMergeRule(t *testing.T) {
+	base := func(front, updatedAt string) Card {
+		card := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", []byte(`{"due":"2026-01-01T00:00:00Z","reps":1}`))
+		card.UpdatedAt = updatedAt
+		return card
 	}
-}
-
-func TestCardUpsertOlderDoesNotRegress(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "older@example.com")
-	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
-	stale := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "stale", "value", []byte(`{"due":"2026-01-01T00:00:00Z","last_review":"2026-01-02T00:00:00Z","reps":1}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{stale}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
-		t.Fatalf("stale card = %#v, want stored %#v", got.Cards, []Card{stored})
+	const earlier, later = "2026-01-02T00:00:00Z", "2026-01-04T00:00:00Z"
+	tests := []struct {
+		name             string
+		stored, incoming Card
+		incomingWins     bool
+	}{
+		{"newer updatedAt wins", base("stored", earlier), base("incoming", later), true},
+		{"older updatedAt loses", base("stored", later), base("incoming", earlier), false},
+		{"older live copy never resurrects a tombstone", tombstone(base("stored", ""), later), base("incoming", earlier), false},
+		{"newer live copy replaces a tombstone", tombstone(base("stored", ""), earlier), base("incoming", later), true},
+		{"equal with an incoming tombstone: tombstone wins", base("stored", later), tombstone(base("incoming", ""), later), true},
+		{"equal with a stored tombstone: stored kept", tombstone(base("stored", ""), later), base("incoming", later), false},
+		{"equal live cards: stored kept", base("stored", later), base("incoming", later), false},
 	}
-}
-
-func TestCardUpsertEqualIsNoOp(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "equal@example.com")
-	stored := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "stored", "reviewed", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":4}`))
-	equalClock := testCard("lesson-1:sentence-1", "lesson-equal", "sentence-equal", "equal", "value", []byte(`{"due":"2026-01-05T00:00:00Z","last_review":"2026-01-04T00:00:00Z","reps":9}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{equalClock}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{stored}) {
-		t.Fatalf("equal-clock card = %#v, want stored %#v", got.Cards, []Card{stored})
-	}
-}
-
-func TestUnreviewedCardDoesNotOverwriteReviewedCard(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "unreviewed@example.com")
-	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
-	unreviewed := testCard("lesson-1:sentence-1", "lesson-old", "sentence-old", "unreviewed", "card", []byte(`{"due":"2026-01-05T00:00:00Z"}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
-		t.Fatalf("unreviewed card = %#v, want reviewed %#v", got.Cards, []Card{reviewed})
-	}
-}
-
-func TestReviewedCardOverwritesNeverReviewedCard(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "reviewed@example.com")
-	unreviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "new", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
-	reviewed := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "reviewed", "card", []byte(`{"due":"2026-01-03T00:00:00Z","last_review":"2026-01-04T00:00:00Z"}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{unreviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{reviewed}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{reviewed}) {
-		t.Fatalf("reviewed card = %#v, want %#v", got.Cards, []Card{reviewed})
-	}
-}
-
-func TestNeverReviewedCardsWithSameIDDoNotUpdateEachOther(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "never-reviewed@example.com")
-	first := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "first", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
-	second := testCard("lesson-1:sentence-1", "lesson-new", "sentence-new", "second", "card", []byte(`{"due":"2026-01-02T00:00:00Z"}`))
-
-	syncState(t, repo, user.ID, State{Cards: []Card{first}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	got := syncState(t, repo, user.ID, State{Cards: []Card{second}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if !reflect.DeepEqual(got.Cards, []Card{first}) {
-		t.Fatalf("never-reviewed card = %#v, want first %#v", got.Cards, []Card{first})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			user := createTestUser(t, repo, "merge@example.com")
+			syncState(t, repo, user.ID, State{Cards: []Card{test.stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+			got := syncState(t, repo, user.ID, State{Cards: []Card{test.incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+			want := test.stored
+			if test.incomingWins {
+				want = test.incoming
+			}
+			if !reflect.DeepEqual(got.Cards, []Card{want}) {
+				t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{want})
+			}
+		})
 	}
 }
 

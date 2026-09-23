@@ -34,7 +34,36 @@ type Card struct {
 		SentenceID string  `json:"sentenceId"`
 		Word       *string `json:"word"`
 	} `json:"source"`
-	Fsrs json.RawMessage `json:"fsrs"`
+	Fsrs      json.RawMessage `json:"fsrs"`
+	UpdatedAt string          `json:"updatedAt"`
+	DeletedAt DeletedAt       `json:"deletedAt"`
+}
+
+// DeletedAt is a card's required, nullable deletedAt: Present tells a missing field from null.
+type DeletedAt struct {
+	Present bool
+	Value   *string
+}
+
+func (d *DeletedAt) UnmarshalJSON(raw []byte) error {
+	d.Present = true
+	d.Value = nil
+	if bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	d.Value = &value
+	return nil
+}
+
+func (d DeletedAt) MarshalJSON() ([]byte, error) {
+	if d.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*d.Value)
 }
 
 type PracticeDay struct {
@@ -61,7 +90,7 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
-func ParseFSRSTimestamp(value string) (time.Time, error) {
+func ParseTimestamp(value string) (time.Time, error) {
 	if !strings.HasSuffix(value, "Z") {
 		return time.Time{}, fmt.Errorf("timestamp must end in Z")
 	}
@@ -74,6 +103,11 @@ func ParseFSRSTimestamp(value string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("timestamp must be UTC and have year >= 1")
 	}
 	return timestamp, nil
+}
+
+// formatTimestamp renders a stored timestamp in the Z form ParseTimestamp and the web accept.
+func formatTimestamp(value time.Time) string {
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func FSRSLastReview(raw json.RawMessage) (*time.Time, error) {
@@ -89,7 +123,7 @@ func FSRSLastReview(raw json.RawMessage) (*time.Time, error) {
 	if err := json.Unmarshal(rawLastReview, &value); err != nil {
 		return nil, fmt.Errorf("last_review must be a string or null: %w", err)
 	}
-	timestamp, err := ParseFSRSTimestamp(value)
+	timestamp, err := ParseTimestamp(value)
 	if err != nil {
 		return nil, fmt.Errorf("invalid last_review: %w", err)
 	}
@@ -271,13 +305,21 @@ func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 	if card.Source.Word == nil {
 		return fmt.Errorf("sync card %q: missing source word", card.ID)
 	}
-	lastReview, err := FSRSLastReview(card.Fsrs)
+	updatedAt, err := ParseTimestamp(card.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("derive card %q last review: %w", card.ID, err)
+		return fmt.Errorf("sync card %q: invalid updatedAt: %w", card.ID, err)
+	}
+	var deletedAt *time.Time
+	if card.DeletedAt.Value != nil {
+		value, err := ParseTimestamp(*card.DeletedAt.Value)
+		if err != nil {
+			return fmt.Errorf("sync card %q: invalid deletedAt: %w", card.ID, err)
+		}
+		deletedAt = &value
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, last_review)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (user_id, id) DO UPDATE SET
 			front = EXCLUDED.front,
 			back = EXCLUDED.back,
@@ -285,10 +327,12 @@ func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
 			sentence_id = EXCLUDED.sentence_id,
 			word = EXCLUDED.word,
 			fsrs = EXCLUDED.fsrs,
-			last_review = EXCLUDED.last_review
-		-- ponytail: never-reviewed cards with the same id intentionally never update each other; the web sub-slice mirrors this exact rule.
-		WHERE COALESCE(EXCLUDED.last_review, '-infinity') > COALESCE(cards.last_review, '-infinity')
-	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, lastReview)
+			updated_at = EXCLUDED.updated_at,
+			deleted_at = EXCLUDED.deleted_at
+		-- ponytail: LWW on device wall-clock updatedAt, so clock skew between devices can pick the wrong write; upgrade = server-assigned per-card version. Web newerCard mirrors this exact rule.
+		WHERE EXCLUDED.updated_at > cards.updated_at
+			OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL)
+	`, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
 	if err != nil {
 		return fmt.Errorf("sync card %q: %w", card.ID, err)
 	}
@@ -341,7 +385,7 @@ func readState(ctx context.Context, tx pgx.Tx, userID string) (State, error) {
 
 func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT id, front, back, lesson_id, sentence_id, word, fsrs
+		SELECT id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at
 		FROM cards
 		WHERE user_id = $1
 		ORDER BY id
@@ -354,6 +398,8 @@ func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 	cards := make([]Card, 0)
 	for rows.Next() {
 		var card Card
+		var updatedAt time.Time
+		var deletedAt *time.Time
 		if err := rows.Scan(
 			&card.ID,
 			&card.Front,
@@ -362,8 +408,16 @@ func readCards(ctx context.Context, tx pgx.Tx, userID string) ([]Card, error) {
 			&card.Source.SentenceID,
 			&card.Source.Word,
 			&card.Fsrs,
+			&updatedAt,
+			&deletedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan card: %w", err)
+		}
+		card.UpdatedAt = formatTimestamp(updatedAt)
+		card.DeletedAt.Present = true
+		if deletedAt != nil {
+			value := formatTimestamp(*deletedAt)
+			card.DeletedAt.Value = &value
 		}
 		cards = append(cards, card)
 	}

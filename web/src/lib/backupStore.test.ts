@@ -10,7 +10,7 @@ import {
   recordPractice,
 } from "./progressStore";
 import { dueCards, getAllCards, putCard } from "./vocabStore";
-import { createCard } from "./vocab";
+import { createCard, deleteCard, restoreCard } from "./vocab";
 import { listUserLessons, putUserLesson } from "./userLessons";
 import { userLesson } from "../test/fixtures";
 
@@ -58,11 +58,61 @@ describe("backup store", () => {
     expect(await getAllCards()).toHaveLength(1);
   });
 
-  it("merges cards by review time and unions progress rows", async () => {
+  it("resolves two devices saving the same new card to the later updatedAt", async () => {
+    const deviceA = card("same", new Date("2026-01-05T00:00:01.000Z"));
+    const deviceB = card("same", new Date("2026-01-05T00:00:00.000Z"));
+    deviceA.front = "device A";
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
+    expect(await getAllCards()).toEqual([deviceA]);
+
+    indexedDB = new IDBFactory();
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
+    expect(await getAllCards()).toEqual([deviceA]);
+  });
+
+  it("never resurrects a local delete from an older live copy", async () => {
+    const live = card("same");
+    const tombstone = deleteCard(live, new Date("2026-01-06T00:00:00.000Z"));
+    await putCard(tombstone);
+    await mergeInto({ cards: [live], practiceDays: [], lessonCompletion: [] });
+
+    expect(await getAllCards()).toEqual([tombstone]);
+  });
+
+  it("lets an undo or re-save after a synced delete replace the remote tombstone", async () => {
+    const live = card("same");
+    const remoteTombstone = deleteCard(live, new Date("2026-01-06T00:00:00.000Z"));
+    const undone = restoreCard(live, new Date("2026-01-07T00:00:00.000Z"));
+    await putCard(undone);
+    await mergeInto({ cards: [remoteTombstone], practiceDays: [], lessonCompletion: [] });
+    expect(await getAllCards()).toEqual([undone]);
+
+    const resaved = card("same", new Date("2026-01-08T00:00:00.000Z"));
+    await putCard(remoteTombstone);
+    await mergeInto({ cards: [resaved], practiceDays: [], lessonCompletion: [] });
+    expect(await getAllCards()).toEqual([resaved]);
+  });
+
+  it("round-trips a tombstone through export and import", async () => {
+    const tombstone = deleteCard(card("gone"), new Date("2026-01-06T00:00:00.000Z"));
+    await putCard(tombstone);
+    await putCard(card("kept"));
+
+    const exported = await exportBackupData();
+    indexedDB = new IDBFactory();
+    await replaceAll(importData(exportData(exported, now)));
+
+    expect(await getAllCards()).toEqual(exported.cards);
+    expect((await getAllCards()).find(({ id }) => id === tombstone.id)?.deletedAt).toBe(tombstone.deletedAt);
+    expect(dueCards(await getAllCards(), now).map(({ front }) => front)).toEqual(["kept"]);
+  });
+
+  it("merges cards by updatedAt and unions progress rows", async () => {
     const first = card("same");
-    const second = card("same");
+    const second = card("same", new Date("2026-01-06T00:00:00.000Z"));
     second.front = "device two";
-    second.fsrs.last_review = new Date("2026-01-02T00:00:00Z");
     await putCard(first);
     await mergeInto({
       cards: [second],

@@ -22,9 +22,13 @@ export interface VocabCard {
   back: string;
   source: CardSource;
   fsrs: Card;
+  // ISO 8601 UTC time of the last create, review, delete, undo or re-save; the sync merge key.
+  updatedAt: string;
+  // Set on a tombstone: the card stays stored so the delete syncs, but is out of the deck.
+  deletedAt: string | null;
 }
 
-export type NewCard = Omit<VocabCard, "id" | "fsrs">;
+export type NewCard = Omit<VocabCard, "id" | "fsrs" | "updatedAt" | "deletedAt">;
 
 // Text the api accepts: any string without U+0000.
 export function isText(value: unknown): value is string {
@@ -50,11 +54,22 @@ export function createCard(input: NewCard, now: Date): VocabCard {
     id: cardId(input.source),
     ...input,
     fsrs: createEmptyCard(now),
+    updatedAt: now.toISOString(),
+    deletedAt: null,
   };
 }
 
 export function reviewCard(card: VocabCard, rating: Grade, now: Date): VocabCard {
-  return { ...card, fsrs: scheduler.next(card.fsrs, now, rating).card };
+  return { ...card, fsrs: scheduler.next(card.fsrs, now, rating).card, updatedAt: now.toISOString() };
+}
+
+export function deleteCard(card: VocabCard, now: Date): VocabCard {
+  return { ...card, updatedAt: now.toISOString(), deletedAt: now.toISOString() };
+}
+
+// Undo: the exact previous card, FSRS state included, live again.
+export function restoreCard(card: VocabCard, now: Date): VocabCard {
+  return { ...card, updatedAt: now.toISOString(), deletedAt: null };
 }
 
 export const NEW_CARDS_PER_DAY = 20;
