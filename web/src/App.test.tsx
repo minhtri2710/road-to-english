@@ -2440,6 +2440,70 @@ describe("App", () => {
       await unmount(view);
     });
 
+    class ClipRecognition {
+      static instances: ClipRecognition[] = [];
+      lang = "";
+      continuous = true;
+      interimResults = true;
+      maxAlternatives = 5;
+      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        ClipRecognition.instances.push(this);
+      }
+    }
+
+    async function openVideoLessonWithCheck() {
+      localStorage.setItem("road-to-english.pronunciationCheck", "on");
+      ClipRecognition.instances = [];
+      vi.stubGlobal("webkitSpeechRecognition", ClipRecognition);
+      const opened = await openVideoLesson();
+      localStorage.removeItem("road-to-english.pronunciationCheck");
+      return opened;
+    }
+
+    it("pauses the playing clip and clears its poll when a pronunciation check starts", async () => {
+      const { view, player } = await openVideoLessonWithCheck();
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[0]?.click();
+      });
+      expect(player.calls).toContainEqual(["playVideo"]);
+      player.calls = [];
+      await act(async () => {
+        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
+      });
+      expect(player.calls).toEqual([["pauseVideo"]]);
+      expect(ClipRecognition.instances).toHaveLength(1);
+      player.time = 10;
+      vi.advanceTimersByTime(1000);
+      expect(player.calls).toEqual([["pauseVideo"]]);
+      await unmount(view);
+    });
+
+    it("aborts a listening check silently when Play clip starts", async () => {
+      const { view, player } = await openVideoLessonWithCheck();
+      await act(async () => {
+        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
+      });
+      const recognition = ClipRecognition.instances.at(-1)!;
+      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
+      player.calls = [];
+      await act(async () => {
+        buttonsNamed(view.container, "Play clip")[0]?.click();
+      });
+      expect(recognition.abort).toHaveBeenCalledOnce();
+      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
+      expect(buttonsNamed(view.container, "Try again")).toHaveLength(0);
+      expect(view.container.textContent).not.toContain("aborted");
+      expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
+      await unmount(view);
+    });
+
     // happy-dom refuses to load script files and fires the script's error event, the same path as a blocked or offline load.
     it("loads the API script once and shows Video unavailable when it fails, keeping the lesson usable", async () => {
       const append = vi.spyOn(document.head, "append");

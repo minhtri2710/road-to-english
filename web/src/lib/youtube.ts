@@ -41,7 +41,11 @@ export function parseTranscript(text: string): { text: string; cue: Cue }[] {
     }
     const current = cues.at(-1);
     if (TIMESTAMP.test(line)) {
-      const start = line.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+      const parts = line.split(":").map(Number);
+      if (parts.slice(1).some((part) => part > 59)) {
+        throw new Error(`Invalid timestamp: ${line}.`);
+      }
+      const start = parts.reduce((total, part) => total * 60 + part, 0);
       if (current && start <= current.start) {
         throw new Error(`Timestamps must increase: ${line} is not after the previous one.`);
       }

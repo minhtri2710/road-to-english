@@ -80,5 +80,10 @@ export function useYouTubePlayer(videoId: string | undefined) {
     [stopClip],
   );
 
-  return { containerRef, status, playClip };
+  const pauseClip = useCallback(() => {
+    stopClip();
+    playerRef.current?.pauseVideo();
+  }, [stopClip]);
+
+  return { containerRef, status, playClip, pauseClip };
 }

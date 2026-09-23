@@ -82,6 +82,16 @@ describe("parseTranscript", () => {
     expect(() => parseTranscript(text)).toThrow("Timestamps must increase");
   });
 
+  it.each(["1:75", "1:60:00", "0:60"])("rejects the out-of-range timestamp %s", (stamp) => {
+    expect(() => parseTranscript(`0:00\nOne.\n${stamp}\nTwo.`)).toThrow(`Invalid timestamp: ${stamp}.`);
+  });
+
+  it("accepts the largest in-range fields", () => {
+    expect(parseTranscript("0:00\nOne.\n59:59\nTwo.\n1:59:59\nThree.").map(({ cue }) => cue.start)).toEqual([
+      0, 3599, 7199,
+    ]);
+  });
+
   it("treats non-timestamp lines as text", () => {
     expect(parseTranscript("0:00\n1:2\n123:45\n1:234")).toEqual([
       { text: "1:2 123:45 1:234", cue: { start: 0, end: null } },

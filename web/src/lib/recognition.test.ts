@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { recognitionSupported, recognizeOnce } from "./recognition";
+import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./recognition";
 
 class FakeRecognition {
   static instances: FakeRecognition[] = [];
@@ -122,6 +122,16 @@ describe("recognition", () => {
     recognition.say("too late");
     expect(recognition.abort).toHaveBeenCalledOnce();
     await expect(result).rejects.toMatchObject({ name: "AbortError", message: "Speech recognition aborted." });
+  });
+
+  it("abortActiveRecognition aborts the active recognition and is a no-op when idle", async () => {
+    install();
+    const { result } = recognizeOnce();
+    abortActiveRecognition();
+    expect(latest().abort).toHaveBeenCalledOnce();
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    abortActiveRecognition();
+    expect(latest().abort).toHaveBeenCalledOnce();
   });
 
   it("aborts the active recognition when another starts", async () => {

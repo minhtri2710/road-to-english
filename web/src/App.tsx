@@ -29,7 +29,7 @@ import { useVocabDeck } from "./hooks/vocab";
 import { blankFor, diffWords, normalize, splitWords, type WordDiff } from "./lib/dictation";
 import { capNewCards, cardId, isCardWord, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
-import { recognitionSupported, recognizeOnce } from "./lib/recognition";
+import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
 import { useYouTubePlayer } from "./hooks/useYouTubePlayer";
@@ -194,6 +194,7 @@ function SentenceShadowing({
   setSpokenWord,
   recordPractice,
   pronunciationCheck,
+  pauseVideo,
 }: {
   text: string;
   targetWpm: number;
@@ -204,6 +205,7 @@ function SentenceShadowing({
   setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   pronunciationCheck: boolean;
+  pauseVideo: () => void;
 }) {
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -258,6 +260,7 @@ function SentenceShadowing({
 
   const checkPronunciation = () => {
     setLooping(false);
+    pauseVideo();
     if (speechSupported) {
       stopSpeaking();
     }
@@ -1385,6 +1388,7 @@ function LessonDetail({
                     if ("speechSynthesis" in window) {
                       stopSpeaking();
                     }
+                    abortActiveRecognition();
                     video.playClip(cue, Number(speed));
                   }}
                 />
@@ -1453,6 +1457,7 @@ function LessonDetail({
                     setSpokenWord={setSpokenWord}
                     recordPractice={recordPractice}
                     pronunciationCheck={pronunciationSupported && pronunciationCheck}
+                    pauseVideo={video.pauseClip}
                   />
                   <SaveToReview
                     card={sentenceCard(data.id, sentence)}

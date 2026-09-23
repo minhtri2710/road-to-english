@@ -45,6 +45,10 @@ function errorMessage(code: string): string {
 
 let active: { abort(): void } | null = null;
 
+export function abortActiveRecognition(): void {
+  active?.abort();
+}
+
 // One utterance, settled exactly once, and one recognition at a time: starting
 // another aborts the active one. An abort rejects with name "AbortError".
 // processLocally is requested where the browser exposes it; a local failure is
