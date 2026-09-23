@@ -125,6 +125,50 @@ async function openLesson(lesson = greetingsLesson) {
   return { container, root };
 }
 
+interface FakeSpokenUtterance {
+  text: string;
+  rate: number;
+  onend: (() => void) | null;
+}
+
+// Models the engine: speak queues, cancel drops the queue and fires each dropped
+// utterance's onend (the worst case for a stale restart), finish ends the head.
+function installSpeechFakes() {
+  const spoken: FakeSpokenUtterance[] = [];
+  let pending: FakeSpokenUtterance[] = [];
+  const speak = vi.fn((utterance: FakeSpokenUtterance) => {
+    spoken.push(utterance);
+    pending.push(utterance);
+  });
+  const cancel = vi.fn(() => {
+    const dropped = pending;
+    pending = [];
+    dropped.forEach((utterance) => utterance.onend?.());
+  });
+  class FakeUtterance {
+    lang = "";
+    rate = 1;
+    onend: (() => void) | null = null;
+    constructor(readonly text: string) {}
+  }
+  vi.stubGlobal("speechSynthesis", { speak, cancel });
+  vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+  const finish = () => {
+    const utterance = pending.shift();
+    utterance?.onend?.();
+  };
+  return { spoken, speak, cancel, finish };
+}
+
+function buttonsNamed(container: HTMLElement, name: string): HTMLButtonElement[] {
+  // ToggleButton repeats its label in an aria-hidden width reservation span.
+  return Array.from(container.querySelectorAll("button")).filter((button) => {
+    const visible = button.cloneNode(true) as HTMLElement;
+    visible.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
+    return visible.textContent === name;
+  });
+}
+
 describe("App", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -171,7 +215,7 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    expect(container.querySelectorAll("button")).toHaveLength(19);
+    expect(container.querySelectorAll("button")).toHaveLength(29);
 
     await act(async () => {
       root.unmount();
@@ -1011,6 +1055,198 @@ describe("App", () => {
     await waitForCondition(() => container.textContent?.includes("Invalid email or password.") ?? false);
     expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
     expect(container.textContent).not.toContain("learner@example.com");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("scales the clamped shadowing rate by the chosen speed", async () => {
+    const speech = installSpeechFakes();
+    const rateAt = async (container: HTMLElement, speed: string) => {
+      await act(async () => {
+        buttonsNamed(container, speed)[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(container, "Listen")[0]?.click();
+      });
+      return speech.spoken.at(-1)?.rate;
+    };
+
+    const a2 = await openLesson({ ...greetingsLesson, targetWpm: 90 });
+    expect(await rateAt(a2.container, "1x")).toBe(0.5);
+    expect(await rateAt(a2.container, "0.75x")).toBe(0.375);
+    expect(await rateAt(a2.container, "0.5x")).toBe(0.25);
+    await act(async () => {
+      a2.root.unmount();
+    });
+    a2.container.remove();
+
+    const low = await openLesson({ ...greetingsLesson, targetWpm: 1 });
+    expect(await rateAt(low.container, "1x")).toBe(0.5);
+    await act(async () => {
+      low.root.unmount();
+    });
+    low.container.remove();
+
+    const high = await openLesson({ ...greetingsLesson, targetWpm: 1000 });
+    expect(await rateAt(high.container, "1x")).toBe(2);
+    expect(await rateAt(high.container, "0.5x")).toBe(1);
+    await act(async () => {
+      high.root.unmount();
+    });
+    high.container.remove();
+  });
+
+  it("loops a sentence until toggled off, another sentence starts, or unmount", async () => {
+    const speech = installSpeechFakes();
+    const { container, root } = await openLesson();
+    const first = greetingsLesson.sentences[0].text;
+
+    await act(async () => {
+      buttonsNamed(container, "Loop")[0]?.click();
+    });
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first]);
+    await act(async () => {
+      speech.finish();
+    });
+    await act(async () => {
+      speech.finish();
+    });
+    expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first, first, first]);
+
+    speech.cancel.mockClear();
+    await act(async () => {
+      buttonsNamed(container, "Loop")[0]?.click();
+    });
+    expect(speech.cancel).toHaveBeenCalled();
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      speech.spoken.at(-1)?.onend?.();
+    });
+    expect(speech.spoken).toHaveLength(3);
+
+    await act(async () => {
+      buttonsNamed(container, "Loop")[0]?.click();
+    });
+    await act(async () => {
+      buttonsNamed(container, "Listen")[1]?.click();
+    });
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      speech.finish();
+    });
+    expect(speech.spoken.map((utterance) => utterance.text).slice(3)).toEqual([
+      first,
+      greetingsLesson.sentences[1].text,
+    ]);
+
+    await act(async () => {
+      buttonsNamed(container, "Loop")[0]?.click();
+    });
+    const lastLooped = speech.spoken.at(-1);
+    speech.cancel.mockClear();
+    await act(async () => {
+      root.unmount();
+    });
+    expect(speech.cancel).toHaveBeenCalled();
+    const spokenAtUnmount = speech.spoken.length;
+    lastLooped?.onend?.();
+    expect(speech.spoken).toHaveLength(spokenAtUnmount);
+    container.remove();
+  });
+
+  it("compares by playing the recording only after the reference ends, and explains a blocked play", async () => {
+    const speech = installSpeechFakes();
+    const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+    installMediaDevices(async () => stream);
+    installObjectUrlFakes();
+    class FakeMediaRecorder {
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      start(): void {
+        this.state = "recording";
+      }
+
+      stop(): void {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+
+    const { container, root } = await openLesson();
+    expect(buttonsNamed(container, "Compare")[0]?.disabled).toBe(true);
+
+    await act(async () => {
+      buttonsNamed(container, "Record")[0]?.click();
+    });
+    await act(async () => {
+      buttonsNamed(container, "Stop")[0]?.click();
+    });
+    const compare = buttonsNamed(container, "Compare")[0];
+    expect(compare?.disabled).toBe(false);
+
+    await act(async () => {
+      compare?.click();
+    });
+    expect(speech.spoken.at(-1)?.text).toBe(greetingsLesson.sentences[0].text);
+    expect(play).not.toHaveBeenCalled();
+    await act(async () => {
+      speech.finish();
+    });
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(play.mock.contexts[0]).toBe(container.querySelector("audio"));
+    expect(container.textContent).not.toContain("Press play to hear your recording.");
+
+    play.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    await act(async () => {
+      compare?.click();
+    });
+    await act(async () => {
+      speech.finish();
+    });
+    expect(container.textContent).toContain("Press play to hear your recording.");
+
+    await act(async () => {
+      compare?.click();
+    });
+    expect(container.textContent).not.toContain("Press play to hear your recording.");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("hides and restores the shadowing transcript", async () => {
+    installSpeechFakes();
+    const { container, root } = await openLesson();
+
+    await act(async () => {
+      buttonsNamed(container, "Hide transcript")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).not.toContain(sentence.text);
+    }
+    expect(container.textContent).not.toContain("casual sign-off");
+
+    await act(async () => {
+      buttonsNamed(container, "Show transcript")[0]?.click();
+    });
+    for (const sentence of greetingsLesson.sentences) {
+      expect(container.textContent).toContain(sentence.text);
+    }
+    expect(container.textContent).toContain("casual sign-off");
 
     await act(async () => {
       root.unmount();

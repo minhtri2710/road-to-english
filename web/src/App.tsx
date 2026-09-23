@@ -27,7 +27,7 @@ import { useProgress } from "./hooks/progress";
 import { useVocabDeck } from "./hooks/vocab";
 import { matchesReference } from "./lib/dictation";
 import { Rating, type Grade, type VocabCard } from "./lib/vocab";
-import { speak } from "./lib/speech";
+import { speak, stopSpeaking } from "./lib/speech";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
 import { exportAll, replaceAll } from "./lib/backupStore";
@@ -114,16 +114,26 @@ const appStyles = stylex.create({
   },
 });
 
+const SPEEDS = ["0.5", "0.75", "1"] as const;
+
 function SentenceShadowing({
   text,
   targetWpm,
+  speed,
+  looping,
+  setLooping,
   recordPractice,
 }: {
   text: string;
   targetWpm: number;
+  speed: number;
+  looping: boolean;
+  setLooping: (looping: boolean) => void;
   recordPractice: () => Promise<void>;
 }) {
   const recorder = useRecorder();
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playBlocked, setPlayBlocked] = useState(false);
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
   const recordingSupported =
@@ -138,6 +148,18 @@ function SentenceShadowing({
     }
   }, [recordPractice, recorder.state]);
 
+  useEffect(() => {
+    if (!looping) {
+      return;
+    }
+    let latest: SpeechSynthesisUtterance | null = null;
+    const repeat = () => {
+      latest = speak(text, targetWpm, speed, repeat);
+    };
+    repeat();
+    return () => stopSpeaking(latest);
+  }, [looping, speed, targetWpm, text]);
+
   return (
     <VStack gap={1}>
       <HStack gap={1} xstyle={appStyles.shadowingControls}>
@@ -145,7 +167,16 @@ function SentenceShadowing({
           label="Listen"
           variant="secondary"
           isDisabled={!speechSupported}
-          onClick={() => speak(text, targetWpm)}
+          onClick={() => {
+            setLooping(false);
+            speak(text, targetWpm, speed);
+          }}
+        />
+        <ToggleButton
+          label="Loop"
+          isPressed={looping}
+          isDisabled={!speechSupported}
+          onPressedChange={setLooping}
         />
         <Button
           label={recorder.state === "recording" ? "Stop" : "Record"}
@@ -157,6 +188,18 @@ function SentenceShadowing({
               ? recorder.stopRecording
               : recorder.startRecording
           }
+        />
+        <Button
+          label="Compare"
+          variant="secondary"
+          isDisabled={!speechSupported || !recorder.url}
+          onClick={() => {
+            setLooping(false);
+            setPlayBlocked(false);
+            speak(text, targetWpm, speed, () => {
+              audioRef.current?.play().catch(() => setPlayBlocked(true));
+            });
+          }}
         />
       </HStack>
       {!speechSupported && (
@@ -174,7 +217,12 @@ function SentenceShadowing({
           {recorder.error}
         </Text>
       )}
-      {recorder.url && <audio controls src={recorder.url} />}
+      {recorder.url && <audio ref={audioRef} controls src={recorder.url} />}
+      {playBlocked && (
+        <Text as="p" type="supporting">
+          Press play to hear your recording.
+        </Text>
+      )}
     </VStack>
   );
 }
@@ -214,7 +262,7 @@ function SentenceDictation({
         label="Play"
         variant="secondary"
         isDisabled={!speechSupported}
-        onClick={() => speak(text, targetWpm)}
+        onClick={() => speak(text, targetWpm, 1)}
       />
       {!speechSupported && (
         <Text as="p" type="supporting">
@@ -586,11 +634,14 @@ function LessonDetail({
 }) {
   const { data, loading, error } = useLesson(id);
   const [mode, setMode] = useState<"shadow" | "dictation">("shadow");
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>("1");
+  const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
+  const [showTranscript, setShowTranscript] = useState(true);
 
   useEffect(() => {
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
+        stopSpeaking();
       }
     };
   }, []);
@@ -637,6 +688,7 @@ function LessonDetail({
         onChange={(nextMode) => {
           if (nextMode) {
             setMode(nextMode as "shadow" | "dictation");
+            setLoopingSentenceId(null);
           }
         }}
         xstyle={appStyles.modeToggle}
@@ -644,14 +696,36 @@ function LessonDetail({
         <ToggleButton value="shadow" label="Shadow" />
         <ToggleButton value="dictation" label="Dictation" />
       </ToggleButtonGroup>
+      {mode === "shadow" && (
+        <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+          <ToggleButtonGroup
+            label="Playback speed"
+            value={speed}
+            onChange={(nextSpeed) => {
+              if (nextSpeed) {
+                setSpeed(nextSpeed as (typeof SPEEDS)[number]);
+              }
+            }}
+          >
+            {SPEEDS.map((value) => (
+              <ToggleButton key={value} value={value} label={`${value}x`} />
+            ))}
+          </ToggleButtonGroup>
+          <Button
+            label={showTranscript ? "Hide transcript" : "Show transcript"}
+            variant="ghost"
+            onClick={() => setShowTranscript((shown) => !shown)}
+          />
+        </HStack>
+      )}
       <VStack as="ol" gap={2} padding={0}>
         {data.sentences.map((sentence) => (
           <li key={sentence.id}>
             <Card padding={3} xstyle={appStyles.sentence}>
               {mode === "shadow" ? (
                 <VStack gap={1}>
-                  <Text as="p">{sentence.text}</Text>
-                  {sentence.notes && (
+                  {showTranscript && <Text as="p">{sentence.text}</Text>}
+                  {showTranscript && sentence.notes && (
                     <Text as="p" type="supporting">
                       {sentence.notes}
                     </Text>
@@ -659,6 +733,11 @@ function LessonDetail({
                   <SentenceShadowing
                     text={sentence.text}
                     targetWpm={data.targetWpm}
+                    speed={Number(speed)}
+                    looping={loopingSentenceId === sentence.id}
+                    setLooping={(looping) =>
+                      setLoopingSentenceId(looping ? sentence.id : null)
+                    }
                     recordPractice={recordPractice}
                   />
                   <SaveToReview
