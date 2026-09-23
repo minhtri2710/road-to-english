@@ -9,6 +9,8 @@ import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
 import { createCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
+import { blankFor } from "./lib/dictation";
+import { listUserLessons } from "./lib/userLessons";
 import { greetingsLesson, lessonSummaries } from "./test/fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -822,6 +824,7 @@ describe("App", () => {
         cards: [importedCard],
         practiceDays: [{ date: todayKey(new Date()) }],
         lessonCompletion: [{ lessonId: "lesson-1" }],
+        userLessons: [],
       },
       new Date(),
     );
@@ -1914,6 +1917,233 @@ describe("App", () => {
 
       expect(container.textContent).toContain("Goal 0/10");
       await unmount();
+    });
+  });
+
+  describe("user lessons", () => {
+    const pasted = "I like green tea.\nDo you   like it?\n\nWe drink it every morning.";
+
+    async function renderApp() {
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return responseFor(new URL(url, "http://localhost").pathname);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <App />
+          </StrictMode>,
+        );
+      });
+      await waitForCondition(() => container.textContent?.includes("Your lessons") ?? false);
+      return { container, root };
+    }
+
+    async function unmount({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
+    async function createLesson(container: HTMLElement, title: string, text: string) {
+      const titleInput = container.querySelector<HTMLInputElement>("#import-title");
+      const textArea = container.querySelector<HTMLTextAreaElement>("#import-text");
+      if (!titleInput || !textArea) throw new Error("import form not found");
+      expect(container.querySelector('label[for="import-title"]')).not.toBeNull();
+      expect(container.querySelector('label[for="import-text"]')).not.toBeNull();
+      await act(async () => {
+        setInputValue(titleInput, title);
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, text);
+        textArea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        titleInput.form?.requestSubmit();
+      });
+    }
+
+    function lessonFetches(): string[] {
+      return fetchMock.mock.calls
+        .map(([input]) => new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://localhost").pathname)
+        .filter((path) => path.startsWith("/lessons/"));
+    }
+
+    it("creates a lesson from pasted text, opens it without a lesson fetch, and lists it after a remount", async () => {
+      const first = await renderApp();
+      expect(first.container.textContent).toContain("Your lessons stay on this device; export a backup to move them.");
+      expect(buttonsNamed(first.container, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
+      expect(buttonsNamed(first.container, "110 WPM")[0]?.getAttribute("aria-pressed")).toBe("true");
+      await act(async () => {
+        buttonsNamed(first.container, "B2")[0]?.click();
+        buttonsNamed(first.container, "130 WPM")[0]?.click();
+      });
+
+      await createLesson(first.container, "  Tea talk ", pasted);
+      await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
+
+      expect(first.container.textContent).toContain("Tea talk");
+      expect(first.container.textContent).toContain("Level B2");
+      expect(first.container.textContent).toContain("130 WPM");
+      for (const sentence of ["I like green tea.", "Do you like it?", "We drink it every morning."]) {
+        expect(first.container.textContent).toContain(sentence);
+      }
+      const [stored] = await listUserLessons();
+      expect(stored).toMatchObject({
+        title: "Tea talk",
+        level: "B2",
+        targetWpm: 130,
+        sentences: [
+          { id: "s1", text: "I like green tea.", vi: "" },
+          { id: "s2", text: "Do you like it?", vi: "" },
+          { id: "s3", text: "We drink it every morning.", vi: "" },
+        ],
+      });
+      expect(stored?.id).toMatch(/^user-[0-9a-f-]{36}$/);
+      expect(lessonFetches()).toEqual([]);
+      await unmount(first);
+
+      const second = await renderApp();
+      await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
+      expect(second.container.textContent).toContain("B2 · 3 sentences");
+      await act(async () => {
+        Array.from(second.container.querySelectorAll("button"))
+          .find((button) => button.textContent?.includes("Tea talk"))
+          ?.click();
+      });
+      expect(second.container.textContent).toContain("We drink it every morning.");
+      expect(lessonFetches()).toEqual([]);
+      await unmount(second);
+    });
+
+    it("saves a word whose back is the sentence text only, then deletes the lesson and keeps the card", async () => {
+      installSpeechFakes();
+      const view = await renderApp();
+      await createLesson(view.container, "Tea talk", pasted);
+      await waitForCondition(() => buttonsNamed(view.container, "green").length === 1);
+
+      await act(async () => {
+        buttonsNamed(view.container, "green")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(view.container, "Save word")[0]?.click();
+      });
+      await waitForCondition(() => buttonsNamed(view.container, "Saved").length === 1);
+      const [lesson] = await listUserLessons();
+      const [card] = await getAllCards();
+      expect(card).toMatchObject({
+        id: `${lesson?.id}:s1:green`,
+        front: "green",
+        back: "I like green tea.",
+      });
+
+      await act(async () => {
+        buttonsNamed(view.container, "Back to lessons")[0]?.click();
+      });
+      const confirm = vi.fn(() => false);
+      vi.stubGlobal("confirm", confirm);
+      await act(async () => {
+        buttonsNamed(view.container, "Delete")[0]?.click();
+      });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(await listUserLessons()).toHaveLength(1);
+
+      confirm.mockReturnValue(true);
+      await act(async () => {
+        buttonsNamed(view.container, "Delete")[0]?.click();
+      });
+      await waitForCondition(() => view.container.textContent?.includes("No lessons of your own yet.") ?? false);
+      expect(await listUserLessons()).toEqual([]);
+      expect(await getAllCards()).toEqual([card]);
+      await unmount(view);
+
+      const remounted = await renderApp();
+      expect(remounted.container.textContent).toContain("No lessons of your own yet.");
+      expect(remounted.container.textContent).not.toContain("Tea talk");
+      await unmount(remounted);
+    });
+
+    it("creates only one lesson on a synchronous double submit", async () => {
+      const first = await renderApp();
+      const titleInput = first.container.querySelector<HTMLInputElement>("#import-title");
+      const textArea = first.container.querySelector<HTMLTextAreaElement>("#import-text");
+      if (!titleInput || !textArea) throw new Error("import form not found");
+      await act(async () => {
+        setInputValue(titleInput, "Tea talk");
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, pasted);
+        textArea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        titleInput.form?.requestSubmit();
+        titleInput.form?.requestSubmit();
+      });
+      await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
+      await unmount(first);
+
+      const second = await renderApp();
+      await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
+      expect(
+        Array.from(second.container.querySelectorAll("button")).filter((button) => button.textContent?.includes("Tea talk")),
+      ).toHaveLength(1);
+      expect(await listUserLessons()).toHaveLength(1);
+      await unmount(second);
+    });
+
+    it.each([
+      ["NUL in the text", "Tea talk", "I like\u0000 tea.", "Title and text must not contain NUL characters."],
+      ["an empty title", "   ", pasted, "Title must be 1-100 characters."],
+      ["over-limit text", "Tea talk", "a".repeat(20001), "Text must be at most 20000 characters."],
+      ["too many sentences", "Tea talk", "Go. ".repeat(201), "Text must contain 1-200 sentences."],
+      ["no sentences", "Tea talk", "... !!!", "Text must contain 1-200 sentences."],
+    ])("shows an inline error and stores nothing for %s", async (_name, title, text, message) => {
+      const view = await renderApp();
+      await createLesson(view.container, title, text);
+
+      expect(view.container.textContent).toContain(message);
+      expect(view.container.textContent).not.toContain("Back to lessons");
+      expect(await listUserLessons()).toEqual([]);
+      await unmount(view);
+    });
+
+    it("runs dictation and the fill-the-blank drill on a user lesson", async () => {
+      vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
+      vi.stubGlobal("SpeechSynthesisUtterance", class {});
+      const view = await renderApp();
+      await createLesson(view.container, "Tea talk", pasted);
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+
+      await act(async () => {
+        buttonsNamed(view.container, "Dictation")[0]?.click();
+      });
+      expect(view.container.textContent).not.toContain("I like green tea.");
+      const dictation = view.container.querySelector<HTMLInputElement>("#dictation-s1");
+      if (!dictation) throw new Error("dictation input not found");
+      await act(async () => {
+        setInputValue(dictation, "i like green tea");
+        dictation.form?.requestSubmit();
+      });
+      expect(view.container.textContent).toContain("Reference: I like green tea.");
+      expect(view.container.textContent).toContain("Correct");
+
+      await act(async () => {
+        buttonsNamed(view.container, "Fill the blank")[0]?.click();
+      });
+      const { parts, index } = blankFor("We drink it every morning.");
+      expect(view.container.textContent).toContain(
+        parts.map((part, i) => (i === index ? "____" : part)).join(""),
+      );
+      const blank = view.container.querySelector<HTMLInputElement>("#blank-s3");
+      if (!blank) throw new Error("blank input not found");
+      await act(async () => {
+        setInputValue(blank, parts[index]!);
+        blank.form?.requestSubmit();
+      });
+      expect(view.container.textContent).toContain("Correct");
+      expect(lessonFetches()).toEqual([]);
+      await unmount(view);
     });
   });
 });

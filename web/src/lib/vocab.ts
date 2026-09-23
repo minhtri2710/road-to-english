@@ -26,6 +26,11 @@ export interface VocabCard {
 
 export type NewCard = Omit<VocabCard, "id" | "fsrs">;
 
+// Text the api accepts: any string without U+0000.
+export function isText(value: unknown): value is string {
+  return typeof value === "string" && !value.includes("\u0000");
+}
+
 // A word card's word: one non-empty normalize() token.
 export function isCardWord(word: string): boolean {
   return /^[a-z0-9]+$/.test(word);

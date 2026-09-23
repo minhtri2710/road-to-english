@@ -1,6 +1,6 @@
 import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
-import type { BackupData } from "./backup";
+import type { SyncState } from "./backup";
 
 export interface SyncScheduler {
   trigger(): void;
@@ -31,7 +31,7 @@ export function createSyncScheduler(
         if (!active) {
           break;
         }
-        const local: BackupData = await exportAll();
+        const local: SyncState = await exportAll();
         if (!active) {
           break;
         }

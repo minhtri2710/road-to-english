@@ -1,7 +1,7 @@
 import { ApiError, getUrl } from "./lessons";
-import { reviveBackupData, type BackupData } from "../lib/backup";
+import { reviveSyncState, type SyncState } from "../lib/backup";
 
-export async function syncState(local: BackupData): Promise<BackupData> {
+export async function syncState(local: SyncState): Promise<SyncState> {
   const response = await fetch(getUrl("/sync"), {
     method: "POST",
     credentials: "include",
@@ -13,5 +13,5 @@ export async function syncState(local: BackupData): Promise<BackupData> {
     throw new ApiError(response.status);
   }
 
-  return reviveBackupData(await response.json());
+  return reviveSyncState(await response.json());
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { backupFileName, exportData, importData } from "./backup";
 import { createCard } from "./vocab";
+import { userLesson } from "../test/fixtures";
 
 const now = new Date("2026-01-05T00:00:00.000Z");
 
@@ -37,6 +38,7 @@ function backupState() {
     cards: [first, second, word],
     practiceDays: [{ date: "2026-01-05" }],
     lessonCompletion: [{ lessonId: "lesson-1" }],
+    userLessons: [userLesson],
   };
 }
 
@@ -59,6 +61,7 @@ describe("backup", () => {
     expect(imported.cards[2]?.source.word).toBe("hello");
     expect(imported.practiceDays).toEqual(state.practiceDays);
     expect(imported.lessonCompletion).toEqual(state.lessonCompletion);
+    expect(imported.userLessons).toEqual([userLesson]);
     expect(JSON.parse(exportData(state, new Date(2026, 0, 5))).exportedAt).toBeDefined();
   });
 
@@ -74,8 +77,24 @@ describe("backup", () => {
       },
     ],
     ["malformed practice day", { ...backupState(), practiceDays: [{ date: "2026-1-5" }] }],
+    ["missing userLessons", { ...backupState(), userLessons: undefined }],
+    ["bad user lesson id", { ...backupState(), userLessons: [{ ...userLesson, id: "user-1" }] }],
+    ["unprefixed user lesson id", { ...backupState(), userLessons: [{ ...userLesson, id: userLesson.id.slice(5) }] }],
+    ["duplicate user lesson", { ...backupState(), userLessons: [userLesson, userLesson] }],
+    ["empty title", { ...backupState(), userLessons: [{ ...userLesson, title: " " }] }],
+    ["long title", { ...backupState(), userLessons: [{ ...userLesson, title: "x".repeat(101) }] }],
+    ["bad level", { ...backupState(), userLessons: [{ ...userLesson, level: "C1" }] }],
+    ["bad WPM", { ...backupState(), userLessons: [{ ...userLesson, targetWpm: 100 }] }],
+    ["non-empty vi", { ...backupState(), userLessons: [{ ...userLesson, sentences: [{ id: "s1", text: "Hi.", vi: "Chào." }] }] }],
+    [
+      "out-of-order sentence ids",
+      { ...backupState(), userLessons: [{ ...userLesson, sentences: [...userLesson.sentences].reverse() }] },
+    ],
+    ["empty sentence text", { ...backupState(), userLessons: [{ ...userLesson, sentences: [{ id: "s1", text: "", vi: "" }] }] }],
+    ["no sentences", { ...backupState(), userLessons: [{ ...userLesson, sentences: [] }] }],
+    ["extra lesson key", { ...backupState(), userLessons: [{ ...userLesson, extra: 1 }] }],
   ])("rejects %s", (_name, value) => {
-    expect(() => importData(JSON.stringify(value))).toThrow();
+    expect(() => importData(JSON.stringify({ version: 1, exportedAt: now.toISOString(), ...value }))).toThrow();
   });
 
   it("uses the injected date in the file name", () => {

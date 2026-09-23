@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
+import type { Lesson } from "../api/lessons";
 import type { VocabCard } from "./vocab";
 
 export interface AppDatabase extends DBSchema {
@@ -9,6 +10,8 @@ export interface AppDatabase extends DBSchema {
   meta: { key: string; value: { key: string; ownerId: string } };
   // Local-only: not synced, not in backup.
   dailyCounts: { key: string; value: DailyCount };
+  // Not synced; carried only by the backup file.
+  userLessons: { key: string; value: Lesson };
 }
 
 export interface DailyCount {
@@ -29,6 +32,7 @@ export function openAppDatabase(): Promise<IDBPDatabase<AppDatabase>> {
       db.createObjectStore("lessonCompletion", { keyPath: "lessonId" });
       db.createObjectStore("meta", { keyPath: "key" });
       db.createObjectStore("dailyCounts", { keyPath: "date" });
+      db.createObjectStore("userLessons", { keyPath: "id" });
     },
   });
 }

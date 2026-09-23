@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isValidDayKey, isValidTimestamp, reviveBackupData } from "./backup";
+import { isValidDayKey, isValidTimestamp, reviveSyncState } from "./backup";
 
 function state(overrides: Record<string, unknown> = {}) {
   return {
@@ -47,7 +47,7 @@ describe("sync state validation", () => {
   });
 
   it("revives valid timestamps and dates", () => {
-    const revived = reviveBackupData({
+    const revived = reviveSyncState({
       ...state(),
       cards: [
         {
@@ -87,11 +87,11 @@ describe("sync state validation", () => {
     const next = "cards" in overrides || "practiceDays" in overrides || "lessonCompletion" in overrides
       ? { ...state(), ...overrides }
       : { ...state(), cards: [{ ...state().cards[0], ...overrides }] };
-    expect(() => reviveBackupData(next)).toThrow();
+    expect(() => reviveSyncState(next)).toThrow();
   });
 
   it("accepts sentence and word cards", () => {
-    expect(() => reviveBackupData({
+    expect(() => reviveSyncState({
       ...state(),
       cards: [
         state().cards[0],
@@ -104,16 +104,24 @@ describe("sync state validation", () => {
     })).not.toThrow();
   });
 
+  it("revives only the sync stores, never user lessons", () => {
+    expect(Object.keys(reviveSyncState({ ...state(), userLessons: [] })).sort()).toEqual([
+      "cards",
+      "lessonCompletion",
+      "practiceDays",
+    ]);
+  });
+
   it("accepts an empty card back", () => {
-    expect(() => reviveBackupData({
+    expect(() => reviveSyncState({
       ...state(),
       cards: [{ ...state().cards[0], back: "" }],
     })).not.toThrow();
   });
 
   it("accepts absent and null last_review according to the server contract", () => {
-    expect(() => reviveBackupData(state())).not.toThrow();
-    expect(() => reviveBackupData({
+    expect(() => reviveSyncState(state())).not.toThrow();
+    expect(() => reviveSyncState({
       ...state(),
       cards: [{ ...state().cards[0], fsrs: { due: "2026-01-01T00:00:00Z", last_review: null } }],
     })).not.toThrow();

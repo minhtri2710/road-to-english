@@ -1,9 +1,10 @@
 import { openAppDatabase } from "./db";
 import { newerCard } from "./newerCard";
 import { notifyLocalMutation } from "./syncEvents";
-import type { BackupData } from "./backup";
+import type { BackupData, SyncState } from "./backup";
 
-export async function exportAll(): Promise<BackupData> {
+// The /sync payload: never includes userLessons.
+export async function exportAll(): Promise<SyncState> {
   const db = await openAppDatabase();
   try {
     const [cards, practiceDays, lessonCompletion] = await Promise.all([
@@ -17,17 +18,33 @@ export async function exportAll(): Promise<BackupData> {
   }
 }
 
+export async function exportBackupData(): Promise<BackupData> {
+  const db = await openAppDatabase();
+  try {
+    const [cards, practiceDays, lessonCompletion, userLessons] = await Promise.all([
+      db.getAll("cards"),
+      db.getAll("practiceDays"),
+      db.getAll("lessonCompletion"),
+      db.getAll("userLessons"),
+    ]);
+    return { cards, practiceDays, lessonCompletion, userLessons };
+  } finally {
+    db.close();
+  }
+}
+
 // ponytail: no deletes, so no tombstones; adding deletion requires tombstones or rows resurrect.
 export async function replaceAll(data: BackupData): Promise<void> {
   const db = await openAppDatabase();
   try {
     const tx = db.transaction(
-      ["cards", "practiceDays", "lessonCompletion"],
+      ["cards", "practiceDays", "lessonCompletion", "userLessons"],
       "readwrite",
     );
     tx.objectStore("cards").clear();
     tx.objectStore("practiceDays").clear();
     tx.objectStore("lessonCompletion").clear();
+    tx.objectStore("userLessons").clear();
     data.cards.forEach((card) => tx.objectStore("cards").put(card));
     data.practiceDays.forEach((practiceDay) =>
       tx.objectStore("practiceDays").put(practiceDay),
@@ -35,6 +52,7 @@ export async function replaceAll(data: BackupData): Promise<void> {
     data.lessonCompletion.forEach((completion) =>
       tx.objectStore("lessonCompletion").put(completion),
     );
+    data.userLessons.forEach((lesson) => tx.objectStore("userLessons").put(lesson));
     await tx.done;
     notifyLocalMutation();
   } finally {
@@ -68,7 +86,7 @@ export async function getOwner(): Promise<string | undefined> {
   }
 }
 
-export async function mergeInto(data: BackupData): Promise<void> {
+export async function mergeInto(data: SyncState): Promise<void> {
   const db = await openAppDatabase();
   try {
     const tx = db.transaction(

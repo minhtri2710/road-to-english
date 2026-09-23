@@ -19,7 +19,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
-import { ApiError, NotFoundError } from "./api/lessons";
+import { ApiError, NotFoundError, type Lesson, type Level } from "./api/lessons";
 import { createSyncScheduler, type SyncScheduler } from "./lib/syncScheduler";
 import { setSyncTrigger } from "./lib/syncEvents";
 import { useAuth, type AuthState } from "./hooks/auth";
@@ -32,9 +32,17 @@ import { speak, stopSpeaking } from "./lib/speech";
 import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
-import { exportAll, replaceAll } from "./lib/backupStore";
+import { exportBackupData, replaceAll } from "./lib/backupStore";
 import { cardsCsv, cardsCsvFileName } from "./lib/csv";
 import { getAllCards } from "./lib/vocabStore";
+import {
+  createUserLesson,
+  deleteUserLesson,
+  listUserLessons,
+  putUserLesson,
+  USER_LEVELS,
+  USER_WPMS,
+} from "./lib/userLessons";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
@@ -104,6 +112,16 @@ const appStyles = stylex.create({
   dictationInput: {
     width: "100%",
     minHeight: "2.25rem",
+    padding: "0.5rem 0.75rem",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-surface)",
+    color: "var(--color-text-primary)",
+    font: "inherit",
+  },
+  importTextArea: {
+    width: "100%",
+    minHeight: "8rem",
     padding: "0.5rem 0.75rem",
     border: "1px solid var(--color-border)",
     borderRadius: "var(--radius-element)",
@@ -567,6 +585,44 @@ function AccountArea({ auth }: { auth: AuthState }) {
   );
 }
 
+function LessonRow({
+  title,
+  level,
+  sentenceCount,
+  targetWpm,
+  completed,
+  onSelect,
+}: {
+  title: string;
+  level: Level;
+  sentenceCount: number;
+  targetWpm: number;
+  completed: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <Button
+      label={title}
+      variant="secondary"
+      xstyle={appStyles.lessonButton}
+      onClick={onSelect}
+    >
+      <HStack justify="between" align="center" width="100%">
+        <VStack gap={0.5} align="start">
+          <Text weight="semibold">{title}</Text>
+          <Text type="supporting">
+            {level} · {sentenceCount} sentences
+          </Text>
+        </VStack>
+        <HStack gap={1} align="center">
+          <Badge label={`${targetWpm} WPM`} variant="info" />
+          {completed && <Badge label="Completed" variant="success" />}
+        </HStack>
+      </HStack>
+    </Button>
+  );
+}
+
 function LessonList({
   onSelect,
   completedLessons,
@@ -592,30 +648,150 @@ function LessonList({
     <VStack as="ul" gap={2} padding={0}>
       {data.map((lesson) => (
         <li key={lesson.id}>
-          <Button
-            label={lesson.title}
-            variant="secondary"
-            xstyle={appStyles.lessonButton}
-            onClick={() => onSelect(lesson.id)}
-          >
-            <HStack justify="between" align="center" width="100%">
-              <VStack gap={0.5} align="start">
-                <Text weight="semibold">{lesson.title}</Text>
-                <Text type="supporting">
-                  {lesson.level} · {lesson.sentenceCount} sentences
-                </Text>
-              </VStack>
-              <HStack gap={1} align="center">
-                <Badge label={`${lesson.targetWpm} WPM`} variant="info" />
-                {completedLessons.has(lesson.id) && (
-                  <Badge label="Completed" variant="success" />
-                )}
-              </HStack>
-            </HStack>
-          </Button>
+          <LessonRow
+            title={lesson.title}
+            level={lesson.level}
+            sentenceCount={lesson.sentenceCount}
+            targetWpm={lesson.targetWpm}
+            completed={completedLessons.has(lesson.id)}
+            onSelect={() => onSelect(lesson.id)}
+          />
         </li>
       ))}
     </VStack>
+  );
+}
+
+function UserLessonList({
+  lessons,
+  onSelect,
+  onDelete,
+  completedLessons,
+}: {
+  lessons: Lesson[] | null;
+  onSelect: (lesson: Lesson) => void;
+  onDelete: (lesson: Lesson) => void;
+  completedLessons: Set<string>;
+}) {
+  if (lessons === null) {
+    return <Text as="p">Loading your lessons...</Text>;
+  }
+
+  if (lessons.length === 0) {
+    return <Text as="p">No lessons of your own yet.</Text>;
+  }
+
+  return (
+    <VStack as="ul" gap={2} padding={0}>
+      {lessons.map((lesson) => (
+        <li key={lesson.id}>
+          <HStack gap={1} align="center">
+            <LessonRow
+              title={lesson.title}
+              level={lesson.level}
+              sentenceCount={lesson.sentences.length}
+              targetWpm={lesson.targetWpm}
+              completed={completedLessons.has(lesson.id)}
+              onSelect={() => onSelect(lesson)}
+            />
+            <Button
+              label="Delete"
+              aria-label={`Delete ${lesson.title}`}
+              variant="ghost"
+              onClick={() => onDelete(lesson)}
+            />
+          </HStack>
+        </li>
+      ))}
+    </VStack>
+  );
+}
+
+function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<void> }) {
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [level, setLevel] = useState<Level>("B1");
+  const [targetWpm, setTargetWpm] = useState<(typeof USER_WPMS)[number]>("110");
+  const [error, setError] = useState<string | null>(null);
+  const isCreatingRef = useRef(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isCreatingRef.current) {
+      return;
+    }
+
+    isCreatingRef.current = true;
+    try {
+      await onCreate(createUserLesson({ title, text, level, targetWpm: Number(targetWpm) }));
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Unable to create lesson.");
+    } finally {
+      isCreatingRef.current = false;
+    }
+  };
+
+  return (
+    <form onSubmit={(event) => void submit(event)}>
+      <VStack gap={1}>
+        <Heading level={2}>Import text</Heading>
+        <Text as="p" type="supporting">
+          Your lessons stay on this device; export a backup to move them.
+        </Text>
+        <label htmlFor="import-title">
+          <Text as="span" type="supporting">Title</Text>
+        </label>
+        <input
+          id="import-title"
+          className={stylex.props(appStyles.dictationInput).className}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <label htmlFor="import-text">
+          <Text as="span" type="supporting">Text</Text>
+        </label>
+        <textarea
+          id="import-text"
+          className={stylex.props(appStyles.importTextArea).className}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+        <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+          <ToggleButtonGroup
+            label="Level"
+            value={level}
+            onChange={(nextLevel) => {
+              if (nextLevel) {
+                setLevel(nextLevel as Level);
+              }
+            }}
+          >
+            {USER_LEVELS.map((value) => (
+              <ToggleButton key={value} value={value} label={value} />
+            ))}
+          </ToggleButtonGroup>
+          <ToggleButtonGroup
+            label="Target WPM"
+            value={targetWpm}
+            onChange={(nextWpm) => {
+              if (nextWpm) {
+                setTargetWpm(nextWpm as (typeof USER_WPMS)[number]);
+              }
+            }}
+          >
+            {USER_WPMS.map((value) => (
+              <ToggleButton key={value} value={value} label={`${value} WPM`} />
+            ))}
+          </ToggleButtonGroup>
+        </HStack>
+        <Button label="Create" variant="primary" type="submit" />
+        {error && (
+          <Text as="p" color="primary" xstyle={appStyles.error}>
+            {error}
+          </Text>
+        )}
+      </VStack>
+    </form>
   );
 }
 
@@ -888,24 +1064,48 @@ function ReviewDeck({
 
 type LessonMode = "shadow" | "dictation" | "blank";
 
-function LessonDetail({
-  id,
-  onBack,
-  savedCardIds,
-  addCard,
-  recordPractice,
-  completed,
-  markLessonComplete,
-}: {
-  id: string;
+interface LessonDetailProps {
   onBack: () => void;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
-  completed: boolean;
+  completedLessons: Set<string>;
   markLessonComplete: (lessonId: string) => Promise<void>;
-}) {
+}
+
+function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string }) {
   const { data, loading, error } = useLesson(id);
+
+  if (loading) {
+    return <Text as="p">Loading lesson...</Text>;
+  }
+
+  if (error) {
+    return (
+      <VStack gap={3}>
+        <ErrorMessage error={error} subject="lesson" />
+        <Button label="Back to lessons" variant="ghost" onClick={props.onBack} />
+      </VStack>
+    );
+  }
+
+  if (!data) {
+    return <Text as="p">Lesson unavailable.</Text>;
+  }
+
+  return <LessonDetail lesson={data} {...props} />;
+}
+
+function LessonDetail({
+  lesson: data,
+  onBack,
+  savedCardIds,
+  addCard,
+  recordPractice,
+  completedLessons,
+  markLessonComplete,
+}: LessonDetailProps & { lesson: Lesson }) {
+  const completed = completedLessons.has(data.id);
   const [mode, setMode] = useState<LessonMode>("shadow");
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>("1");
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
@@ -927,23 +1127,6 @@ function LessonDetail({
       }
     };
   }, []);
-
-  if (loading) {
-    return <Text as="p">Loading lesson...</Text>;
-  }
-
-  if (error) {
-    return (
-      <VStack gap={3}>
-        <ErrorMessage error={error} subject="lesson" />
-        <Button label="Back to lessons" variant="ghost" onClick={onBack} />
-      </VStack>
-    );
-  }
-
-  if (!data) {
-    return <Text as="p">Lesson unavailable.</Text>;
-  }
 
   return (
     <VStack gap={4}>
@@ -1047,7 +1230,7 @@ function LessonDetail({
                       text={selectedWord.text}
                       card={{
                         front: selectedWord.text,
-                        back: `${sentence.text} — ${sentence.vi}`,
+                        back: sentence.vi ? `${sentence.text} — ${sentence.vi}` : sentence.text,
                         source: {
                           lessonId: data.id,
                           sentenceId: sentence.id,
@@ -1117,7 +1300,10 @@ function LessonDetail({
 }
 
 export function App() {
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<
+    { kind: "library"; id: string } | { kind: "user"; lesson: Lesson } | null
+  >(null);
+  const [userLessons, setUserLessons] = useState<Lesson[] | null>(null);
   const [view, setView] = useState<"library" | "review">("library");
   const [backupError, setBackupError] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -1159,9 +1345,39 @@ export function App() {
     };
   }, [auth.user, deck.reload, progress.reload]);
 
+  const reloadUserLessons = async () => {
+    setUserLessons(await listUserLessons());
+  };
+
+  useEffect(() => {
+    let active = true;
+    void listUserLessons().then((lessons) => {
+      if (active) {
+        setUserLessons(lessons);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const createLesson = async (lesson: Lesson) => {
+    await putUserLesson(lesson);
+    await reloadUserLessons();
+    setSelected({ kind: "user", lesson });
+  };
+
+  const deleteLesson = async (lesson: Lesson) => {
+    if (!window.confirm(`Delete "${lesson.title}"? Cards saved from it stay in your deck.`)) {
+      return;
+    }
+    await deleteUserLesson(lesson.id);
+    await reloadUserLessons();
+  };
+
   const exportBackup = async () => {
     try {
-      downloadText(exportData(await exportAll(), new Date()), "application/json", backupFileName(new Date()));
+      downloadText(exportData(await exportBackupData(), new Date()), "application/json", backupFileName(new Date()));
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
     }
@@ -1188,11 +1404,20 @@ export function App() {
         return;
       }
       await replaceAll(data);
-      await Promise.all([deck.reload(), progress.reload()]);
+      await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
       setBackupError(null);
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
     }
+  };
+
+  const detailProps: LessonDetailProps = {
+    onBack: () => setSelected(null),
+    savedCardIds: deck.savedCardIds,
+    addCard: deck.addCard,
+    recordPractice: progress.recordPractice,
+    completedLessons: progress.completedLessons,
+    markLessonComplete: progress.markLessonComplete,
   };
 
   return (
@@ -1291,21 +1516,27 @@ export function App() {
                   recordPractice={progress.recordPractice}
                 />
               </VStack>
-            ) : selectedLessonId === null ? (
-              <LessonList
-                onSelect={setSelectedLessonId}
-                completedLessons={progress.completedLessons}
-              />
+            ) : selected === null ? (
+              <VStack gap={4}>
+                <LessonList
+                  onSelect={(id) => setSelected({ kind: "library", id })}
+                  completedLessons={progress.completedLessons}
+                />
+                <VStack gap={2}>
+                  <Heading level={2}>Your lessons</Heading>
+                  <UserLessonList
+                    lessons={userLessons}
+                    onSelect={(lesson) => setSelected({ kind: "user", lesson })}
+                    onDelete={(lesson) => void deleteLesson(lesson)}
+                    completedLessons={progress.completedLessons}
+                  />
+                </VStack>
+                <ImportTextForm onCreate={createLesson} />
+              </VStack>
+            ) : selected.kind === "library" ? (
+              <LibraryLessonDetail id={selected.id} {...detailProps} />
             ) : (
-              <LessonDetail
-                id={selectedLessonId}
-                onBack={() => setSelectedLessonId(null)}
-                savedCardIds={deck.savedCardIds}
-                addCard={deck.addCard}
-                recordPractice={progress.recordPractice}
-                completed={progress.completedLessons.has(selectedLessonId)}
-                markLessonComplete={progress.markLessonComplete}
-              />
+              <LessonDetail lesson={selected.lesson} {...detailProps} />
             )}
           </VStack>
         </div>

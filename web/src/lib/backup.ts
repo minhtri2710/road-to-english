@@ -1,11 +1,19 @@
+import type { Lesson } from "../api/lessons";
 import { todayKey } from "./progress";
+import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
-import { cardId, isCardWord, type CardSource, type VocabCard } from "./vocab";
+import { cardId, isCardWord, isText, type CardSource, type VocabCard } from "./vocab";
 
-export interface BackupData {
+// The /sync wire state. User lessons are local-only and never part of it.
+export interface SyncState {
   cards: VocabCard[];
   practiceDays: { date: string }[];
   lessonCompletion: { lessonId: string }[];
+}
+
+// The backup file body: the sync state plus the device's user lessons.
+export interface BackupData extends SyncState {
+  userLessons: Lesson[];
 }
 
 interface SerializedFsrs extends Record<string, unknown> {
@@ -34,10 +42,6 @@ interface BackupEnvelope extends BackupData {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isText(value: unknown): value is string {
-  return typeof value === "string" && !value.includes("\u0000");
 }
 
 function isNonEmptyText(value: unknown): value is string {
@@ -136,7 +140,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
   }
 }
 
-export function validateBackupData(value: unknown): asserts value is SerializedState {
+export function validateSyncState(value: unknown): asserts value is SerializedState {
   if (!isRecord(value) || !Array.isArray(value.cards) || !Array.isArray(value.practiceDays) || !Array.isArray(value.lessonCompletion)) {
     throw new Error("Invalid backup stores.");
   }
@@ -163,8 +167,8 @@ export function validateBackupData(value: unknown): asserts value is SerializedS
   });
 }
 
-export function reviveBackupData(value: unknown): BackupData {
-  validateBackupData(value);
+export function reviveSyncState(value: unknown): SyncState {
+  validateSyncState(value);
   return {
     cards: value.cards.map((card) => ({
       ...card,
@@ -193,6 +197,7 @@ export function exportData(state: BackupData, now: Date): string {
     cards: state.cards,
     practiceDays: state.practiceDays,
     lessonCompletion: state.lessonCompletion,
+    userLessons: state.userLessons,
   };
   return JSON.stringify(backup);
 }
@@ -213,7 +218,19 @@ export function importData(text: string): BackupData {
     throw new Error("Invalid backup envelope.");
   }
 
-  return reviveBackupData(parsed);
+  const userLessons = parsed.userLessons;
+  if (!Array.isArray(userLessons)) {
+    throw new Error("Invalid backup stores.");
+  }
+  const lessonIds = new Set<string>();
+  userLessons.forEach((lesson, index) => {
+    if (!isValidUserLesson(lesson) || lessonIds.has(lesson.id)) {
+      throw new Error(`Invalid user lesson at index ${index}.`);
+    }
+    lessonIds.add(lesson.id);
+  });
+
+  return { ...reviveSyncState(parsed), userLessons };
 }
 
 export function backupFileName(now: Date): string {

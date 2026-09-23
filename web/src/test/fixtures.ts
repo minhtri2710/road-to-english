@@ -17,6 +17,17 @@ export const lessonSummaries = [
   },
 ] satisfies LessonSummary[];
 
+export const userLesson = {
+  id: "user-00000000-0000-4000-8000-000000000001",
+  title: "My text",
+  level: "B1",
+  targetWpm: 110,
+  sentences: [
+    { id: "s1", text: "I like tea.", vi: "" },
+    { id: "s2", text: "You like coffee.", vi: "" },
+  ],
+} satisfies Lesson;
+
 export const greetingsLesson = {
   id: "greetings-basics",
   title: "Greetings & Basics",
