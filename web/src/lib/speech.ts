@@ -3,13 +3,13 @@ export const WPM_AT_RATE_ONE = 180;
 
 let current: SpeechSynthesisUtterance | null = null;
 
-// onEnd and onWord run only if this utterance is still current, so a cancelled or
-// superseded utterance's late events never trigger follow-up speech or highlights.
+// onEnd, onError and onWord run only if this utterance is still current, so a cancelled or
+// superseded utterance's late events (including its "interrupted"/"canceled" error) stay silent.
 export function speak(
   text: string,
   targetWpm: number,
   speed: number,
-  options: { onEnd?: () => void; onWord?: (charIndex: number) => void } = {},
+  options: { onEnd?: () => void; onError?: () => void; onWord?: (charIndex: number) => void } = {},
 ): SpeechSynthesisUtterance {
   current = null;
   window.speechSynthesis.cancel();
@@ -22,6 +22,13 @@ export function speak(
     }
     current = null;
     options.onEnd?.();
+  };
+  utterance.onerror = () => {
+    if (current !== utterance) {
+      return;
+    }
+    current = null;
+    options.onError?.();
   };
   utterance.onboundary = (event) => {
     if (event.name === "word" && current === utterance) {

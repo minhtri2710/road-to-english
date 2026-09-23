@@ -32,7 +32,7 @@ import { capNewCards, cardId, isCardWord, NEW_CARDS_PER_DAY, Rating, State, type
 import { speak, stopSpeaking } from "./lib/speech";
 import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
-import { useRecorder } from "./hooks/useRecorder";
+import { stopActiveRecording, useRecorder } from "./hooks/useRecorder";
 import { useYouTubePlayer } from "./hooks/useYouTubePlayer";
 import { backupFileName, exportData, importData } from "./lib/backup";
 import { exportBackupData, replaceAll } from "./lib/backupStore";
@@ -92,6 +92,10 @@ const appStyles = stylex.create({
   },
   spokenWord: {
     backgroundColor: "var(--color-warning-muted)",
+  },
+  video: {
+    width: "100%",
+    aspectRatio: "16 / 9",
   },
   wordCorrect: {
     color: "var(--color-success)",
@@ -177,25 +181,31 @@ function readPronunciationCheck(): boolean {
   return localStorage.getItem(PRONUNCIATION_CHECK_KEY) === "on";
 }
 
-// Reference speech highlights the spoken word of its sentence. Any start or end
-// clears the highlight; speak's current-utterance guard drops superseded events.
+// Reference speech highlights the spoken word of its sentence. Any start, end or
+// error clears the highlight; speak's current-utterance guard drops superseded events.
 function playReference(
   text: string,
   targetWpm: number,
   speed: number,
   sentenceId: string,
   setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void,
-  onEnd?: () => void,
+  handlers: { onEnd?: () => void; onError?: () => void } = {},
 ): SpeechSynthesisUtterance {
   setSpokenWord(null);
   return speak(text, targetWpm, speed, {
     onWord: (charIndex) => setSpokenWord({ sentenceId, charIndex }),
     onEnd: () => {
       setSpokenWord(null);
-      onEnd?.();
+      handlers.onEnd?.();
+    },
+    onError: () => {
+      setSpokenWord(null);
+      handlers.onError?.();
     },
   });
 }
+
+type PracticeMode = "recording" | "check" | "dictation" | "blank";
 
 function SentenceShadowing({
   text,
@@ -205,9 +215,9 @@ function SentenceShadowing({
   setLooping,
   sentenceId,
   setSpokenWord,
-  recordPractice,
+  practice,
   pronunciationCheck,
-  pauseVideo,
+  stopMedia,
 }: {
   text: string;
   targetWpm: number;
@@ -216,13 +226,14 @@ function SentenceShadowing({
   setLooping: (looping: boolean) => void;
   sentenceId: string;
   setSpokenWord: (spoken: { sentenceId: string; charIndex: number } | null) => void;
-  recordPractice: (options: { newCard: boolean }) => Promise<void>;
+  practice: (mode: PracticeMode) => void;
   pronunciationCheck: boolean;
-  pauseVideo: () => void;
+  stopMedia: () => void;
 }) {
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playBlocked, setPlayBlocked] = useState(false);
+  const [speechFailed, setSpeechFailed] = useState(false);
   const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
   const [check, setCheck] = useState<
     | { status: "idle" }
@@ -241,9 +252,9 @@ function SentenceShadowing({
 
   useEffect(() => {
     if (recorder.state === "ready") {
-      void recordPractice({ newCard: false });
+      practice("recording");
     }
-  }, [recordPractice, recorder.state]);
+  }, [practice, recorder.state]);
 
   useEffect(() => {
     if (!looping) {
@@ -251,7 +262,13 @@ function SentenceShadowing({
     }
     let latest: SpeechSynthesisUtterance | null = null;
     const repeat = () => {
-      latest = playReference(text, targetWpm, speed, sentenceId, setSpokenWord, repeat);
+      latest = playReference(text, targetWpm, speed, sentenceId, setSpokenWord, {
+        onEnd: repeat,
+        onError: () => {
+          setLooping(false);
+          setSpeechFailed(true);
+        },
+      });
     };
     repeat();
     return () => {
@@ -272,11 +289,7 @@ function SentenceShadowing({
   }, [pronunciationCheck]);
 
   const checkPronunciation = () => {
-    setLooping(false);
-    pauseVideo();
-    if (speechSupported) {
-      stopSpeaking();
-    }
+    stopMedia();
     setCheck({ status: "listening" });
     const recognition = recognizeOnce();
     recognitionRef.current = recognition;
@@ -285,7 +298,9 @@ function SentenceShadowing({
         if (recognitionRef.current !== recognition) return;
         recognitionRef.current = null;
         setCheck({ status: "heard", transcript });
-        void recordPractice({ newCard: false });
+        if (transcript.trim()) {
+          practice("check");
+        }
       },
       (error: Error) => {
         if (recognitionRef.current !== recognition) return;
@@ -307,36 +322,53 @@ function SentenceShadowing({
           variant="secondary"
           isDisabled={!speechSupported || listening}
           onClick={() => {
-            setLooping(false);
-            playReference(text, targetWpm, speed, sentenceId, setSpokenWord);
+            stopMedia();
+            setSpeechFailed(false);
+            playReference(text, targetWpm, speed, sentenceId, setSpokenWord, {
+              onError: () => setSpeechFailed(true),
+            });
           }}
         />
         <ToggleButton
           label="Loop"
           isPressed={looping}
           isDisabled={!speechSupported || listening}
-          onPressedChange={setLooping}
+          onPressedChange={(pressed) => {
+            stopMedia();
+            if (pressed) {
+              setSpeechFailed(false);
+              setLooping(true);
+            }
+          }}
         />
         <Button
           label={recorder.state === "recording" ? "Stop" : "Record"}
           variant="secondary"
           isDisabled={!recordingSupported || recorder.state === "requesting"}
           isLoading={recorder.state === "requesting"}
-          onClick={
-            recorder.state === "recording"
-              ? recorder.stopRecording
-              : recorder.startRecording
-          }
+          onClick={() => {
+            if (recorder.state === "recording") {
+              recorder.stopRecording();
+            } else {
+              stopMedia();
+              void recorder.startRecording();
+            }
+          }}
         />
         <Button
           label="Compare"
           variant="secondary"
           isDisabled={!speechSupported || listening || !recorder.url}
           onClick={() => {
-            setLooping(false);
+            stopMedia();
             setPlayBlocked(false);
-            playReference(text, targetWpm, speed, sentenceId, setSpokenWord, () => {
+            // A reference that fails to speak still leads to the recording.
+            const playRecording = () => {
               audioRef.current?.play().catch(() => setPlayBlocked(true));
+            };
+            playReference(text, targetWpm, speed, sentenceId, setSpokenWord, {
+              onEnd: playRecording,
+              onError: playRecording,
             });
           }}
         />
@@ -352,6 +384,11 @@ function SentenceShadowing({
       {!speechSupported && (
         <Text as="p" type="supporting">
           Listen disabled: speech synthesis is not supported in this browser.
+        </Text>
+      )}
+      {speechFailed && (
+        <Text as="p" type="supporting">
+          Couldn't play the sentence. Check your browser's speech settings.
         </Text>
       )}
       {!recordingSupported && (
@@ -450,13 +487,17 @@ function SentenceDictation({
   text,
   notes,
   targetWpm,
-  recordPractice,
+  speed,
+  practice,
+  stopMedia,
 }: {
   id: string;
   text: string;
   notes?: string;
   targetWpm: number;
-  recordPractice: (options: { newCard: boolean }) => Promise<void>;
+  speed: number;
+  practice: (mode: PracticeMode) => void;
+  stopMedia: () => void;
 }) {
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
@@ -466,7 +507,9 @@ function SentenceDictation({
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setChecked(typed);
-    void recordPractice({ newCard: false });
+    if (typed.trim()) {
+      practice("dictation");
+    }
   };
 
   const tryAgain = () => {
@@ -480,7 +523,10 @@ function SentenceDictation({
         label="Play"
         variant="secondary"
         isDisabled={!speechSupported}
-        onClick={() => speak(text, targetWpm, 1)}
+        onClick={() => {
+          stopMedia();
+          speak(text, targetWpm, speed);
+        }}
       />
       {!speechSupported && (
         <Text as="p" type="supporting">
@@ -499,6 +545,10 @@ function SentenceDictation({
             className={stylex.props(appStyles.dictationInput).className}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
@@ -520,12 +570,16 @@ function SentenceBlank({
   id,
   text,
   targetWpm,
-  recordPractice,
+  speed,
+  practice,
+  stopMedia,
 }: {
   id: string;
   text: string;
   targetWpm: number;
-  recordPractice: (options: { newCard: boolean }) => Promise<void>;
+  speed: number;
+  practice: (mode: PracticeMode) => void;
+  stopMedia: () => void;
 }) {
   const [typed, setTyped] = useState("");
   const [correct, setCorrect] = useState<boolean | null>(null);
@@ -540,7 +594,9 @@ function SentenceBlank({
   const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCorrect(normalize(typed) === answer);
-    void recordPractice({ newCard: false });
+    if (typed.trim()) {
+      practice("blank");
+    }
   };
 
   const tryAgain = () => {
@@ -557,7 +613,10 @@ function SentenceBlank({
         label="Play"
         variant="secondary"
         isDisabled={!speechSupported}
-        onClick={() => speak(text, targetWpm, 1)}
+        onClick={() => {
+          stopMedia();
+          speak(text, targetWpm, speed);
+        }}
       />
       {!speechSupported && (
         <Text as="p" type="supporting">
@@ -576,6 +635,10 @@ function SentenceBlank({
             className={stylex.props(appStyles.dictationInput).className}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
@@ -1140,13 +1203,18 @@ function WordPanel({
 }) {
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
-  const word = card.source.word;
+  // Lookups keep the apostrophe ("don't"); the card id uses the normalised word.
+  const word = text.toLowerCase().replace(/’/g, "'");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
-  const [lookup, setLookup] = useState<"idle" | "pending" | Definition | null>("idle");
+  const [lookup, setLookup] = useState<"idle" | "pending" | "unreachable" | Definition | null>("idle");
 
   const define = async () => {
     setLookup("pending");
-    setLookup(await lookupWord(word));
+    try {
+      setLookup(await lookupWord(word));
+    } catch {
+      setLookup("unreachable");
+    }
   };
 
   return (
@@ -1185,6 +1253,9 @@ function WordPanel({
       </HStack>
       {lookup === "pending" && <Text as="p" type="supporting">Looking up…</Text>}
       {lookup === null && <Text as="p" type="supporting">No definition</Text>}
+      {lookup === "unreachable" && (
+        <Text as="p" type="supporting">Couldn't reach the dictionary. Check your connection.</Text>
+      )}
       {typeof lookup === "object" && lookup !== null && (
         <Text as="p">
           {lookup.phonetic && `${lookup.phonetic} · `}
@@ -1417,8 +1488,33 @@ function LessonDetail({
     charIndex: number;
   } | null>(null);
   const [completeFailed, setCompleteFailed] = useState(false);
-  const video = useYouTubePlayer(data.videoId);
+  // One practice medium at a time: starting reference speech, the video, a recording or a
+  // pronunciation check first stops the others, in every sentence. The video's own play
+  // stops the rest but not itself.
+  const stopMedia = ({ keepVideo = false } = {}) => {
+    setLoopingSentenceId(null);
+    setSpokenWord(null);
+    if ("speechSynthesis" in window) {
+      stopSpeaking();
+    }
+    abortActiveRecognition();
+    stopActiveRecording();
+    if (!keepVideo) {
+      video.pauseClip();
+    }
+  };
+  const video = useYouTubePlayer(data.videoId, () => stopMedia({ keepVideo: true }));
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Each sentence and mode counts once per lesson visit; retries are not counted.
+  const practiced = useRef(new Set<string>());
+  const practice = (sentenceId: string, mode: PracticeMode) => {
+    const key = `${sentenceId}:${mode}`;
+    if (practiced.current.has(key)) {
+      return;
+    }
+    practiced.current.add(key);
+    void recordPractice({ newCard: false });
+  };
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -1447,10 +1543,15 @@ function LessonDetail({
       </VStack>
       {data.videoId && (
         <VStack gap={1}>
-          <div ref={video.containerRef} />
+          <div ref={video.containerRef} className={stylex.props(appStyles.video).className} />
+          {video.status === "loading" && (
+            <Text as="p" type="supporting">
+              Loading video…
+            </Text>
+          )}
           {video.status === "failed" && (
             <Text as="p" color="primary" xstyle={appStyles.error}>
-              Video unavailable
+              The video couldn't load. You can keep practising with Listen.
             </Text>
           )}
           <Text as="p" type="supporting">
@@ -1488,46 +1589,48 @@ function LessonDetail({
         <ToggleButton value="dictation" label="Dictation" />
         <ToggleButton value="blank" label="Fill the blank" />
       </ToggleButtonGroup>
-      {mode === "shadow" && (
-        <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
-          <ToggleButtonGroup
-            label="Playback speed"
-            value={speed}
-            onChange={(nextSpeed) => {
-              if (nextSpeed) {
-                setSpeed(nextSpeed as (typeof SPEEDS)[number]);
-              }
-            }}
-          >
-            {SPEEDS.map((value) => (
-              <ToggleButton key={value} value={value} label={`${value}x`} />
-            ))}
-          </ToggleButtonGroup>
-          <Button
-            label={showTranscript ? "Hide transcript" : "Show transcript"}
-            variant="ghost"
-            onClick={() => setShowTranscript((shown) => !shown)}
-          />
-          <Button
-            label={showVietnamese ? "Hide Vietnamese" : "Show Vietnamese"}
-            variant="ghost"
-            onClick={() => setShowVietnamese((shown) => !shown)}
-          />
-          <ToggleButton
-            label="Pronunciation check"
-            isPressed={pronunciationSupported && pronunciationCheck}
-            isDisabled={!pronunciationSupported || disclosureOpen}
-            onPressedChange={(pressed) => {
-              if (pressed) {
-                setDisclosureOpen(true);
-              } else {
-                localStorage.removeItem(PRONUNCIATION_CHECK_KEY);
-                setPronunciationCheck(false);
-              }
-            }}
-          />
-        </HStack>
-      )}
+      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+        <ToggleButtonGroup
+          label="Playback speed"
+          value={speed}
+          onChange={(nextSpeed) => {
+            if (nextSpeed) {
+              setSpeed(nextSpeed as (typeof SPEEDS)[number]);
+            }
+          }}
+        >
+          {SPEEDS.map((value) => (
+            <ToggleButton key={value} value={value} label={`${value}x`} />
+          ))}
+        </ToggleButtonGroup>
+        {mode === "shadow" && (
+          <>
+            <Button
+              label={showTranscript ? "Hide transcript" : "Show transcript"}
+              variant="ghost"
+              onClick={() => setShowTranscript((shown) => !shown)}
+            />
+            <Button
+              label={showVietnamese ? "Hide Vietnamese" : "Show Vietnamese"}
+              variant="ghost"
+              onClick={() => setShowVietnamese((shown) => !shown)}
+            />
+            <ToggleButton
+              label="Pronunciation check"
+              isPressed={pronunciationSupported && pronunciationCheck}
+              isDisabled={!pronunciationSupported || disclosureOpen}
+              onPressedChange={(pressed) => {
+                if (pressed) {
+                  setDisclosureOpen(true);
+                } else {
+                  localStorage.removeItem(PRONUNCIATION_CHECK_KEY);
+                  setPronunciationCheck(false);
+                }
+              }}
+            />
+          </>
+        )}
+      </HStack>
       {mode === "shadow" && !pronunciationSupported && (
         <Text as="p" type="supporting">
           Pronunciation check disabled: speech recognition is not supported in this browser.
@@ -1568,11 +1671,7 @@ function LessonDetail({
                   onClick={() => {
                     const { cue } = sentence;
                     if (!cue) return;
-                    setLoopingSentenceId(null);
-                    if ("speechSynthesis" in window) {
-                      stopSpeaking();
-                    }
-                    abortActiveRecognition();
+                    stopMedia({ keepVideo: true });
                     video.playClip(cue, Number(speed));
                   }}
                 />
@@ -1625,8 +1724,7 @@ function LessonDetail({
                       removeCard={removeCard}
                       undoRemove={undoRemove}
                       hear={() => {
-                        setLoopingSentenceId(null);
-                        setSpokenWord(null);
+                        stopMedia();
                         speak(selectedWord.text, data.targetWpm, Number(speed));
                       }}
                     />
@@ -1641,9 +1739,9 @@ function LessonDetail({
                     }
                     sentenceId={sentence.id}
                     setSpokenWord={setSpokenWord}
-                    recordPractice={recordPractice}
+                    practice={(practiceMode) => practice(sentence.id, practiceMode)}
                     pronunciationCheck={pronunciationSupported && pronunciationCheck}
-                    pauseVideo={video.pauseClip}
+                    stopMedia={stopMedia}
                   />
                   <SaveToReview
                     card={sentenceCard(data.id, sentence)}
@@ -1662,14 +1760,18 @@ function LessonDetail({
                       text={sentence.text}
                       notes={sentence.notes}
                       targetWpm={data.targetWpm}
-                      recordPractice={recordPractice}
+                      speed={Number(speed)}
+                      practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                      stopMedia={stopMedia}
                     />
                   ) : (
                     <SentenceBlank
                       id={sentence.id}
                       text={sentence.text}
                       targetWpm={data.targetWpm}
-                      recordPractice={recordPractice}
+                      speed={Number(speed)}
+                      practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                      stopMedia={stopMedia}
                     />
                   )}
                   <SaveToReview

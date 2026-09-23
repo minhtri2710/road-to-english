@@ -20,6 +20,13 @@ function revokeObjectUrl(url: string): void {
   }
 }
 
+// The one recording in progress (or awaiting microphone permission) across all recorders.
+let activeStop: (() => void) | null = null;
+
+export function stopActiveRecording(): void {
+  activeStop?.();
+}
+
 export function useRecorder(): RecorderControls {
   const [state, setState] = useState<RecorderState>("idle");
   const [url, setUrl] = useState<string | null>(null);
@@ -66,15 +73,32 @@ export function useRecorder(): RecorderControls {
     setError(null);
     updateState("requesting");
 
+    let cancelled = false;
+    let recorder: MediaRecorder | null = null;
+    const stop = () => {
+      cancelled = true;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+    };
+    activeStop = stop;
+    const release = () => {
+      if (activeStop === stop) {
+        activeStop = null;
+      }
+    };
+
     let stream: MediaStream | null = null;
     try {
       stream = await getUserMedia.call(navigator.mediaDevices, { audio: true });
-      if (!mountedRef.current) {
+      if (!mountedRef.current || cancelled) {
         stopStream(stream);
+        release();
+        updateState("idle");
         return;
       }
 
-      const recorder = new MediaRecorder(stream);
+      recorder = new MediaRecorder(stream);
       streamRef.current = stream;
       recorderRef.current = recorder;
       chunksRef.current = [];
@@ -85,6 +109,7 @@ export function useRecorder(): RecorderControls {
         }
       };
       recorder.onstop = () => {
+        release();
         if (streamRef.current === stream) {
           streamRef.current = null;
           stopStream(stream);
@@ -99,7 +124,7 @@ export function useRecorder(): RecorderControls {
 
         try {
           const nextUrl = URL.createObjectURL(
-            new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }),
+            new Blob(chunksRef.current, { type: recorder?.mimeType || "audio/webm" }),
           );
           replaceUrl(nextUrl);
           setError(null);
@@ -113,6 +138,7 @@ export function useRecorder(): RecorderControls {
       recorder.start();
       updateState("recording");
     } catch {
+      release();
       stopStream(stream ?? streamRef.current);
       streamRef.current = null;
       recorderRef.current = null;

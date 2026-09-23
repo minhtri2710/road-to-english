@@ -76,23 +76,26 @@ describe("recognition", () => {
   });
 
   it.each([
-    ["not-allowed", "Microphone or speech recognition permission denied."],
-    ["service-not-allowed", "Microphone or speech recognition permission denied."],
-    ["language-not-supported", "On-device English recognition is unavailable in this browser."],
-    ["no-speech", "No speech detected."],
-    ["network", "Speech recognition failed (network)."],
-  ])("maps %s to a readable error", async (code, message) => {
+    ["language-not-supported", "On-device English recognition isn't available in this browser. Use Record and Compare to check yourself."],
+    ["network", "Speech recognition couldn't reach its service. Check your connection, or use Record and Compare to check yourself."],
+    ["audio-capture", "No microphone was found. Connect a microphone and try again."],
+    ["not-allowed", "Microphone or speech recognition access is blocked. Allow it in your browser's site settings and try again."],
+    ["service-not-allowed", "Microphone or speech recognition access is blocked. Allow it in your browser's site settings and try again."],
+    ["no-speech", "No speech detected. Press Check pronunciation, then say the sentence."],
+    ["aborted", "Speech recognition stopped before it heard you. Try again."],
+    ["bad-grammar", "Speech recognition failed (bad-grammar). Try again, or use Record and Compare to check yourself."],
+  ])("maps %s to an actionable message", async (code, message) => {
     install();
     const { result } = recognizeOnce();
     latest().fail(code);
-    await expect(result).rejects.toThrow(message);
+    await expect(result).rejects.toThrow(new Error(message));
   });
 
   it("never retries in the cloud after on-device recognition is unavailable", async () => {
     install(LocalFakeRecognition);
     const { result } = recognizeOnce();
     latest().fail("language-not-supported");
-    await expect(result).rejects.toThrow("On-device English recognition is unavailable");
+    await expect(result).rejects.toThrow("On-device English recognition isn't available");
     expect(FakeRecognition.instances).toHaveLength(1);
     expect(latest().start).toHaveBeenCalledOnce();
   });
@@ -101,7 +104,7 @@ describe("recognition", () => {
     install();
     const { result } = recognizeOnce();
     latest().onend?.();
-    await expect(result).rejects.toThrow("No speech detected.");
+    await expect(result).rejects.toThrow("No speech detected. Press Check pronunciation, then say the sentence.");
   });
 
   it("settles once", async () => {

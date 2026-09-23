@@ -31,15 +31,21 @@ export function recognitionSupported(): boolean {
 
 function errorMessage(code: string): string {
   switch (code) {
+    case "language-not-supported":
+      return "On-device English recognition isn't available in this browser. Use Record and Compare to check yourself.";
+    case "network":
+      return "Speech recognition couldn't reach its service. Check your connection, or use Record and Compare to check yourself.";
+    case "audio-capture":
+      return "No microphone was found. Connect a microphone and try again.";
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone or speech recognition permission denied.";
-    case "language-not-supported":
-      return "On-device English recognition is unavailable in this browser.";
+      return "Microphone or speech recognition access is blocked. Allow it in your browser's site settings and try again.";
     case "no-speech":
-      return "No speech detected.";
+      return "No speech detected. Press Check pronunciation, then say the sentence.";
+    case "aborted":
+      return "Speech recognition stopped before it heard you. Try again.";
     default:
-      return `Speech recognition failed (${code}).`;
+      return `Speech recognition failed (${code}). Try again, or use Record and Compare to check yourself.`;
   }
 }
 

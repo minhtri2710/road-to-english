@@ -61,19 +61,30 @@ describe("lookupWord", () => {
     await expect(lookupWord("zzz")).resolves.toBeNull();
   });
 
-  it("returns null when fetch rejects", async () => {
+  it("rejects when fetch rejects, so the caller can tell offline from no definition", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(lookupWord("hello")).resolves.toBeNull();
+    await expect(lookupWord("hello")).rejects.toThrow("Failed to fetch");
   });
 
-  it("returns null on abort", async () => {
+  it("rejects on timeout and abort", async () => {
     fetchMock.mockRejectedValue(new DOMException("The operation timed out.", "TimeoutError"));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(lookupWord("hello")).resolves.toBeNull();
+    await expect(lookupWord("hello")).rejects.toMatchObject({ name: "TimeoutError" });
 
     fetchMock.mockRejectedValue(new DOMException("Aborted", "AbortError"));
-    await expect(lookupWord("hello")).resolves.toBeNull();
+    await expect(lookupWord("hello")).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("rejects on a server error", async () => {
+    respond({}, 503);
+    await expect(lookupWord("hello")).rejects.toThrow("Dictionary request failed (503).");
+  });
+
+  it("keeps the apostrophe in the requested word", async () => {
+    respond([entry]);
+    await lookupWord("don't");
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://api.dictionaryapi.dev/api/v2/entries/en/don't");
   });
 
   it("returns null on invalid JSON", async () => {

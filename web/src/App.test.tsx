@@ -136,6 +136,7 @@ interface FakeSpokenUtterance {
   text: string;
   rate: number;
   onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
   onboundary: ((event: { name: string; charIndex: number }) => void) | null;
 }
 
@@ -2698,7 +2699,14 @@ describe("App", () => {
     const transcript = "0:00\nI like green tea.\n0:02\nDo you like it?\n1:05\nWe drink it\nevery morning.";
     const iframeApi = "https://www.youtube.com/iframe_api";
 
-    type PlayerOptions = { videoId: string; host: string; playerVars: object; events: { onReady: () => void; onError: () => void } };
+    type PlayerOptions = {
+      videoId: string;
+      host: string;
+      width: string;
+      height: string;
+      playerVars: object;
+      events: { onReady: () => void; onError: () => void; onStateChange: (event: { data: number }) => void };
+    };
     class FakePlayer {
       static instances: FakePlayer[] = [];
       calls: unknown[][] = [];
@@ -3027,7 +3035,7 @@ describe("App", () => {
     });
 
     // The stub fires the script's error event instead of letting happy-dom try the network, the same path as a blocked or offline load.
-    it("loads the API script once and shows Video unavailable when it fails, keeping the lesson usable", async () => {
+    it("loads the API script once and shows the couldn't-load line when it fails, keeping the lesson usable", async () => {
       const append = vi.spyOn(document.head, "append").mockImplementation((...nodes) => {
         for (const node of nodes) {
           setTimeout(() => (node as HTMLScriptElement).dispatchEvent(new Event("error")), 0);
@@ -3037,7 +3045,10 @@ describe("App", () => {
       await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
-      await waitForCondition(() => view.container.textContent?.includes("Video unavailable") ?? false);
+      await waitForCondition(
+        () => view.container.textContent?.includes("The video couldn't load. You can keep practising with Listen.") ?? false,
+      );
+      expect(view.container.textContent).not.toContain("Loading video…");
       expect(append.mock.calls.map(([node]) => (node as HTMLScriptElement).src)).toEqual([iframeApi]);
       expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
       expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
@@ -3045,6 +3056,85 @@ describe("App", () => {
         buttonsNamed(view.container, "Dictation")[0]?.click();
       });
       expect(view.container.querySelector("#dictation-s1")).not.toBeNull();
+      await unmount(view);
+    });
+
+    it("sizes the player to fill a 16:9 column and shows Loading video… until ready", async () => {
+      installYouTube();
+      const view = await renderApp();
+      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
+      await waitForCondition(() => FakePlayer.instances.length === 1);
+      const player = FakePlayer.instances[0]!;
+      expect(player.options).toMatchObject({ width: "100%", height: "100%" });
+      expect(view.container.textContent).toContain("Loading video…");
+      await act(async () => {
+        player.options.events.onReady();
+      });
+      expect(view.container.textContent).not.toContain("Loading video…");
+      await unmount(view);
+    });
+
+    it("shows the couldn't-load line when the player is not ready after 15 s, keeps the lesson usable, and accepts a late ready", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+      installYouTube();
+      installSpeechFakes();
+      const view = await renderApp();
+      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
+      await waitForCondition(() => FakePlayer.instances.length === 1);
+      const player = FakePlayer.instances[0]!;
+      const failed = "The video couldn't load. You can keep practising with Listen.";
+
+      await act(async () => {
+        vi.advanceTimersByTime(14_000);
+      });
+      expect(view.container.textContent).toContain("Loading video…");
+      expect(view.container.textContent).not.toContain(failed);
+      await act(async () => {
+        vi.advanceTimersByTime(1_100);
+      });
+      expect(view.container.textContent).toContain(failed);
+      expect(view.container.textContent).not.toContain("Loading video…");
+      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(false);
+
+      await act(async () => {
+        player.options.events.onReady();
+      });
+      expect(view.container.textContent).not.toContain(failed);
+      expect(buttonsNamed(view.container, "Play clip").every((button) => !button.disabled)).toBe(true);
+      await unmount(view);
+    });
+
+    it("stops speech and the loop when the video starts playing, and Listen pauses the video", async () => {
+      const speech = installSpeechFakes();
+      const { view, player } = await openVideoLesson();
+      await act(async () => {
+        buttonsNamed(view.container, "Loop")[0]?.click();
+      });
+      expect(player.calls).toContainEqual(["pauseVideo"]);
+      await act(async () => {
+        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
+      });
+      expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(1);
+      speech.cancel.mockClear();
+
+      // The player's own controls start playback: YT.PlayerState.PLAYING.
+      await act(async () => {
+        player.options.events.onStateChange({ data: 1 });
+      });
+      expect(speech.cancel).toHaveBeenCalled();
+      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+      expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(0);
+      const spoken = speech.spoken.length;
+      await act(async () => {
+        speech.finish();
+      });
+      expect(speech.spoken).toHaveLength(spoken);
+
+      player.calls = [];
+      await act(async () => {
+        buttonsNamed(view.container, "Listen")[1]?.click();
+      });
+      expect(player.calls).toEqual([["pauseVideo"]]);
       await unmount(view);
     });
   });
@@ -3187,7 +3277,7 @@ describe("App", () => {
         recognition.onend?.();
       });
       expect(view.container.textContent).toContain(
-        "On-device English recognition is unavailable in this browser.",
+        "On-device English recognition isn't available in this browser. Use Record and Compare to check yourself.",
       );
       expect(FakeRecognition.instances).toHaveLength(1);
       await click(view.container, "Try again");
@@ -3293,7 +3383,7 @@ describe("App", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       expect(view.container.textContent).not.toContain("You said:");
-      expect(view.container.textContent).not.toContain("Speech recognition failed");
+      expect(view.container.textContent).not.toContain("Speech recognition couldn't reach its service.");
       expect(view.container.textContent).toContain("Goal 0/10");
       await close(view);
     });
@@ -3313,6 +3403,356 @@ describe("App", () => {
       expect(view.container.textContent).toContain("You typed: Good morning, how are you tomorrow?");
       expect(view.container.textContent).toContain('today (you typed "tomorrow")');
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
+      await close(view);
+    });
+  });
+
+  describe("practice robustness", () => {
+    class Recognition {
+      static instances: Recognition[] = [];
+      lang = "";
+      continuous = true;
+      interimResults = true;
+      maxAlternatives = 5;
+      processLocally = false;
+      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        Recognition.instances.push(this);
+      }
+    }
+
+    class Recorder {
+      static instances: Recorder[] = [];
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor() {
+        Recorder.instances.push(this);
+      }
+      start() {
+        this.state = "recording";
+      }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+
+    // Speech, recognition (with the check on) and recording, all faked.
+    async function openPractice(lesson = greetingsLesson) {
+      const speech = installSpeechFakes();
+      Recognition.instances = [];
+      Recorder.instances = [];
+      vi.stubGlobal("webkitSpeechRecognition", Recognition);
+      installMediaDevices(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream);
+      installObjectUrlFakes();
+      vi.stubGlobal("MediaRecorder", Recorder);
+      localStorage.setItem("road-to-english.pronunciationCheck", "on");
+      const view = await openLesson(lesson);
+      localStorage.removeItem("road-to-english.pronunciationCheck");
+      return { ...view, speech };
+    }
+
+    async function close({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
+    async function click(container: HTMLElement, name: string, index = 0) {
+      await act(async () => {
+        buttonsNamed(container, name)[index]?.click();
+      });
+    }
+
+    const spokenWords = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('[aria-current="true"]')).map((element) => element.textContent);
+
+    const settle = () =>
+      act(async () => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("runs one practice medium at a time across sentences", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+
+      await click(container, "Listen");
+      await click(container, "Check pronunciation");
+      const firstCheck = Recognition.instances.at(-1)!;
+      expect(speech.cancel).toHaveBeenCalled();
+
+      // Record in sentence 2 stops the check in sentence 1 and any speech.
+      speech.cancel.mockClear();
+      await click(container, "Record", 1);
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      expect(firstCheck.abort).toHaveBeenCalledOnce();
+      expect(buttonsNamed(container, "Listening…")).toHaveLength(0);
+      expect(speech.cancel).toHaveBeenCalled();
+
+      // Check in sentence 1 stops the recording in sentence 2.
+      await click(container, "Check pronunciation");
+      expect(Recorder.instances[0]?.state).toBe("inactive");
+      expect(buttonsNamed(container, "Stop")).toHaveLength(0);
+      expect(container.querySelectorAll("audio")).toHaveLength(1);
+      const secondCheck = Recognition.instances.at(-1)!;
+
+      // Listen in sentence 3 stops the check in sentence 1.
+      await click(container, "Listen", 2);
+      expect(secondCheck.abort).toHaveBeenCalledOnce();
+      expect(speech.spoken.at(-1)?.text).toBe(greetingsLesson.sentences[2].text);
+
+      // Record stops a Loop in another sentence; Listen stops a recording.
+      await click(container, "Loop");
+      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
+      speech.cancel.mockClear();
+      await click(container, "Record", 2);
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+      expect(speech.cancel).toHaveBeenCalled();
+      await click(container, "Listen", 1);
+      expect(Recorder.instances.at(-1)?.state).toBe("inactive");
+      expect(buttonsNamed(container, "Stop")).toHaveLength(0);
+      await close(view);
+    });
+
+    it("turns Loop off on a speech error, plays the recording after a failed Compare reference, and explains a failed Listen once", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+      const message = "Couldn't play the sentence. Check your browser's speech settings.";
+      const occurrences = () => container.textContent?.split(message).length ?? 1;
+      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+
+      await click(container, "Loop");
+      await act(async () => {
+        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
+      });
+      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+      const spoken = speech.spoken.length;
+      await act(async () => {
+        speech.finish();
+        speech.spoken.at(-1)?.onend?.();
+      });
+      expect(speech.spoken).toHaveLength(spoken);
+
+      await click(container, "Listen");
+      expect(container.textContent).not.toContain(message);
+      await act(async () => {
+        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
+      });
+      expect(spokenWords(container)).toEqual(["Good"]);
+      await act(async () => {
+        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
+        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
+      });
+      expect(occurrences()).toBe(2);
+      expect(spokenWords(container)).toEqual([]);
+
+      // Our own supersede is silent.
+      await click(container, "Listen", 1);
+      const superseded = speech.spoken.at(-1);
+      await click(container, "Listen", 2);
+      await act(async () => {
+        superseded?.onerror?.({ error: "interrupted" });
+      });
+      expect(container.textContent?.split(message).length).toBe(2);
+      expect(buttonsNamed(container, "Listen").map((_, index) => index)).toHaveLength(3);
+
+      await click(container, "Record");
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      await click(container, "Stop");
+      await click(container, "Compare");
+      expect(play).not.toHaveBeenCalled();
+      await act(async () => {
+        speech.spoken.at(-1)?.onerror?.({ error: "audio-busy" });
+      });
+      expect(play).toHaveBeenCalledOnce();
+      await close(view);
+    });
+
+    it("clears the spoken-word highlight when another medium starts or the sentence is left", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+      const highlight = async () => {
+        await click(container, "Listen");
+        await act(async () => {
+          speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
+        });
+        expect(spokenWords(container)).toEqual(["Good"]);
+      };
+
+      await highlight();
+      await click(container, "Record", 1);
+      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+      expect(spokenWords(container)).toEqual([]);
+
+      await highlight();
+      await click(container, "Check pronunciation", 2);
+      expect(spokenWords(container)).toEqual([]);
+
+      await highlight();
+      await click(container, "morning");
+      await click(container, "Hear word");
+      expect(spokenWords(container)).toEqual([]);
+
+      await highlight();
+      await click(container, "Dictation");
+      await click(container, "Shadow");
+      expect(spokenWords(container)).toEqual([]);
+      await close(view);
+    });
+
+    it("counts each non-empty sentence check once per lesson visit", async () => {
+      const view = await openPractice();
+      const { container } = view;
+      const first = greetingsLesson.sentences[0];
+      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
+      const submit = async (selector: string, value: string) => {
+        const input = container.querySelector<HTMLInputElement>(selector);
+        if (!input) throw new Error(`${selector} not found`);
+        await act(async () => {
+          setInputValue(input, value);
+          input.form?.requestSubmit();
+        });
+        await settle();
+      };
+      const goal = (count: number) => expect(container.textContent).toContain(`Goal ${count}/10`);
+
+      await click(container, "Check pronunciation");
+      await act(async () => {
+        Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "  " }]] });
+      });
+      await settle();
+      goal(0);
+      await click(container, "Try again");
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await click(container, "Check pronunciation");
+        await act(async () => {
+          Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
+        });
+        await settle();
+        goal(1);
+        await click(container, "Try again");
+      }
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await click(container, "Record");
+        await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+        await click(container, "Stop");
+        await settle();
+        goal(2);
+      }
+
+      await click(container, "Dictation");
+      await submit(`#dictation-${first.id}`, "   ");
+      goal(2);
+      await submit(`#dictation-${first.id}`, "good morning");
+      goal(3);
+      await click(container, "Try again");
+      await submit(`#dictation-${first.id}`, first.text);
+      goal(3);
+
+      await click(container, "Fill the blank");
+      await submit(`#blank-${first.id}`, "");
+      goal(3);
+      await submit(`#blank-${first.id}`, "evening");
+      goal(4);
+      await click(container, "Try again");
+      await submit(`#blank-${first.id}`, "morning");
+      goal(4);
+      await close(view);
+    });
+
+    it("looks up and links a word with its apostrophe but saves the normalised word", async () => {
+      const lesson = {
+        ...greetingsLesson,
+        sentences: [{ ...greetingsLesson.sentences[0], text: "Don’t worry about it." }, ...greetingsLesson.sentences.slice(1)],
+      };
+      const view = await openPractice(lesson);
+      const { container } = view;
+      const api = fetchMock.getMockImplementation()!;
+      const dictionaryUrls: string[] = [];
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.startsWith("https://api.dictionaryapi.dev/")) {
+          dictionaryUrls.push(url);
+          return new Response("[]", { status: 404 });
+        }
+        return api(input, init);
+      });
+
+      await click(container, "Don’t");
+      await click(container, "Define");
+      await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
+      expect(dictionaryUrls).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/don't"]);
+      const link = Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
+      expect(link?.getAttribute("href")).toBe("https://youglish.com/pronounce/don't/english");
+
+      await click(container, "Save word");
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      const [card] = await getAllCards();
+      expect(card?.source.word).toBe("dont");
+      await close(view);
+    });
+
+    it("says the dictionary is unreachable on a network failure", async () => {
+      const view = await openPractice();
+      const { container } = view;
+      const api = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.startsWith("https://api.dictionaryapi.dev/")) {
+          throw new TypeError("Failed to fetch");
+        }
+        return api(input, init);
+      });
+      await click(container, "morning");
+      await click(container, "Define");
+      await waitForCondition(
+        () => container.textContent?.includes("Couldn't reach the dictionary. Check your connection.") ?? false,
+      );
+      expect(container.textContent).not.toContain("No definition");
+      await close(view);
+    });
+
+    it("turns off autocomplete, autocorrect, autocapitalise and spellcheck on the answer inputs", async () => {
+      const view = await openPractice();
+      const { container } = view;
+      const id = greetingsLesson.sentences[0].id;
+      for (const [mode, selector] of [["Dictation", `#dictation-${id}`], ["Fill the blank", `#blank-${id}`]]) {
+        await click(container, mode);
+        const input = container.querySelector<HTMLInputElement>(selector);
+        expect(input?.getAttribute("autocomplete")).toBe("off");
+        expect(input?.getAttribute("autocorrect")).toBe("off");
+        expect(input?.getAttribute("autocapitalize")).toBe("off");
+        expect(input?.getAttribute("spellcheck")).toBe("false");
+      }
+      await close(view);
+    });
+
+    it("plays dictation and blank sentences at the selected speed", async () => {
+      const view = await openPractice();
+      const { container, speech } = view;
+      await click(container, "0.5x");
+      for (const mode of ["Dictation", "Fill the blank"]) {
+        await click(container, mode);
+        await click(container, "Play");
+        // 90 WPM is rate 0.5, halved by the 0.5x speed.
+        expect(speech.spoken.at(-1)?.rate).toBe(0.25);
+      }
       await close(view);
     });
   });

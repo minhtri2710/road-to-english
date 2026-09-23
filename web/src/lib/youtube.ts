@@ -82,8 +82,14 @@ export interface YouTubeApi {
     options: {
       videoId: string;
       host: string;
+      width: string;
+      height: string;
       playerVars: { playsinline: 1; rel: 0 };
-      events: { onReady: () => void; onError: () => void };
+      events: {
+        onReady: () => void;
+        onError: () => void;
+        onStateChange: (event: { data: number }) => void;
+      };
     },
   ) => YouTubePlayer;
 }
@@ -94,6 +100,9 @@ declare global {
     onYouTubeIframeAPIReady?: () => void;
   }
 }
+
+// YT.PlayerState.PLAYING
+export const PLAYER_PLAYING = 1;
 
 let apiPromise: Promise<YouTubeApi> | null = null;
 

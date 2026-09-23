@@ -23,3 +23,24 @@ test("video lesson from a YouTube URL and a pasted transcript", async ({ page })
     .poll(() => page.evaluate(() => (window as unknown as { __yt: { calls: unknown[][] } }).__yt.calls))
     .toContainEqual(["seekTo", 7, true]);
 });
+
+test("the video player fits a 375px viewport at 16:9", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByLabel("Title").fill("Narrow video");
+  await page.getByLabel("YouTube URL").fill("https://youtu.be/dQw4w9WgXcQ");
+  await page.getByLabel("Text", { exact: true }).fill(TRANSCRIPT);
+  await page.getByRole("button", { name: "Create" }).click();
+
+  const frame = page.getByTitle("YouTube video player");
+  await expect(frame).toBeVisible();
+  await expect(page.getByText("Loading video…")).toHaveCount(0);
+  const box = await frame.boundingBox();
+  const column = await frame.evaluate((node) => node.parentElement!.getBoundingClientRect().width);
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+  expect(box!.width).toBeCloseTo(column, 0);
+  expect(box!.height).toBeCloseTo((box!.width * 9) / 16, 0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});

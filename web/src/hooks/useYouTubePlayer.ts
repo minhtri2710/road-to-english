@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Cue } from "../api/lessons";
-import { loadYouTubeApi, type YouTubePlayer } from "../lib/youtube";
+import { loadYouTubeApi, PLAYER_PLAYING, type YouTubePlayer } from "../lib/youtube";
 
-// Without a videoId nothing loads, so plain lessons never contact YouTube.
-export function useYouTubePlayer(videoId: string | undefined) {
+const LOAD_TIMEOUT_MS = 15_000;
+
+// Without a videoId nothing loads, so plain lessons never contact YouTube. onPlay runs
+// whenever the video starts playing, from Play clip or the player's own controls.
+export function useYouTubePlayer(videoId: string | undefined, onPlay: () => void) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onPlayRef = useRef(onPlay);
+  onPlayRef.current = onPlay;
   const playerRef = useRef<YouTubePlayer | null>(null);
   const pollRef = useRef<number | undefined>(undefined);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
@@ -25,21 +30,32 @@ export function useYouTubePlayer(videoId: string | undefined) {
     // The API replaces this element with its iframe, so React never owns it.
     const mount = document.createElement("div");
     container.append(mount);
+    // A player that is not ready in time counts as failed; a late onReady still makes it usable.
+    const timeout = window.setTimeout(() => {
+      if (!cancelled && !playerRef.current) setStatus("failed");
+    }, LOAD_TIMEOUT_MS);
     loadYouTubeApi().then(
       (api) => {
         if (cancelled) return;
         player = new api.Player(mount, {
           videoId,
           host: "https://www.youtube-nocookie.com",
+          // The iframe fills the container, which sets the fluid 16:9 box.
+          width: "100%",
+          height: "100%",
           playerVars: { playsinline: 1, rel: 0 },
           events: {
             onReady: () => {
               if (cancelled) return;
+              window.clearTimeout(timeout);
               playerRef.current = player;
               setStatus("ready");
             },
             onError: () => {
               if (!cancelled) setStatus("failed");
+            },
+            onStateChange: (event) => {
+              if (!cancelled && event.data === PLAYER_PLAYING) onPlayRef.current();
             },
           },
         });
@@ -50,6 +66,7 @@ export function useYouTubePlayer(videoId: string | undefined) {
     );
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       stopClip();
       playerRef.current = null;
       player?.destroy();

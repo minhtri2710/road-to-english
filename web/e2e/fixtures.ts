@@ -12,6 +12,12 @@ const FAKE_YT_API = `
     constructor(element, options) {
       this.time = 0;
       yt.created.push({ videoId: options.videoId, host: options.host });
+      // Like the real API: the element becomes an iframe sized by the width/height options.
+      const frame = document.createElement("iframe");
+      frame.title = "YouTube video player";
+      frame.width = options.width;
+      frame.height = options.height;
+      element.replaceWith(frame);
       setTimeout(() => options.events.onReady(), 0);
     }
     playVideo() { yt.calls.push(["playVideo"]); }

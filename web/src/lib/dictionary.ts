@@ -34,13 +34,16 @@ function parse(body: unknown): Definition | null {
 }
 
 // Sends only the word: no credentials, no referrer, no query string or body.
+// Resolves null when the dictionary has no usable entry (a 404 or an unexpected body);
+// rejects when the dictionary can't be reached (network failure, timeout, server error).
 export async function lookupWord(word: string): Promise<Definition | null> {
+  const response = await fetch(
+    "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word),
+    { credentials: "omit", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(5000) },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Dictionary request failed (${response.status}).`);
   try {
-    const response = await fetch(
-      "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word),
-      { credentials: "omit", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(5000) },
-    );
-    if (!response.ok) return null;
     return parse(await response.json());
   } catch {
     return null;

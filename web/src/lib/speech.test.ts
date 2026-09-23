@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { speak } from "./speech";
+import { speak, stopSpeaking } from "./speech";
 
 interface FakeUtterance {
   onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
   onboundary: ((event: { name: string; charIndex: number }) => void) | null;
 }
 
 function installSpeechFakes() {
   class Utterance {
     onend: (() => void) | null = null;
+    onerror: ((event: { error: string }) => void) | null = null;
     onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
     constructor(readonly text: string) {}
   }
@@ -49,5 +51,29 @@ describe("speak", () => {
     stale.onend?.();
     expect(onWord).not.toHaveBeenCalled();
     expect(onEnd).not.toHaveBeenCalled();
+  });
+
+  it("reports an error of the current utterance once and then ignores its end", () => {
+    installSpeechFakes();
+    const onEnd = vi.fn();
+    const onError = vi.fn();
+    const utterance = speak("Hello", 180, 1, { onEnd, onError }) as unknown as FakeUtterance;
+    utterance.onerror?.({ error: "synthesis-failed" });
+    utterance.onerror?.({ error: "synthesis-failed" });
+    utterance.onend?.();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onEnd).not.toHaveBeenCalled();
+  });
+
+  it("stays silent on the interrupted or canceled error of a superseded or stopped utterance", () => {
+    installSpeechFakes();
+    const onError = vi.fn();
+    const superseded = speak("Hello", 180, 1, { onError }) as unknown as FakeUtterance;
+    speak("Bye", 180, 1);
+    superseded.onerror?.({ error: "interrupted" });
+    const stopped = speak("Again", 180, 1, { onError }) as unknown as FakeUtterance;
+    stopSpeaking();
+    stopped.onerror?.({ error: "canceled" });
+    expect(onError).not.toHaveBeenCalled();
   });
 });
