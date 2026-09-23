@@ -134,6 +134,11 @@ const appStyles = stylex.create({
   accountControls: {
     flexWrap: "wrap",
   },
+  tapTarget: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: "1.5rem",
+  },
   accountInput: {
     width: "14rem",
     maxWidth: "100%",
@@ -483,7 +488,6 @@ function SentenceDictation({
           </label>
           <input
             id={`dictation-${id}`}
-            aria-label="Your answer"
             className={stylex.props(appStyles.dictationInput).className}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
@@ -702,6 +706,7 @@ function LessonRow({
   targetWpm,
   completed,
   onSelect,
+  takeFocus,
 }: {
   title: string;
   level: Level;
@@ -709,9 +714,15 @@ function LessonRow({
   targetWpm: number;
   completed: boolean;
   onSelect: () => void;
+  takeFocus: () => boolean;
 }) {
   return (
     <Button
+      ref={(button) => {
+        if (button && takeFocus()) {
+          button.focus();
+        }
+      }}
       label={title}
       variant="secondary"
       xstyle={appStyles.lessonButton}
@@ -736,9 +747,11 @@ function LessonRow({
 function LessonList({
   onSelect,
   completedLessons,
+  takeFocus,
 }: {
   onSelect: (id: string) => void;
   completedLessons: Set<string>;
+  takeFocus: (id: string) => boolean;
 }) {
   const { data, loading, error } = useLessons();
 
@@ -765,6 +778,7 @@ function LessonList({
             targetWpm={lesson.targetWpm}
             completed={completedLessons.has(lesson.id)}
             onSelect={() => onSelect(lesson.id)}
+            takeFocus={() => takeFocus(lesson.id)}
           />
         </li>
       ))}
@@ -777,11 +791,13 @@ function UserLessonList({
   onSelect,
   onDelete,
   completedLessons,
+  takeFocus,
 }: {
   lessons: Lesson[] | null;
   onSelect: (lesson: Lesson) => void;
   onDelete: (lesson: Lesson) => void;
   completedLessons: Set<string>;
+  takeFocus: (id: string) => boolean;
 }) {
   if (lessons === null) {
     return <Text as="p">Loading your lessons...</Text>;
@@ -803,6 +819,7 @@ function UserLessonList({
               targetWpm={lesson.targetWpm}
               completed={completedLessons.has(lesson.id)}
               onSelect={() => onSelect(lesson)}
+              takeFocus={() => takeFocus(lesson.id)}
             />
             <Button
               label="Delete"
@@ -894,6 +911,7 @@ function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<vo
           <ToggleButtonGroup
             label="Target WPM"
             value={targetWpm}
+            xstyle={appStyles.shadowingControls}
             onChange={(nextWpm) => {
               if (nextWpm) {
                 setTargetWpm(nextWpm as (typeof USER_WPMS)[number]);
@@ -953,6 +971,8 @@ function SaveToReview({
       label={saved ? "Saved" : label}
       variant="ghost"
       isDisabled={saved || isSaving}
+      // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+      tooltip={saved ? "Already in your review deck" : isSaving ? "Saving…" : undefined}
       onClick={() => void save()}
     />
   );
@@ -1072,6 +1092,7 @@ function WordPanel({
           href={"https://youglish.com/pronounce/" + encodeURIComponent(word) + "/english"}
           target="_blank"
           rel="noopener noreferrer"
+          xstyle={appStyles.tapTarget}
         >
           Hear it on YouGlish
         </Link>
@@ -1102,11 +1123,23 @@ function ReviewDeck({
   const [showAnswer, setShowAnswer] = useState(false);
   const [isRating, setIsRating] = useState(false);
   const isRatingRef = useRef(false);
+  // Show answer and rating remove the focused button, so focus moves to what replaced it.
+  const [focusTarget, setFocusTarget] = useState<"answer" | "prompt" | null>(null);
+  const answerRef = useRef<HTMLElement>(null);
+  const promptRef = useRef<HTMLElement>(null);
   const card = due[0];
 
   useEffect(() => {
     setShowAnswer(false);
   }, [card?.id]);
+
+  useEffect(() => {
+    if (focusTarget === null) {
+      return;
+    }
+    (focusTarget === "answer" ? answerRef : promptRef).current?.focus();
+    setFocusTarget(null);
+  }, [focusTarget]);
 
   if (loading) {
     return <Text as="p">Loading review deck...</Text>;
@@ -1114,7 +1147,7 @@ function ReviewDeck({
 
   if (!card) {
     return (
-      <Text as="p">
+      <Text as="p" ref={promptRef} tabIndex={-1}>
         Nothing due — save sentences from a lesson to build your deck.
       </Text>
     );
@@ -1132,6 +1165,7 @@ function ReviewDeck({
     try {
       await review(card, rating);
       await recordPractice({ newCard });
+      setFocusTarget("prompt");
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -1142,15 +1176,18 @@ function ReviewDeck({
     <VStack gap={3}>
       <Card padding={3} xstyle={appStyles.reviewCard}>
         <VStack gap={2}>
-          <Text as="p" weight="semibold">{card.front}</Text>
+          <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>{card.front}</Text>
           {showAnswer && (
-            <Text as="p" xstyle={appStyles.answer}>{card.back}</Text>
+            <Text as="p" xstyle={appStyles.answer} ref={answerRef} tabIndex={-1}>{card.back}</Text>
           )}
           {!showAnswer ? (
             <Button
               label="Show answer"
               variant="primary"
-              onClick={() => setShowAnswer(true)}
+              onClick={() => {
+                setShowAnswer(true);
+                setFocusTarget("answer");
+              }}
             />
           ) : (
             <HStack gap={1}>
@@ -1247,6 +1284,11 @@ function LessonDetail({
     charIndex: number;
   } | null>(null);
   const video = useYouTubePlayer(data.videoId);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1266,7 +1308,7 @@ function LessonDetail({
         </HStack>
       </HStack>
       <VStack gap={1}>
-        <Heading level={2}>{data.title}</Heading>
+        <Heading level={2} ref={headingRef} tabIndex={-1}>{data.title}</Heading>
         <Text type="supporting">Level {data.level}</Text>
       </VStack>
       {data.videoId && (
@@ -1516,6 +1558,15 @@ export function App() {
   const auth = useAuth();
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const returnFocusId = useRef<string | null>(null);
+
+  const takeReturnFocus = (id: string) => {
+    if (returnFocusId.current !== id) {
+      return false;
+    }
+    returnFocusId.current = null;
+    return true;
+  };
 
   useEffect(() => {
     setSyncTrigger(() => syncRef.current?.trigger());
@@ -1614,7 +1665,10 @@ export function App() {
   };
 
   const detailProps: LessonDetailProps = {
-    onBack: () => setSelected(null),
+    onBack: () => {
+      returnFocusId.current = selected?.kind === "user" ? selected.lesson.id : (selected?.id ?? null);
+      setSelected(null);
+    },
     savedCardIds: deck.savedCardIds,
     addCard: deck.addCard,
     recordPractice: progress.recordPractice,
@@ -1636,7 +1690,7 @@ export function App() {
                   ? "Choose a lesson to practise reading and speaking."
                   : "Review saved sentences with spaced repetition."}
               </Text>
-              <HStack gap={1} align="center">
+              <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
                 <Badge
                   label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
                   variant="info"
@@ -1666,7 +1720,7 @@ export function App() {
                   ))}
                 </ToggleButtonGroup>
               </HStack>
-              <HStack gap={1} align="center">
+              <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
                 <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
                 <Button label="Export CSV" variant="secondary" onClick={() => void exportCsv()} />
                 <Button
@@ -1723,6 +1777,7 @@ export function App() {
                 <LessonList
                   onSelect={(id) => setSelected({ kind: "library", id })}
                   completedLessons={progress.completedLessons}
+                  takeFocus={takeReturnFocus}
                 />
                 <VStack gap={2}>
                   <Heading level={2}>Your lessons</Heading>
@@ -1731,6 +1786,7 @@ export function App() {
                     onSelect={(lesson) => setSelected({ kind: "user", lesson })}
                     onDelete={(lesson) => void deleteLesson(lesson)}
                     completedLessons={progress.completedLessons}
+                    takeFocus={takeReturnFocus}
                   />
                 </VStack>
                 <ImportTextForm onCreate={createLesson} />

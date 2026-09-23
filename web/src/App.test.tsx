@@ -296,8 +296,9 @@ describe("App", () => {
     const input = container.querySelector<HTMLInputElement>(
       `#dictation-${sentence.id}`,
     );
-    expect(input?.getAttribute("aria-label")).toBe("Your answer");
-    expect(container.querySelector(`label[for="dictation-${sentence.id}"]`)).not.toBeNull();
+    // The visible label names the input (WCAG 2.5.3 label in name), so no aria-label overrides it.
+    expect(input?.hasAttribute("aria-label")).toBe(false);
+    expect(container.querySelector(`label[for="dictation-${sentence.id}"]`)?.textContent).toBe("What did you hear?");
 
     await act(async () => {
       if (!input) throw new Error("dictation input not found");
@@ -755,6 +756,61 @@ describe("App", () => {
     );
     expect(container.textContent).toContain(greetingsLesson.sentences[1].text);
     expect(container.textContent).not.toContain(greetingsLesson.sentences[0].text);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("moves focus to what replaced the control on lesson open, save, Back, show answer, and rating", async () => {
+    const { container, root } = await openLesson();
+    await waitForCondition(() => container.querySelector("h2")?.textContent === "Greetings & Basics");
+    expect(document.activeElement).toBe(container.querySelector("h2"));
+
+    for (const index of [0, 1]) {
+      const save = buttonsNamed(container, "Save to review")[0];
+      if (!save) throw new Error("Save to review button not found");
+      save.focus();
+      await act(async () => {
+        save.click();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === index + 1);
+      expect(document.activeElement).toBe(save);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+    }
+
+    await act(async () => {
+      buttonsNamed(container, "Back to lessons")[0]?.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 0);
+    expect(document.activeElement?.tagName).toBe("BUTTON");
+    expect(document.activeElement?.textContent).toContain("Greetings & Basics");
+
+    await act(async () => {
+      buttonsNamed(container, "Review")[0]?.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+    await act(async () => {
+      buttonsNamed(container, "Show answer")[0]?.click();
+    });
+    // Sentence cards without notes have an empty back, so identify the answer by position.
+    expect(document.activeElement?.tagName).toBe("P");
+    expect(document.activeElement?.previousElementSibling?.textContent).toBe(greetingsLesson.sentences[0].text);
+
+    await act(async () => {
+      buttonsNamed(container, "Good")[0]?.click();
+    });
+    await waitForCondition(() => document.activeElement?.textContent === greetingsLesson.sentences[1].text);
+    expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
+
+    await act(async () => {
+      buttonsNamed(container, "Show answer")[0]?.click();
+    });
+    await act(async () => {
+      buttonsNamed(container, "Good")[0]?.click();
+    });
+    await waitForCondition(() => document.activeElement?.textContent?.includes("Nothing due") ?? false);
 
     await act(async () => {
       root.unmount();
