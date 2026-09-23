@@ -43,13 +43,18 @@ function errorMessage(code: string): string {
   }
 }
 
-// One utterance, settled exactly once. processLocally is requested where the
-// browser exposes it; a local failure is reported and never retried in the cloud.
+let active: { abort(): void } | null = null;
+
+// One utterance, settled exactly once, and one recognition at a time: starting
+// another aborts the active one. An abort rejects with name "AbortError".
+// processLocally is requested where the browser exposes it; a local failure is
+// reported and never retried in the cloud.
 export function recognizeOnce(): { result: Promise<string>; abort(): void } {
   const Constructor = recognitionConstructor();
   if (!Constructor) {
     throw new Error("Speech recognition is not supported in this browser.");
   }
+  active?.abort();
   const recognition = new Constructor();
   recognition.lang = "en-US";
   recognition.continuous = false;
@@ -71,12 +76,26 @@ export function recognizeOnce(): { result: Promise<string>; abort(): void } {
       return;
     }
     settled = true;
+    if (active === handle) {
+      active = null;
+    }
     if (outcome instanceof Error) {
       reject(outcome);
     } else {
       resolve(outcome);
     }
   };
+
+  const handle = {
+    result,
+    abort: () => {
+      const error = new Error("Speech recognition aborted.");
+      error.name = "AbortError";
+      settle(error);
+      recognition.abort();
+    },
+  };
+  active = handle;
 
   recognition.onresult = (event) => settle(event.results[0]?.[0]?.transcript ?? "");
   recognition.onerror = (event) => settle(new Error(errorMessage(event.error)));
@@ -87,11 +106,5 @@ export function recognizeOnce(): { result: Promise<string>; abort(): void } {
     settle(error instanceof Error ? error : new Error(String(error)));
   }
 
-  return {
-    result,
-    abort: () => {
-      settle(new Error("Speech recognition aborted."));
-      recognition.abort();
-    },
-  };
+  return handle;
 }

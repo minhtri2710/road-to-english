@@ -216,6 +216,7 @@ function SentenceShadowing({
   >({ status: "idle" });
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
+  const listening = check.status === "listening";
   const recordingSupported =
     typeof MediaRecorder !== "undefined" &&
     typeof navigator !== "undefined" &&
@@ -256,6 +257,9 @@ function SentenceShadowing({
 
   const checkPronunciation = () => {
     setLooping(false);
+    if (speechSupported) {
+      stopSpeaking();
+    }
     setCheck({ status: "listening" });
     const recognition = recognizeOnce();
     recognitionRef.current = recognition;
@@ -269,7 +273,11 @@ function SentenceShadowing({
       (error: Error) => {
         if (recognitionRef.current !== recognition) return;
         recognitionRef.current = null;
-        setCheck({ status: "failed", message: error.message });
+        setCheck(
+          error.name === "AbortError"
+            ? { status: "idle" }
+            : { status: "failed", message: error.message },
+        );
       },
     );
   };
@@ -280,7 +288,7 @@ function SentenceShadowing({
         <Button
           label="Listen"
           variant="secondary"
-          isDisabled={!speechSupported}
+          isDisabled={!speechSupported || listening}
           onClick={() => {
             setLooping(false);
             playReference(text, targetWpm, speed, sentenceId, setSpokenWord);
@@ -289,7 +297,7 @@ function SentenceShadowing({
         <ToggleButton
           label="Loop"
           isPressed={looping}
-          isDisabled={!speechSupported}
+          isDisabled={!speechSupported || listening}
           onPressedChange={setLooping}
         />
         <Button
@@ -306,7 +314,7 @@ function SentenceShadowing({
         <Button
           label="Compare"
           variant="secondary"
-          isDisabled={!speechSupported || !recorder.url}
+          isDisabled={!speechSupported || listening || !recorder.url}
           onClick={() => {
             setLooping(false);
             setPlayBlocked(false);
@@ -317,9 +325,9 @@ function SentenceShadowing({
         />
         {pronunciationCheck && (
           <Button
-            label={check.status === "listening" ? "Listening…" : "Check pronunciation"}
+            label={listening ? "Listening…" : "Check pronunciation"}
             variant="secondary"
-            isDisabled={check.status === "listening"}
+            isDisabled={listening}
             onClick={checkPronunciation}
           />
         )}
@@ -1548,6 +1556,7 @@ export function App() {
       }
       await replaceAll(data);
       await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
+      setSelected(null);
       setBackupError(null);
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to import backup.");

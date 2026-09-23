@@ -2108,6 +2108,31 @@ describe("App", () => {
       await unmount(view);
     });
 
+    it("returns to the library after importing a backup while a user lesson is open", async () => {
+      const view = await renderApp();
+      await createLesson(view.container, "Tea talk", pasted);
+      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
+      const text = exportData(
+        { cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] },
+        new Date(),
+      );
+      vi.stubGlobal("confirm", () => true);
+      const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("backup file input not found");
+      await act(async () => {
+        Object.defineProperty(input, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(() => !(view.container.textContent?.includes("Back to lessons") ?? true));
+      expect(view.container.textContent).toContain("Your lessons");
+      expect(view.container.textContent).not.toContain("I like green tea.");
+      expect(await listUserLessons()).toEqual([]);
+      await unmount(view);
+    });
+
     it("runs dictation and the fill-the-blank drill on a user lesson", async () => {
       vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
       vi.stubGlobal("SpeechSynthesisUtterance", class {});
@@ -2314,6 +2339,85 @@ describe("App", () => {
       expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
       expect(recognition.abort).toHaveBeenCalled();
       expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
+      await close(view);
+    });
+
+    it("resets the first sentence without a message when another sentence starts a check", async () => {
+      const view = await openShadow();
+      await enable(view.container);
+      const first = await checkFirstSentence(view.container);
+      await act(async () => {
+        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
+      });
+      expect(first.abort).toHaveBeenCalled();
+      expect(FakeRecognition.instances).toHaveLength(2);
+      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
+      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(2);
+      expect(view.container.textContent).not.toContain("aborted");
+      expect(buttonsNamed(view.container, "Try again")).toHaveLength(0);
+      await close(view);
+    });
+
+    it("disables Listen, Loop and Compare in the listening sentence and stops speech", async () => {
+      installMediaDevices(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream);
+      installObjectUrlFakes();
+      vi.stubGlobal(
+        "MediaRecorder",
+        class {
+          state = "inactive";
+          mimeType = "audio/webm";
+          ondataavailable: ((event: BlobEvent) => void) | null = null;
+          onstop: (() => void) | null = null;
+          start() {
+            this.state = "recording";
+          }
+          stop() {
+            this.state = "inactive";
+            this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
+            this.onstop?.();
+          }
+        },
+      );
+      const view = await openShadow();
+      await enable(view.container);
+      await click(view.container, "Record");
+      await click(view.container, "Stop");
+      expect(buttonsNamed(view.container, "Compare")[0]?.disabled).toBe(false);
+      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(false);
+      expect(buttonsNamed(view.container, "Loop")[0]?.disabled).toBe(false);
+      const speech = window.speechSynthesis as unknown as { cancel: ReturnType<typeof vi.fn> };
+      speech.cancel.mockClear();
+      await checkFirstSentence(view.container);
+      expect(speech.cancel).toHaveBeenCalled();
+      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(true);
+      expect(buttonsNamed(view.container, "Loop")[0]?.disabled).toBe(true);
+      expect(buttonsNamed(view.container, "Compare")[0]?.disabled).toBe(true);
+      expect(buttonsNamed(view.container, "Listen")[1]?.disabled).toBe(false);
+      expect(buttonsNamed(view.container, "Loop")[1]?.disabled).toBe(false);
+      await close(view);
+    });
+
+    it.each([
+      ["result", (recognition: FakeRecognition) =>
+        recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] })],
+      ["error", (recognition: FakeRecognition) => recognition.onerror?.({ error: "network" })],
+    ])("ignores a late %s from a recognition dropped by turning the setting off", async (_name, settle) => {
+      const view = await openShadow();
+      await waitForCondition(hasText(view.container, "Goal 0/10"));
+      await enable(view.container);
+      const recognition = await checkFirstSentence(view.container);
+      // The recognition settles before the toggle, but its handler runs only after
+      // the toggle's cleanup has dropped this recognition.
+      settle(recognition);
+      act(() => {
+        buttonsNamed(view.container, "Pronunciation check")[0]?.click();
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(view.container.textContent).not.toContain("You said:");
+      expect(view.container.textContent).not.toContain("Speech recognition failed");
+      expect(view.container.textContent).toContain("Goal 0/10");
       await close(view);
     });
 

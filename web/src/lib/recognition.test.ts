@@ -65,13 +65,13 @@ describe("recognition", () => {
 
   it("requests on-device recognition when the browser exposes processLocally", () => {
     install(LocalFakeRecognition);
-    recognizeOnce();
+    recognizeOnce().result.catch(() => {});
     expect((latest() as LocalFakeRecognition).processLocally).toBe(true);
   });
 
   it("does not add processLocally when the browser lacks it", () => {
     install();
-    recognizeOnce();
+    recognizeOnce().result.catch(() => {});
     expect("processLocally" in latest()).toBe(false);
   });
 
@@ -121,6 +121,27 @@ describe("recognition", () => {
     abort();
     recognition.say("too late");
     expect(recognition.abort).toHaveBeenCalledOnce();
-    await expect(result).rejects.toThrow("aborted");
+    await expect(result).rejects.toMatchObject({ name: "AbortError", message: "Speech recognition aborted." });
+  });
+
+  it("aborts the active recognition when another starts", async () => {
+    install();
+    const first = recognizeOnce();
+    const firstRecognition = latest();
+    const second = recognizeOnce();
+    expect(firstRecognition.abort).toHaveBeenCalledOnce();
+    await expect(first.result).rejects.toMatchObject({ name: "AbortError" });
+    latest().say("still here");
+    await expect(second.result).resolves.toBe("still here");
+  });
+
+  it("does not abort a recognition that already settled", async () => {
+    install();
+    const first = recognizeOnce();
+    const firstRecognition = latest();
+    firstRecognition.say("done");
+    await expect(first.result).resolves.toBe("done");
+    recognizeOnce().result.catch(() => {});
+    expect(firstRecognition.abort).not.toHaveBeenCalled();
   });
 });
