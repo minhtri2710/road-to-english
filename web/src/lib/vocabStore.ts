@@ -28,6 +28,15 @@ export async function saveCard(card: VocabCard): Promise<void> {
   }
 }
 
+// A history merge replaces fsrs at the same updatedAt, so the fsrs is part of a card's version.
+function sameFsrs(left: VocabCard, right: VocabCard): boolean {
+  return (
+    left.fsrs.reps === right.fsrs.reps &&
+    left.fsrs.due.getTime() === right.fsrs.due.getTime() &&
+    left.fsrs.last_review?.getTime() === right.fsrs.last_review?.getTime()
+  );
+}
+
 // Writes `next` only while the stored copy is still exactly `expected`, in one transaction.
 async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise<boolean> {
   const db = await openAppDatabase();
@@ -37,7 +46,8 @@ async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise
     const unchanged =
       stored !== undefined &&
       stored.updatedAt === expected.updatedAt &&
-      stored.deletedAt === expected.deletedAt;
+      stored.deletedAt === expected.deletedAt &&
+      sameFsrs(stored, expected);
     if (unchanged) {
       await tx.store.put(next);
     }

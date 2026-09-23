@@ -2095,6 +2095,29 @@ describe("App", () => {
       expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
       await unmount();
     });
+
+    it("re-arms a refresh timer that fires before the card is due", async () => {
+      await putCard(newCard());
+      const { container, unmount } = await openReview();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+      await press(container, "Show answer");
+
+      await press(container, "Again");
+      await waitForCondition(() => container.textContent?.includes("All caught up. Next card in 1 min.") ?? false);
+      // The wall clock steps back 1 s, so the timer fires while the card is still 1 s from due.
+      // ponytail: 1 s, not 1 ms: shouldAdvanceTime moves the clock by real elapsed ms, which would make 1 ms reach due.
+      vi.setSystemTime(Date.now() - 1_000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(buttonsNamed(container, "Show answer")).toHaveLength(0);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      expect(container.textContent).toContain(sentence.text);
+      await unmount();
+    });
   });
 
   it("removes word buttons and the word panel when the transcript is hidden", async () => {

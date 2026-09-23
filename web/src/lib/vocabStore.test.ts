@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createCard, deleteCard } from "./vocab";
-import { dueCards, getAllCards, putCard } from "./vocabStore";
+import { mergeInto } from "./backupStore";
+import { createCard, deleteCard, Rating, reviewCard } from "./vocab";
+import { dueCards, getAllCards, putCard, restoreTombstone, saveCard, saveReview } from "./vocabStore";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -49,5 +50,37 @@ describe("vocabulary store", () => {
     const card = createCard(input, new Date("2025-12-31T00:00:00Z"));
 
     expect(dueCards([deleteCard(card, now)], now)).toEqual([]);
+  });
+
+  describe("after a history merge at the same updatedAt", () => {
+    // Device B reviewed the card 3 times up to Jan 3; this device saved it fresh on Jan 4.
+    function history() {
+      let card = createCard(input, new Date("2026-01-01T00:00:00.000Z"));
+      for (const day of ["2026-01-01T00:01:00.000Z", "2026-01-02T00:00:00.000Z", "2026-01-03T00:00:00.000Z"]) {
+        card = reviewCard(card, Rating.Good, new Date(day));
+      }
+      return card;
+    }
+
+    it("rejects a rating of the pre-merge card and keeps the merged history", async () => {
+      await saveCard(createCard(input, new Date("2026-01-04T00:00:00.000Z")));
+      const shown = (await getAllCards())[0]!;
+      await mergeInto({ cards: [history()], practiceDays: [], lessonCompletion: [] });
+      const merged = (await getAllCards())[0]!;
+      expect(merged.updatedAt).toBe(shown.updatedAt);
+      expect(merged.fsrs.reps).toBe(3);
+
+      expect(await saveReview(shown, Rating.Good, new Date("2026-01-05T00:00:00.000Z"))).toBe(false);
+      expect(await getAllCards()).toEqual([merged]);
+    });
+
+    it("rejects restoring a tombstone whose fsrs changed", async () => {
+      const tombstone = deleteCard(createCard(input, new Date("2026-01-04T00:00:00.000Z")), new Date("2026-01-04T01:00:00.000Z"));
+      await putCard(tombstone);
+      await putCard({ ...tombstone, fsrs: history().fsrs });
+
+      expect(await restoreTombstone(tombstone, new Date("2026-01-05T00:00:00.000Z"))).toBe(false);
+      expect((await getAllCards())[0]).toMatchObject({ deletedAt: tombstone.deletedAt, fsrs: { reps: 3 } });
+    });
   });
 });

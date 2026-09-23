@@ -72,13 +72,14 @@ export function useVocabDeck() {
     return next;
   }, [cards, now]);
 
+  // Re-arms after every refresh (`now`), so a timer that fires before the card is due tries again.
   useEffect(() => {
     if (nextDueTime === null) {
       return;
     }
     const timer = window.setTimeout(() => void refresh(), Math.max(0, nextDueTime - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [nextDueTime, refresh]);
+  }, [nextDueTime, now, refresh]);
   const savedCardIds = useMemo(
     () => new Set(cards.filter((card) => card.deletedAt === null).map((card) => card.id)),
     [cards],
