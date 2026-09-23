@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime"
@@ -346,7 +347,6 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func corsMiddleware(next http.Handler, configuredOrigin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("Origin") == configuredOrigin {
 			w.Header().Set("Access-Control-Allow-Origin", configuredOrigin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -429,19 +429,30 @@ func jsonResponseMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func main() {
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+func run() error {
 	store, err := library.LoadSeed()
 	if err != nil {
-		log.Fatalf("load lesson library: %v", err)
+		return fmt.Errorf("load lesson library: %w", err)
 	}
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL must be set")
+		return errors.New("DATABASE_URL must be set")
 	}
 	repo, err := storage.Open(context.Background(), dsn)
 	if err != nil {
-		log.Fatalf("open storage: %v", err)
+		return fmt.Errorf("open storage: %w", err)
 	}
 	defer repo.Close()
 
@@ -456,7 +467,11 @@ func main() {
 
 	handler := corsMiddleware(jsonResponseMiddleware(newMux(store, repo)), origin)
 	log.Printf("API server listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, handler); err != nil {
+	return newServer(":"+port, handler).ListenAndServe()
+}
+
+func main() {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }

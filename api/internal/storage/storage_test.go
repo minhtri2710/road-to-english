@@ -306,6 +306,35 @@ func TestSessionRoundTripAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestCreateSessionPurgesExpiredSessionsAcrossUsers(t *testing.T) {
+	repo := newTestRepo(t)
+	expiredUser := createTestUser(t, repo, "expired-session@example.com")
+	activeUser := createTestUser(t, repo, "active-session@example.com")
+	if _, err := repo.pool.Exec(context.Background(), `
+		INSERT INTO sessions (token_hash, user_id, expires_at)
+		VALUES ($1, $2, now() - interval '1 hour')
+	`, "expired", expiredUser.Id); err != nil {
+		t.Fatalf("insert expired session: %v", err)
+	}
+	if err := repo.CreateSession(context.Background(), activeUser.Id, "active", time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	var expiredCount, activeCount int
+	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions WHERE token_hash = $1", "expired").Scan(&expiredCount); err != nil {
+		t.Fatalf("count expired session: %v", err)
+	}
+	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM sessions WHERE token_hash = $1 AND user_id = $2", "active", activeUser.Id).Scan(&activeCount); err != nil {
+		t.Fatalf("count active session: %v", err)
+	}
+	if expiredCount != 0 {
+		t.Fatalf("expired session count = %d, want 0", expiredCount)
+	}
+	if activeCount != 1 {
+		t.Fatalf("active session count = %d, want 1", activeCount)
+	}
+}
+
 func TestSessionStoresHashNotRawToken(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "hash@example.com")

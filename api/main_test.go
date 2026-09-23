@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/road-to-english/api/internal/library"
@@ -65,6 +66,22 @@ func newTestAPI(t *testing.T) *testAPI {
 		handler: corsMiddleware(jsonResponseMiddleware(newMux(store, repo)), defaultCORSOrigin),
 		repo:    repo,
 		pool:    pool,
+	}
+}
+
+func TestNewServerTimeouts(t *testing.T) {
+	server := newServer(":8080", http.NotFoundHandler())
+	if server.ReadHeaderTimeout != 5*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %v, want %v", server.ReadHeaderTimeout, 5*time.Second)
+	}
+	if server.ReadTimeout != 30*time.Second {
+		t.Fatalf("ReadTimeout = %v, want %v", server.ReadTimeout, 30*time.Second)
+	}
+	if server.WriteTimeout != 30*time.Second {
+		t.Fatalf("WriteTimeout = %v, want %v", server.WriteTimeout, 30*time.Second)
+	}
+	if server.IdleTimeout != 120*time.Second {
+		t.Fatalf("IdleTimeout = %v, want %v", server.IdleTimeout, 120*time.Second)
 	}
 }
 
@@ -307,6 +324,9 @@ func TestCORSPreflight(t *testing.T) {
 	}
 	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != defaultCORSOrigin {
 		t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, defaultCORSOrigin)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "" {
+		t.Fatalf("Content-Type = %q, want absent", got)
 	}
 	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")

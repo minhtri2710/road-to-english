@@ -11,6 +11,7 @@ import { dueCards, getAllCards, putCard } from "../lib/vocabStore";
 export function useVocabDeck() {
   const [cards, setCards] = useState<VocabCard[]>([]);
   const [loading, setLoading] = useState(true);
+  // ponytail: due-ness advances only on refresh, so cards becoming due while Review is open appear after the next action; upgrade = timer or visibility refresh.
   const [now, setNow] = useState(() => new Date());
 
   const refresh = useCallback(async () => {

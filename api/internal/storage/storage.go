@@ -183,12 +183,26 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 }
 
 func (r *Repository) CreateSession(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
-	_, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin create session transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// ponytail: full session scan per login has no expires_at index; upgrade = add an index or periodic purge job when sessions grow.
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE expires_at <= now()`); err != nil {
+		return fmt.Errorf("purge expired sessions: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO sessions (token_hash, user_id, expires_at)
 		VALUES ($1, $2, $3)
-	`, tokenHash, userID, expiresAt)
-	if err != nil {
+	`, tokenHash, userID, expiresAt); err != nil {
 		return fmt.Errorf("create session: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit create session: %w", err)
 	}
 	return nil
 }
