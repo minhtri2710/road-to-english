@@ -81,6 +81,13 @@ describe("createUserLesson", () => {
     expect(() => createUserLesson({ ...input, level: "B1", targetWpm: 110 })).toThrow();
   });
 
+  it("accepts an A1 lesson and rejects an unknown level", () => {
+    const lesson = createUserLesson({ title: "Mine", text: "One.", level: "A1", targetWpm: 90 });
+
+    expect(isValidUserLesson(lesson)).toBe(true);
+    expect(isValidUserLesson({ ...lesson, level: "C1" })).toBe(false);
+  });
+
   it("rejects NUL in a stored title or sentence", () => {
     expect(isValidUserLesson(userLesson)).toBe(true);
     expect(isValidUserLesson({ ...userLesson, title: "My\u0000text" })).toBe(false);

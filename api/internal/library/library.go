@@ -10,6 +10,7 @@ import (
 type Level string
 
 const (
+	LevelA1 Level = "A1"
 	LevelA2 Level = "A2"
 	LevelB1 Level = "B1"
 	LevelB2 Level = "B2"
@@ -130,7 +131,7 @@ func (s *Store) Lesson(id string) (Lesson, bool) {
 
 func validLevel(level Level) bool {
 	switch level {
-	case LevelA2, LevelB1, LevelB2:
+	case LevelA1, LevelA2, LevelB1, LevelB2:
 		return true
 	default:
 		return false

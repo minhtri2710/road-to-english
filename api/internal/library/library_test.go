@@ -13,14 +13,17 @@ func TestLoadSeed(t *testing.T) {
 	}
 
 	summaries := store.Summaries()
-	if len(summaries) < 12 {
-		t.Fatalf("LoadSeed() returned %d lessons, want at least 12", len(summaries))
+	if len(summaries) < 17 {
+		t.Fatalf("LoadSeed() returned %d lessons, want at least 17", len(summaries))
 	}
 	levels := make(map[Level]int)
 	sentenceCount := 0
 	for _, summary := range summaries {
 		levels[summary.Level]++
 		lesson, _ := store.Lesson(summary.ID)
+		if lesson.Level == LevelA1 && len(lesson.Sentences) != 9 {
+			t.Errorf("A1 lesson %q has %d sentences, want 9", lesson.ID, len(lesson.Sentences))
+		}
 		for _, sentence := range lesson.Sentences {
 			sentenceCount++
 			if sentence.VI == "" {
@@ -31,7 +34,10 @@ func TestLoadSeed(t *testing.T) {
 	if sentenceCount < 100 {
 		t.Errorf("seed has %d sentences, want at least 100", sentenceCount)
 	}
-	for _, level := range []Level{LevelA2, LevelB1, LevelB2} {
+	if levels[LevelA1] != 5 {
+		t.Errorf("seed has %d A1 lessons, want 5", levels[LevelA1])
+	}
+	for _, level := range []Level{LevelA1, LevelA2, LevelB1, LevelB2} {
 		if levels[level] < 3 {
 			t.Errorf("seed has %d lessons at level %q, want at least 3", levels[level], level)
 		}
@@ -99,6 +105,16 @@ func TestNewStoreValidation(t *testing.T) {
 				Sentences: []Sentence{{ID: "sentence-1", Text: "A useful sentence."}},
 			}},
 			wantErr: true,
+		},
+		{
+			name: "A1 level",
+			lessons: []Lesson{{
+				ID:        validLesson.ID,
+				Title:     validLesson.Title,
+				Level:     LevelA1,
+				TargetWPM: 80,
+				Sentences: validLesson.Sentences,
+			}},
 		},
 		{
 			name: "bad level",

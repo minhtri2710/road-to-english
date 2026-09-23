@@ -1,5 +1,90 @@
 [
   {
+    "id": "about-me",
+    "title": "About Me",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "about-me-1", "text": "My name is Lan.", "vi": "Tôi tên là Lan." },
+      { "id": "about-me-2", "text": "I am twenty-five years old.", "vi": "Tôi hai mươi lăm tuổi.", "notes": "\"twenty-five\": say the t in twenty clearly" },
+      { "id": "about-me-3", "text": "I come from Vietnam.", "vi": "Tôi đến từ Việt Nam.", "notes": "\"comes\" only after he or she; \"I come\" has no -s" },
+      { "id": "about-me-4", "text": "I am a nurse.", "vi": "Tôi là y tá.", "notes": "use \"a\" before a job: a nurse, a teacher" },
+      { "id": "about-me-5", "text": "I work in a big hospital.", "vi": "Tôi làm việc ở một bệnh viện lớn.", "notes": "say the final /k/ in \"work\"" },
+      { "id": "about-me-6", "text": "I like music and coffee.", "vi": "Tôi thích âm nhạc và cà phê." },
+      { "id": "about-me-7", "text": "I can speak a little English.", "vi": "Tôi có thể nói một chút tiếng Anh." },
+      { "id": "about-me-8", "text": "My best friend is Mai.", "vi": "Bạn thân nhất của tôi là Mai.", "notes": "link \"best friend\": keep the /t/ short" },
+      { "id": "about-me-9", "text": "I don't like cold weather.", "vi": "Tôi không thích thời tiết lạnh.", "notes": "\"don't\" = do not" }
+    ]
+  },
+  {
+    "id": "my-family",
+    "title": "My Family",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "my-family-1", "text": "I have a small family.", "vi": "Tôi có một gia đình nhỏ.", "notes": "link \"have a\": ha-va" },
+      { "id": "my-family-2", "text": "My father is a doctor.", "vi": "Bố tôi là bác sĩ.", "notes": "\"father\": th /ð/, tongue between the teeth" },
+      { "id": "my-family-3", "text": "My mother cooks every day.", "vi": "Mẹ tôi nấu ăn mỗi ngày.", "notes": "\"cooks\" ends in /ks/: say the -s" },
+      { "id": "my-family-4", "text": "I have one brother and two sisters.", "vi": "Tôi có một anh trai và hai chị gái.", "notes": "\"sisters\" ends in /z/" },
+      { "id": "my-family-5", "text": "My brother is tall and funny.", "vi": "Anh trai tôi cao và vui tính." },
+      { "id": "my-family-6", "text": "My sister has long black hair.", "vi": "Chị gái tôi có mái tóc đen dài.", "notes": "\"has\" after he, she, it; \"have\" after I, you, we, they" },
+      { "id": "my-family-7", "text": "My grandmother lives with us.", "vi": "Bà tôi sống cùng chúng tôi.", "notes": "\"lives\" ends in /vz/" },
+      { "id": "my-family-8", "text": "We eat dinner together.", "vi": "Chúng tôi ăn tối cùng nhau." },
+      { "id": "my-family-9", "text": "I love my family very much.", "vi": "Tôi rất yêu gia đình mình." }
+    ]
+  },
+  {
+    "id": "numbers-and-time",
+    "title": "Numbers & Time",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "numbers-and-time-1", "text": "What time is it?", "vi": "Mấy giờ rồi?" },
+      { "id": "numbers-and-time-2", "text": "It's seven o'clock.", "vi": "Bây giờ là bảy giờ.", "notes": "\"o'clock\" only for whole hours" },
+      { "id": "numbers-and-time-3", "text": "It's half past three.", "vi": "Bây giờ là ba giờ rưỡi.", "notes": "half past three = 3:30" },
+      { "id": "numbers-and-time-4", "text": "I get up at six thirty.", "vi": "Tôi thức dậy lúc sáu giờ ba mươi.", "notes": "\"thirty\": th /θ/, air between tongue and teeth" },
+      { "id": "numbers-and-time-5", "text": "Today is Monday.", "vi": "Hôm nay là thứ Hai.", "notes": "days of the week start with a capital letter" },
+      { "id": "numbers-and-time-6", "text": "I have class on Tuesday and Thursday.", "vi": "Tôi có lớp vào thứ Ba và thứ Năm.", "notes": "Tuesday /ˈtjuːzdeɪ/ vs Thursday /ˈθɜːzdeɪ/" },
+      { "id": "numbers-and-time-7", "text": "There are seven days in a week.", "vi": "Một tuần có bảy ngày." },
+      { "id": "numbers-and-time-8", "text": "My phone number is zero nine one two.", "vi": "Số điện thoại của tôi là không chín một hai.", "notes": "say phone numbers one digit at a time" },
+      { "id": "numbers-and-time-9", "text": "The shop opens at nine.", "vi": "Cửa hàng mở cửa lúc chín giờ.", "notes": "\"opens\" ends in /z/" }
+    ]
+  },
+  {
+    "id": "my-home",
+    "title": "My Home",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "my-home-1", "text": "I live in a small flat.", "vi": "Tôi sống trong một căn hộ nhỏ." },
+      { "id": "my-home-2", "text": "My home has two bedrooms.", "vi": "Nhà tôi có hai phòng ngủ." },
+      { "id": "my-home-3", "text": "The kitchen is next to the living room.", "vi": "Bếp ở cạnh phòng khách." },
+      { "id": "my-home-4", "text": "There is a sofa in the living room.", "vi": "Có một cái ghế sofa trong phòng khách.", "notes": "\"there is\" for one thing, \"there are\" for two or more" },
+      { "id": "my-home-5", "text": "My bed is near the window.", "vi": "Giường của tôi ở gần cửa sổ." },
+      { "id": "my-home-6", "text": "The books are on the table.", "vi": "Những quyển sách ở trên bàn.", "notes": "\"books\" ends in /ks/" },
+      { "id": "my-home-7", "text": "The cat is under the chair.", "vi": "Con mèo ở dưới cái ghế." },
+      { "id": "my-home-8", "text": "We have a big fridge.", "vi": "Nhà chúng tôi có một cái tủ lạnh lớn." },
+      { "id": "my-home-9", "text": "I like my room a lot.", "vi": "Tôi rất thích phòng của mình." }
+    ]
+  },
+  {
+    "id": "weather-and-clothes",
+    "title": "Weather & Clothes",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "weather-and-clothes-1", "text": "It's sunny today.", "vi": "Hôm nay trời nắng." },
+      { "id": "weather-and-clothes-2", "text": "It's very hot in summer.", "vi": "Mùa hè trời rất nóng." },
+      { "id": "weather-and-clothes-3", "text": "It's raining now.", "vi": "Bây giờ trời đang mưa." },
+      { "id": "weather-and-clothes-4", "text": "Take your umbrella.", "vi": "Hãy mang theo ô của bạn." },
+      { "id": "weather-and-clothes-5", "text": "It's cold and windy in winter.", "vi": "Mùa đông trời lạnh và có gió." },
+      { "id": "weather-and-clothes-6", "text": "I wear a jacket when it's cold.", "vi": "Tôi mặc áo khoác khi trời lạnh.", "notes": "\"wear\" sounds like \"where\"" },
+      { "id": "weather-and-clothes-7", "text": "She likes her red dress.", "vi": "Cô ấy thích chiếc váy đỏ của mình.", "notes": "\"likes\" ends in /ks/" },
+      { "id": "weather-and-clothes-8", "text": "These shoes are new.", "vi": "Đôi giày này mới.", "notes": "\"shoes\" ends in /z/" },
+      { "id": "weather-and-clothes-9", "text": "I wear a T-shirt and shorts.", "vi": "Tôi mặc áo phông và quần soóc." }
+    ]
+  },
+  {
     "id": "greetings-basics",
     "title": "Greetings & Basics",
     "level": "A2",

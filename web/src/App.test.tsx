@@ -2522,6 +2522,7 @@ describe("App", () => {
     it("creates a lesson from pasted text, opens it without a lesson fetch, and lists it after a remount", async () => {
       const first = await renderApp();
       expect(first.container.textContent).toContain("Your lessons stay on this device; export a backup to move them.");
+      expect(buttonsNamed(first.container, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(buttonsNamed(first.container, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
       expect(buttonsNamed(first.container, "110 WPM")[0]?.getAttribute("aria-pressed")).toBe("true");
       await act(async () => {

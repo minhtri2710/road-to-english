@@ -4,7 +4,7 @@ import { normalize, splitWords } from "./dictation";
 import { isCardWord, isText } from "./vocab";
 import { isYouTubeId, parseTranscript, parseYouTubeId } from "./youtube";
 
-export const USER_LEVELS = ["A2", "B1", "B2"] as const satisfies readonly Level[];
+export const USER_LEVELS = ["A1", "A2", "B1", "B2"] as const satisfies readonly Level[];
 export const USER_WPMS = ["90", "110", "130", "150"] as const;
 export const MAX_TEXT_LENGTH = 20000;
 export const MAX_SENTENCES = 200;

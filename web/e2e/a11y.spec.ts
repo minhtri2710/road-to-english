@@ -292,7 +292,7 @@ test.describe("mobile 375x667", () => {
 
   test("the header leaves the first lesson inside the first screen", async ({ page }) => {
     await page.goto("/");
-    const row = page.getByRole("button", { name: LIBRARY_LESSON });
+    const row = page.getByRole("button", { name: "About Me" });
     await expect(row).toBeVisible();
     const box = await row.boundingBox();
     expect(box?.y).toBeLessThan(667);
