@@ -183,6 +183,90 @@ func TestLoginFailuresAndDuplicateSignup(t *testing.T) {
 	}
 }
 
+func TestEmailNormalizationAcrossAuthEndpoints(t *testing.T) {
+	api := newTestAPI(t)
+	signup := doJSON(api.handler, http.MethodPost, "/signup", `{"email":" A@X.com ","password":"password"}`)
+	if signup.Code != http.StatusOK {
+		t.Fatalf("signup status = %d, body = %s", signup.Code, signup.Body.String())
+	}
+	var signupUser map[string]string
+	decodeJSON(t, signup, &signupUser)
+	if signupUser["email"] != "a@x.com" {
+		t.Fatalf("signup email = %q, want normalized email", signupUser["email"])
+	}
+	cookie := responseCookie(t, signup)
+
+	meRequest := httptest.NewRequest(http.MethodGet, "/me", nil)
+	meRequest.AddCookie(cookie)
+	meResponse := httptest.NewRecorder()
+	api.handler.ServeHTTP(meResponse, meRequest)
+	var meUser map[string]string
+	decodeJSON(t, meResponse, &meUser)
+	if meResponse.Code != http.StatusOK || meUser["email"] != "a@x.com" {
+		t.Fatalf("/me status = %d, email = %q, want normalized email", meResponse.Code, meUser["email"])
+	}
+
+	duplicate := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"a@x.com","password":"another password"}`)
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("duplicate signup status = %d, want 409", duplicate.Code)
+	}
+
+	login := doJSON(api.handler, http.MethodPost, "/login", `{"email":" A@X.COM ","password":"password"}`)
+	if login.Code != http.StatusOK {
+		t.Fatalf("normalized login status = %d, body = %s", login.Code, login.Body.String())
+	}
+	var loginUser map[string]string
+	decodeJSON(t, login, &loginUser)
+	if loginUser["email"] != "a@x.com" {
+		t.Fatalf("login email = %q, want normalized email", loginUser["email"])
+	}
+}
+
+func TestSignupRejectsWhitespaceOnlyEmail(t *testing.T) {
+	api := newTestAPI(t)
+	response := doJSON(api.handler, http.MethodPost, "/signup", `{"email":" \t ","password":"password"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.Code)
+	}
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+func TestSignupPasswordPolicy(t *testing.T) {
+	api := newTestAPI(t)
+	short := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"short@example.com","password":"1234567"}`)
+	if short.Code != http.StatusBadRequest || compactJSON(t, short.Body.Bytes()) != `{"error":"password too short"}` {
+		t.Fatalf("short password status = %d, body = %s", short.Code, short.Body.String())
+	}
+
+	exact := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"exact@example.com","password":"12345678"}`)
+	if exact.Code != http.StatusOK {
+		t.Fatalf("exact minimum status = %d, body = %s", exact.Code, exact.Body.String())
+	}
+
+	multibyte := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"multibyte@example.com","password":"éééééééé"}`)
+	if multibyte.Code != http.StatusOK {
+		t.Fatalf("multibyte password status = %d, body = %s", multibyte.Code, multibyte.Body.String())
+	}
+
+	tooLong := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"too-long@example.com","password":"`+strings.Repeat("a", 73)+`"}`)
+	if tooLong.Code != http.StatusBadRequest || compactJSON(t, tooLong.Body.Bytes()) != `{"error":"password too long"}` {
+		t.Fatalf("long password status = %d, body = %s", tooLong.Code, tooLong.Body.String())
+	}
+}
+
+func TestLoginDoesNotApplySignupPasswordMinimum(t *testing.T) {
+	api := newTestAPI(t)
+	response := doJSON(api.handler, http.MethodPost, "/login", `{"email":"missing@example.com","password":"short"}`)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body = %s", response.Code, response.Body.String())
+	}
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email or password"}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
 func TestLogoutClearsSession(t *testing.T) {
 	api := newTestAPI(t)
 	signup := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"logout@example.com","password":"password"}`)
@@ -281,7 +365,7 @@ func TestSignupRejectsNULEmail(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid credentials"}` {
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 }
@@ -303,9 +387,15 @@ func TestBadInputSignup(t *testing.T) {
 	if missingEmail.Code != http.StatusBadRequest {
 		t.Fatalf("missing email status = %d, want 400", missingEmail.Code)
 	}
+	if compactJSON(t, missingEmail.Body.Bytes()) != `{"error":"invalid email"}` {
+		t.Fatalf("missing email body = %s", missingEmail.Body.String())
+	}
 	tooLong := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"long@example.com","password":"`+strings.Repeat("a", 73)+`"}`)
 	if tooLong.Code != http.StatusBadRequest {
 		t.Fatalf("long password status = %d, want 400", tooLong.Code)
+	}
+	if compactJSON(t, tooLong.Body.Bytes()) != `{"error":"password too long"}` {
+		t.Fatalf("long password body = %s", tooLong.Body.String())
 	}
 }
 

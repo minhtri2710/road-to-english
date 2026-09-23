@@ -59,14 +59,24 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 		if !ok {
 			return
 		}
+		credentials.Email = normalizeEmail(credentials.Email)
+		if !validText(credentials.Email) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid email"})
+			return
+		}
 		passwordHash, err := auth.HashPassword(credentials.Password)
 		if err != nil {
-			if errors.Is(err, auth.ErrPasswordTooLong) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
+			switch {
+			case errors.Is(err, auth.ErrPasswordTooShort):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password too short"})
+				return
+			case errors.Is(err, auth.ErrPasswordTooLong):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password too long"})
+				return
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-			return
 		}
 		user, err := repo.CreateUser(r.Context(), credentials.Email, passwordHash)
 		if err != nil {
@@ -85,6 +95,11 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
 		credentials, ok := decodeCredentials(w, r)
 		if !ok {
+			return
+		}
+		credentials.Email = normalizeEmail(credentials.Email)
+		if !validLoginCredentials(credentials) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
 			return
 		}
 		user, passwordHash, err := repo.GetUserByEmail(r.Context(), credentials.Email)
@@ -139,11 +154,15 @@ func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, boo
 	if !decodeJSONBody(w, r, &input, authBodyMaxBytes, "invalid credentials") {
 		return credentials{}, false
 	}
-	if !validText(input.Email) || len(input.Password) == 0 || len(input.Password) > 72 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid credentials"})
-		return credentials{}, false
-	}
 	return input, true
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func validLoginCredentials(input credentials) bool {
+	return validText(input.Email) && len(input.Password) > 0 && len(input.Password) <= 72
 }
 
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64, invalidMessage string) bool {

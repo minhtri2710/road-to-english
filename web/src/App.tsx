@@ -263,13 +263,18 @@ function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   );
 }
 
-function AccountError({ error }: { error: Error }) {
+const passwordPolicyMessage =
+  "Password must be at least 8 characters (and at most 72 bytes).";
+
+function AccountError({ error, isSignUp }: { error: Error; isSignUp: boolean }) {
   let message = "Unable to complete account request. Please try again.";
   if (error instanceof ApiError) {
     if (error.status === 409) {
       message = "This email is already registered.";
     } else if (error.status === 401) {
       message = "Invalid email or password.";
+    } else if (error.status === 400 && isSignUp) {
+      message = passwordPolicyMessage;
     }
   } else if (error.message) {
     message = `${error.message}. You can continue using the app.`;
@@ -285,8 +290,16 @@ function AccountError({ error }: { error: Error }) {
 function AccountArea({ auth }: { auth: AuthState }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [lastAction, setLastAction] = useState<"signIn" | "signUp" | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const submit = async (action: AuthState["signIn"]) => {
+  const submit = async (action: AuthState["signIn"], isSignUp: boolean) => {
+    setLastAction(isSignUp ? "signUp" : "signIn");
+    setLocalError(null);
+    if (isSignUp && (Array.from(password).length < 8 || new TextEncoder().encode(password).byteLength > 72)) {
+      setLocalError(passwordPolicyMessage);
+      return;
+    }
     try {
       await action(email, password);
       setPassword("");
@@ -306,7 +319,7 @@ function AccountArea({ auth }: { auth: AuthState }) {
             onClick={() => void auth.signOut().catch(() => undefined)}
           />
         </HStack>
-        {auth.error && <AccountError error={auth.error} />}
+        {auth.error && <AccountError error={auth.error} isSignUp={false} />}
       </VStack>
     );
   }
@@ -315,7 +328,7 @@ function AccountArea({ auth }: { auth: AuthState }) {
     <VStack gap={1}>
       <form onSubmit={(event) => {
         event.preventDefault();
-        void submit(auth.signIn);
+        void submit(auth.signIn, false);
       }}>
         <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
           <input
@@ -341,11 +354,16 @@ function AccountArea({ auth }: { auth: AuthState }) {
             label="Sign up"
             variant="primary"
             type="button"
-            onClick={() => void submit(auth.signUp)}
+            onClick={() => void submit(auth.signUp, true)}
           />
         </HStack>
       </form>
-      {auth.error && <AccountError error={auth.error} />}
+      {localError && (
+        <Text as="p" color="primary" xstyle={appStyles.error}>
+          {localError}
+        </Text>
+      )}
+      {auth.error && <AccountError error={auth.error} isSignUp={lastAction === "signUp"} />}
     </VStack>
   );
 }

@@ -895,6 +895,89 @@ describe("App", () => {
     container.remove();
   });
 
+  it("rejects a short sign-up password without sending a request", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return responseFor(new URL(url, "http://localhost").pathname);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+    });
+
+    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+    if (!email || !password) throw new Error("sign-up form not found");
+    await act(async () => {
+      setInputValue(email, "learner@example.com");
+      setInputValue(password, "short");
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign up")
+        ?.click();
+    });
+
+    expect(container.textContent).toContain(
+      "Password must be at least 8 characters (and at most 72 bytes).",
+    );
+    expect(fetchMock.mock.calls.some(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return new URL(url, "http://localhost").pathname === "/signup";
+    })).toBe(false);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("shows the password policy message for a sign-up 400", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, "http://localhost").pathname;
+      if (path === "/signup") return new Response(null, { status: 400 });
+      return responseFor(path);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+    });
+
+    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
+    if (!email || !password) throw new Error("sign-up form not found");
+    await act(async () => {
+      setInputValue(email, "learner@example.com");
+      setInputValue(password, "password");
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Sign up")
+        ?.click();
+    });
+    await waitForCondition(() => container.textContent?.includes(
+      "Password must be at least 8 characters (and at most 72 bytes).",
+    ) ?? false);
+
+    expect(container.textContent).toContain(
+      "Password must be at least 8 characters (and at most 72 bytes).",
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("shows an inline sign-in error and stays signed out", async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;

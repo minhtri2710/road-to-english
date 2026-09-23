@@ -7,17 +7,25 @@ import (
 	"encoding/hex"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrPasswordTooLong = errors.New("password exceeds 72 bytes")
+var (
+	ErrPasswordTooShort = errors.New("password has fewer than 8 characters")
+	ErrPasswordTooLong  = errors.New("password exceeds 72 bytes")
+)
 
 const SessionTTL = 30 * 24 * time.Hour
 
 const dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 func HashPassword(plain string) (string, error) {
+	if utf8.RuneCountInString(plain) < 8 {
+		return "", ErrPasswordTooShort
+	}
+	// ponytail: multibyte passwords can reach bcrypt's 72-byte limit below 64 characters; lifting this ceiling needs pre-hashing or a pepper, a separate Human gate.
 	if len(plain) > 72 {
 		return "", ErrPasswordTooLong
 	}
