@@ -1459,4 +1459,143 @@ describe("App", () => {
     });
     container.remove();
   });
+
+  describe("word dictionary", () => {
+    const dictionaryPrefix = "https://api.dictionaryapi.dev/";
+
+    function urlOf(input: Parameters<typeof fetch>[0]): string {
+      return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    }
+
+    function dictionaryCalls(): string[] {
+      return fetchMock.mock.calls.map(([input]) => urlOf(input)).filter((url) => url.startsWith(dictionaryPrefix));
+    }
+
+    // Routes dictionary requests to `dictionary`, everything else to the lesson API fake.
+    function routeDictionary(dictionary: (url: string) => Promise<Response>): void {
+      const api = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = urlOf(input);
+        return url.startsWith(dictionaryPrefix) ? dictionary(url) : api!(input, init);
+      });
+    }
+
+    function definitionFor(word: string): Response {
+      return new Response(
+        JSON.stringify([
+          {
+            word,
+            phonetic: `/${word}/`,
+            meanings: [{ partOfSpeech: "noun", definitions: [{ definition: `Meaning of ${word}.` }] }],
+          },
+        ]),
+        { status: 200 },
+      );
+    }
+
+    it("looks a word up only when Define is clicked", async () => {
+      installSpeechFakes();
+      const { container, root } = await openLesson();
+      routeDictionary(async (url) => definitionFor(url.split("/").at(-1)!));
+
+      await act(async () => {
+        buttonsNamed(container, "morning")[0]?.click();
+      });
+      expect(dictionaryCalls()).toHaveLength(0);
+
+      await act(async () => {
+        buttonsNamed(container, "Define")[0]?.click();
+      });
+      await waitForCondition(() => container.textContent?.includes("Meaning of morning.") ?? false);
+      expect(dictionaryCalls()).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/morning"]);
+      expect(container.textContent).toContain("/morning/");
+      expect(container.textContent).toContain("noun");
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("shows No definition when the lookup fails", async () => {
+      installSpeechFakes();
+      const { container, root } = await openLesson();
+      routeDictionary(async () => new Response(JSON.stringify({ title: "No Definitions Found" }), { status: 404 }));
+
+      await act(async () => {
+        buttonsNamed(container, "morning")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(container, "Define")[0]?.click();
+      });
+      await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("never shows a late definition for the previous word under a newly selected word", async () => {
+      installSpeechFakes();
+      const { container, root } = await openLesson();
+      let resolveMorning: (response: Response) => void = () => {};
+      routeDictionary(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveMorning = resolve;
+          }),
+      );
+
+      await act(async () => {
+        buttonsNamed(container, "morning")[0]?.click();
+      });
+      await act(async () => {
+        buttonsNamed(container, "Define")[0]?.click();
+      });
+      expect(container.textContent).toContain("Looking up…");
+
+      await act(async () => {
+        buttonsNamed(container, "how")[0]?.click();
+      });
+      expect(container.textContent).not.toContain("Looking up…");
+      await act(async () => {
+        resolveMorning(definitionFor("morning"));
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
+      expect(container.textContent).not.toContain("Meaning of morning.");
+      expect(container.textContent).not.toContain("No definition");
+      expect(buttonsNamed(container, "Define")).toHaveLength(1);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("links the normalized word to YouGlish in a new tab without a referrer", async () => {
+      installSpeechFakes();
+      const { container, root } = await openLesson();
+
+      await act(async () => {
+        buttonsNamed(container, "Good")[0]?.click();
+      });
+      const link = Array.from(container.querySelectorAll("a")).find(
+        (anchor) => anchor.textContent === "Hear it on YouGlish",
+      );
+      expect(link?.getAttribute("href")).toBe(
+        "https://youglish.com/pronounce/" + encodeURIComponent("good") + "/english",
+      );
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+      expect(dictionaryCalls()).toHaveLength(0);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+  });
 });

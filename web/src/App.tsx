@@ -11,6 +11,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
+import { Link } from "@astryxdesign/core/Link";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
@@ -28,6 +29,7 @@ import { useVocabDeck } from "./hooks/vocab";
 import { diffWords, normalize, type WordDiff } from "./lib/dictation";
 import { cardId, isCardWord, Rating, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
 import { speak, stopSpeaking } from "./lib/speech";
+import { lookupWord, type Definition } from "./lib/dictionary";
 import { useRecorder } from "./hooks/useRecorder";
 import { backupFileName, exportData, importData } from "./lib/backup";
 import { exportAll, replaceAll } from "./lib/backupStore";
@@ -597,24 +599,55 @@ function WordPanel({
 }) {
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
+  const word = card.source.word;
+  // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
+  const [lookup, setLookup] = useState<"idle" | "pending" | Definition | null>("idle");
+
+  const define = async () => {
+    setLookup("pending");
+    setLookup(await lookupWord(word));
+  };
 
   return (
-    <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
-      <Text weight="semibold">{text}</Text>
-      <Button
-        label="Hear word"
-        variant="secondary"
-        isDisabled={!speechSupported}
-        onClick={hear}
-      />
-      <SaveToReview
-        key={card.source.word}
-        card={card}
-        label="Save word"
-        saved={savedCardIds.has(cardId(card.source))}
-        addCard={addCard}
-      />
-    </HStack>
+    <VStack gap={1}>
+      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+        <Text weight="semibold">{text}</Text>
+        <Button
+          label="Hear word"
+          variant="secondary"
+          isDisabled={!speechSupported}
+          onClick={hear}
+        />
+        <SaveToReview
+          key={card.source.word}
+          card={card}
+          label="Save word"
+          saved={savedCardIds.has(cardId(card.source))}
+          addCard={addCard}
+        />
+        <Button
+          label="Define"
+          variant="secondary"
+          isDisabled={lookup === "pending"}
+          onClick={() => void define()}
+        />
+        <Link
+          href={"https://youglish.com/pronounce/" + encodeURIComponent(word) + "/english"}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Hear it on YouGlish
+        </Link>
+      </HStack>
+      {lookup === "pending" && <Text as="p" type="supporting">Looking up…</Text>}
+      {lookup === null && <Text as="p" type="supporting">No definition</Text>}
+      {typeof lookup === "object" && lookup !== null && (
+        <Text as="p">
+          {lookup.phonetic && `${lookup.phonetic} · `}
+          <Text weight="semibold">{lookup.partOfSpeech}</Text> — {lookup.definition}
+        </Text>
+      )}
+    </VStack>
   );
 }
 
@@ -858,6 +891,7 @@ function LessonDetail({
                   )}
                   {showTranscript && selectedWord?.sentenceId === sentence.id && (
                     <WordPanel
+                      key={normalize(selectedWord.text)}
                       text={selectedWord.text}
                       card={{
                         front: selectedWord.text,
