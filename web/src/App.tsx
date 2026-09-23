@@ -980,7 +980,7 @@ function SaveToReview({
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const isSavingRef = useRef(false);
   const showToast = useToast();
 
@@ -988,10 +988,10 @@ function SaveToReview({
     dismiss();
     try {
       if (!(await undoRemove(tombstone))) {
-        setFailure("Couldn't undo: this card changed since it was removed.");
+        showToast({ body: "Couldn't undo: this card changed since it was removed." });
       }
     } catch {
-      setFailure("Couldn't save. Try again.");
+      showToast({ body: "Couldn't undo. Try again." });
     }
   };
 
@@ -1002,7 +1002,7 @@ function SaveToReview({
 
     isSavingRef.current = true;
     setIsSaving(true);
-    setFailure(null);
+    setFailed(false);
     try {
       if (saved) {
         const tombstone = await removeCard(cardId(card.source));
@@ -1014,7 +1014,7 @@ function SaveToReview({
         await addCard(card);
       }
     } catch {
-      setFailure("Couldn't save. Try again.");
+      setFailed(true);
     } finally {
       isSavingRef.current = false;
       setIsSaving(false);
@@ -1032,9 +1032,9 @@ function SaveToReview({
         tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
         onClick={() => void toggle()}
       />
-      {failure && (
+      {failed && (
         <Text as="p" color="primary" xstyle={appStyles.error}>
-          {failure}
+          Couldn't save. Try again.
         </Text>
       )}
     </>

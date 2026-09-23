@@ -1769,7 +1769,7 @@ describe("App", () => {
       undo.click();
     });
     await waitForCondition(
-      () => container.textContent?.includes("Couldn't undo: this card changed since it was removed.") ?? false,
+      () => document.body.textContent?.includes("Couldn't undo: this card changed since it was removed.") ?? false,
     );
     // happy-dom runs no CSS transitions; end the toast row's exit transition so a dismissed toast leaves the DOM.
     await act(async () => {
@@ -1788,6 +1788,99 @@ describe("App", () => {
       root.unmount();
     });
     container.remove();
+  });
+
+  describe("Undo after the Saved toggle unmounted", () => {
+    const sentence = greetingsLesson.sentences[0];
+    const created = new Date("2026-01-01T00:00:00.000Z");
+    const original = createCard(
+      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
+      created,
+    );
+    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
+
+    // Removes the saved card, then leaves the lesson so SaveToReview unmounts while its Undo toast stays open.
+    async function removeThenLeave() {
+      await putCard(original);
+      const view = await openLesson();
+      const { container } = view;
+      await act(async () => {
+        buttonsNamed(container, "Review")[0]?.click();
+      });
+      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
+      await act(async () => {
+        buttonsNamed(container, "Library")[0]?.click();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+      const earlier = new Set(buttonsNamed(document.body, "Undo"));
+      const newUndo = () => buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
+      await act(async () => {
+        buttonsNamed(container, "Saved")[0]!.click();
+      });
+      await waitForCondition(() => newUndo() !== undefined);
+      await act(async () => {
+        buttonsNamed(container, "Back to lessons")[0]!.click();
+      });
+      await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 0);
+      expect(buttonsNamed(container, "Saved")).toHaveLength(0);
+      expect(buttonsNamed(container, "Save to review")).toHaveLength(0);
+      return { ...view, undo: newUndo()! };
+    }
+
+    const toastSays = (message: string) => document.body.textContent?.includes(message) ?? false;
+
+    it("shows the changed-card toast and keeps the stored card when the card changed after the remove", async () => {
+      const { container, root, undo } = await removeThenLeave();
+      const changed = { ...(await stored())!, updatedAt: new Date(Date.now() + 1000).toISOString() };
+      await putCard(changed);
+
+      await act(async () => {
+        undo.click();
+      });
+      await waitForCondition(() => toastSays("Couldn't undo: this card changed since it was removed."));
+      expect(await stored()).toEqual(changed);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("restores the exact FSRS state from a clean tombstone", async () => {
+      const { container, root, undo } = await removeThenLeave();
+      await act(async () => {
+        buttonsNamed(container, "Review")[0]?.click();
+      });
+      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "0");
+
+      await act(async () => {
+        undo.click();
+      });
+      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
+      expect(await stored()).toMatchObject({ fsrs: original.fsrs, deletedAt: null });
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+
+    it("shows a try-again toast when the restore throws", async () => {
+      const { container, root, undo } = await removeThenLeave();
+      const tombstone = await stored();
+      vi.spyOn(vocabStore, "restoreTombstone").mockRejectedValueOnce(new Error("quota"));
+
+      await act(async () => {
+        undo.click();
+      });
+      await waitForCondition(() => toastSays("Couldn't undo. Try again."));
+      expect(await stored()).toEqual(tombstone);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
   });
 
   describe("due refresh on return", () => {
