@@ -21,7 +21,7 @@ async function createUserLesson(page: Page): Promise<void> {
   await page.getByLabel("Title").fill(USER_LESSON);
   await page.getByLabel("Text", { exact: true }).fill("The first sentence is short. The second one follows.");
   await page.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("heading", { level: 2, name: USER_LESSON })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: USER_LESSON })).toBeVisible();
   await page.getByRole("button", { name: "Back to lessons" }).click();
   await expect(page.getByRole("button", { name: `Delete ${USER_LESSON}` })).toBeVisible();
   await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
@@ -92,6 +92,12 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
     await inspect();
   }],
+  ["review with nothing to review", async (page, inspect) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await expect(page.getByText(/^Nothing to review yet/)).toBeVisible();
+    await inspect();
+  }],
   ["import form with a validation error", async (page, inspect) => {
     await showImportError(page);
     await inspect();
@@ -158,7 +164,7 @@ test.describe("keyboard", () => {
 
     await tabTo(page, row);
     await page.keyboard.press("Enter");
-    const heading = page.getByRole("heading", { level: 2, name: LIBRARY_LESSON });
+    const heading = page.getByRole("heading", { level: 1, name: LIBRARY_LESSON });
     await expect(heading).toBeFocused();
     expect((await focusIndicator(page)).visible).toBe(true);
 
@@ -181,7 +187,7 @@ test.describe("keyboard", () => {
     await tabTo(page, reviewToggle, "Shift+Tab");
     await page.keyboard.press("Enter");
     await expect(page.getByText("1 due")).toBeVisible();
-    await expect(reviewToggle).toBeFocused();
+    await expect(page.getByRole("heading", { level: 1, name: "Review deck" })).toBeFocused();
 
     await tabTo(page, page.getByRole("button", { name: "Show answer" }));
     await page.keyboard.press("Enter");
@@ -199,7 +205,7 @@ test.describe("keyboard", () => {
     const row = page.getByRole("button", { name: LIBRARY_LESSON });
     await tabTo(page, row);
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { level: 2, name: LIBRARY_LESSON })).toBeFocused();
+    await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeFocused();
 
     await tabTo(page, page.getByRole("button", { name: "Back to lessons" }), "Shift+Tab");
     await page.keyboard.press("Enter");
@@ -283,6 +289,14 @@ test.describe("mobile 375x667", () => {
       expect(await layoutProblems(page)).toEqual([]);
     });
   }
+
+  test("the header leaves the first lesson inside the first screen", async ({ page }) => {
+    await page.goto("/");
+    const row = page.getByRole("button", { name: LIBRARY_LESSON });
+    await expect(row).toBeVisible();
+    const box = await row.boundingBox();
+    expect(box?.y).toBeLessThan(667);
+  });
 
   test("lesson rows keep their text unclipped and Delete at least 24x24", async ({ page }) => {
     await createUserLesson(page);

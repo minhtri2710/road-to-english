@@ -102,5 +102,5 @@ export async function downloadText(download: Download): Promise<string> {
 export async function openLibraryLesson(page: Page, title: string): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: title }).click();
-  await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 }

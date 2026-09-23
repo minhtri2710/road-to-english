@@ -9,7 +9,7 @@ test("video lesson from a YouTube URL and a pasted transcript", async ({ page })
   await page.getByLabel("Text", { exact: true }).fill(TRANSCRIPT);
   await page.getByRole("button", { name: "Create" }).click();
 
-  await expect(page.getByRole("heading", { level: 2, name: "Video lesson" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Video lesson" })).toBeVisible();
   await expect(page.getByText("Video from YouTube; playing it connects to YouTube.")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __yt?: { created: unknown[] } }).__yt?.created))

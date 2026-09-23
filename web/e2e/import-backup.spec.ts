@@ -9,7 +9,7 @@ test("import text, export a backup, delete, restore from the backup", async ({ p
   await page.getByLabel("Text", { exact: true }).fill(TEXT);
   await page.getByRole("button", { name: "Create" }).click();
 
-  await expect(page.getByRole("heading", { level: 2, name: TITLE })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
   await expect(page.getByRole("button", { name: "Listen" })).toHaveCount(3);
   await expect(page.getByText("A new paragraph starts here.")).toBeVisible();
 

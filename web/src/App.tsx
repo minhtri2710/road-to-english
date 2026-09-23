@@ -4,6 +4,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
@@ -238,6 +239,7 @@ function SentenceShadowing({
   const [playBlocked, setPlayBlocked] = useState(false);
   const [speechFailed, setSpeechFailed] = useState(false);
   const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
+  const checkButtonRef = useRef<HTMLButtonElement>(null);
   const [check, setCheck] = useState<
     | { status: "idle" }
     | { status: "listening" }
@@ -329,6 +331,12 @@ function SentenceShadowing({
     );
   };
 
+  // Try again removes itself, so focus goes back to the check it repeats.
+  const tryAgain = () => {
+    setCheck({ status: "idle" });
+    checkButtonRef.current?.focus();
+  };
+
   return (
     <VStack gap={1}>
       <HStack gap={1} xstyle={appStyles.shadowingControls}>
@@ -361,6 +369,8 @@ function SentenceShadowing({
           variant="secondary"
           isDisabled={!recordingSupported || recorder.state === "requesting"}
           isLoading={recorder.state === "requesting"}
+          // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+          tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
           onClick={() => {
             if (recorder.state === "recording") {
               recorder.stopRecording();
@@ -389,9 +399,11 @@ function SentenceShadowing({
         />
         {pronunciationCheck && (
           <Button
+            ref={checkButtonRef}
             label={listening ? "Listening…" : "Check pronunciation"}
             variant="secondary"
             isDisabled={listening}
+            tooltip={listening ? "Say the sentence" : undefined}
             onClick={checkPronunciation}
           />
         )}
@@ -401,19 +413,9 @@ function SentenceShadowing({
           Listen disabled: speech synthesis is not supported in this browser.
         </Text>
       )}
-      {speechFailed && (
-        <Text as="p" type="supporting">
-          Couldn't play the sentence. Check your browser's speech settings.
-        </Text>
-      )}
       {!recordingSupported && (
         <Text as="p" type="supporting">
           Recording disabled: microphone recording is not supported in this browser.
-        </Text>
-      )}
-      {recorder.error && (
-        <Text as="p" color="primary" xstyle={appStyles.error}>
-          {recorder.error}
         </Text>
       )}
       {recorder.url && (
@@ -424,27 +426,43 @@ function SentenceShadowing({
           onPlay={(event) => stopMedia({ keepAudio: event.currentTarget })}
         />
       )}
-      {playBlocked && (
-        <Text as="p" type="supporting">
-          Press play to hear your recording.
-        </Text>
-      )}
-      {check.status === "heard" && (
-        <WordDiffResult
-          text={text}
-          answer={check.transcript}
-          verb="said"
-          onTryAgain={() => setCheck({ status: "idle" })}
-        />
-      )}
-      {check.status === "failed" && (
-        <VStack gap={1}>
+      <Status>
+        {speechFailed && (
+          <Text as="p" type="supporting">
+            Couldn't play the sentence. Check your browser's speech settings.
+          </Text>
+        )}
+        {recorder.error && (
+          <Text as="p" color="primary" xstyle={appStyles.error}>
+            {recorder.error}
+          </Text>
+        )}
+        {playBlocked && (
+          <Text as="p" type="supporting">
+            Press play to hear your recording.
+          </Text>
+        )}
+        {check.status === "heard" && (
+          <WordDiffResult text={text} answer={check.transcript} verb="said" />
+        )}
+        {check.status === "failed" && (
           <Text as="p" color="primary" xstyle={appStyles.error}>
             {check.message}
           </Text>
-          <Button label="Try again" variant="ghost" onClick={() => setCheck({ status: "idle" })} />
-        </VStack>
+        )}
+      </Status>
+      {(check.status === "heard" || check.status === "failed") && (
+        <Button label="Try again" variant="ghost" onClick={tryAgain} />
       )}
+    </VStack>
+  );
+}
+
+// A polite region mounted before its content, so screen readers announce each result once.
+function Status({ children }: { children: ReactNode }) {
+  return (
+    <VStack gap={1} role="status">
+      {children}
     </VStack>
   );
 }
@@ -467,13 +485,11 @@ function WordDiffResult({
   answer,
   verb,
   notes,
-  onTryAgain,
 }: {
   text: string;
   answer: string;
   verb: "typed" | "said";
   notes?: string;
-  onTryAgain: () => void;
 }) {
   const diff = diffWords(answer, text);
   return (
@@ -499,7 +515,6 @@ function WordDiffResult({
       <Text as="p" weight="semibold">
         {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
       </Text>
-      <Button label="Try again" variant="ghost" onClick={onTryAgain} />
     </VStack>
   );
 }
@@ -523,6 +538,7 @@ function SentenceDictation({
 }) {
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
 
@@ -534,9 +550,11 @@ function SentenceDictation({
     }
   };
 
+  // Try again removes itself, so focus goes back to the answer field.
   const tryAgain = () => {
     setTyped("");
     setChecked(null);
+    inputRef.current?.focus();
   };
 
   return (
@@ -563,6 +581,7 @@ function SentenceDictation({
             </Text>
           </label>
           <input
+            ref={inputRef}
             id={`dictation-${id}`}
             className={stylex.props(appStyles.dictationInput).className}
             value={typed}
@@ -575,15 +594,12 @@ function SentenceDictation({
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
       </form>
-      {checked !== null && (
-        <WordDiffResult
-          text={text}
-          answer={checked}
-          verb="typed"
-          notes={notes}
-          onTryAgain={tryAgain}
-        />
-      )}
+      <Status>
+        {checked !== null && (
+          <WordDiffResult text={text} answer={checked} verb="typed" notes={notes} />
+        )}
+      </Status>
+      {checked !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
     </VStack>
   );
 }
@@ -605,6 +621,7 @@ function SentenceBlank({
 }) {
   const [typed, setTyped] = useState("");
   const [correct, setCorrect] = useState<boolean | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { parts, index, answer } = blankFor(text);
   const speechSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
@@ -624,6 +641,7 @@ function SentenceBlank({
   const tryAgain = () => {
     setTyped("");
     setCorrect(null);
+    inputRef.current?.focus();
   };
 
   return (
@@ -653,6 +671,7 @@ function SentenceBlank({
             </Text>
           </label>
           <input
+            ref={inputRef}
             id={`blank-${id}`}
             className={stylex.props(appStyles.dictationInput).className}
             value={typed}
@@ -665,15 +684,32 @@ function SentenceBlank({
           <Button label="Check" variant="primary" type="submit" />
         </VStack>
       </form>
-      {correct !== null && (
-        <VStack gap={1}>
+      <Status>
+        {correct !== null && (
           <Text as="p" weight="semibold">
             {correct ? "Correct" : `Not quite — the word was ${parts[index]}`}
           </Text>
-          <Button label="Try again" variant="ghost" onClick={tryAgain} />
-        </VStack>
-      )}
+        )}
+      </Status>
+      {correct !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
     </VStack>
+  );
+}
+
+// The page's one h1 names the current view and takes focus when the user changes view.
+function ViewHeading({ children, takeFocus }: { children: ReactNode; takeFocus: () => boolean }) {
+  return (
+    <Heading
+      level={1}
+      tabIndex={-1}
+      ref={(heading) => {
+        if (heading && takeFocus()) {
+          heading.focus();
+        }
+      }}
+    >
+      {children}
+    </Heading>
   );
 }
 
@@ -681,7 +717,7 @@ function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
   const message = error instanceof NotFoundError ? "not found" : error.message;
 
   return (
-    <Text as="p" color="primary" xstyle={appStyles.error}>
+    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
       Unable to load {subject}: {message}
     </Text>
   );
@@ -712,7 +748,7 @@ function AccountError({ error, isSignUp }: { error: Error; isSignUp: boolean }) 
   }
 
   return (
-    <Text as="p" color="primary" xstyle={appStyles.error}>
+    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
       {message}
     </Text>
   );
@@ -724,6 +760,14 @@ function AccountArea({ auth }: { auth: AuthState }) {
   const [lastAction, setLastAction] = useState<"signIn" | "signUp" | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const form = useRef<HTMLFormElement>(null);
+  // Signing in or out swaps the form and the signed-in row, so focus moves to the control that replaced it.
+  const moveFocus = useRef<"signedIn" | "signedOut" | null>(null);
+  const takeFocus = (target: "signedIn" | "signedOut") => (element: HTMLElement | null) => {
+    if (element && moveFocus.current === target) {
+      moveFocus.current = null;
+      element.focus();
+    }
+  };
 
   const submit = async (action: AuthState["signIn"], isSignUp: boolean) => {
     setLastAction(isSignUp ? "signUp" : "signIn");
@@ -732,10 +776,12 @@ function AccountArea({ auth }: { auth: AuthState }) {
       setLocalError(passwordPolicyMessage);
       return;
     }
+    moveFocus.current = "signedIn";
     try {
       await action(email, password);
       setPassword("");
     } catch {
+      moveFocus.current = null;
       // The hook exposes the error for the inline account message.
     }
   };
@@ -746,9 +792,15 @@ function AccountArea({ auth }: { auth: AuthState }) {
         <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
           <Text type="supporting">{auth.user.email}</Text>
           <Button
+            ref={takeFocus("signedIn")}
             label="Sign out"
             variant="secondary"
-            onClick={() => void auth.signOut().catch(() => undefined)}
+            onClick={() => {
+              moveFocus.current = "signedOut";
+              auth.signOut().catch(() => {
+                moveFocus.current = null;
+              });
+            }}
           />
         </HStack>
         {auth.error && <AccountError error={auth.error} isSignUp={false} />}
@@ -764,6 +816,7 @@ function AccountArea({ auth }: { auth: AuthState }) {
       }}>
         <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
           <input
+            ref={takeFocus("signedOut")}
             aria-label="Email"
             className={stylex.props(appStyles.accountInput).className}
             type="email"
@@ -781,10 +834,11 @@ function AccountArea({ auth }: { auth: AuthState }) {
             placeholder="Password"
             required
           />
-          <Button label="Sign in" variant="secondary" type="submit" />
+          {/* Enter submits the form, so its default action, Sign in, is the primary button. */}
+          <Button label="Sign in" variant="primary" type="submit" />
           <Button
             label="Sign up"
-            variant="primary"
+            variant="secondary"
             type="button"
             onClick={() => {
               if (form.current?.reportValidity()) {
@@ -795,12 +849,12 @@ function AccountArea({ auth }: { auth: AuthState }) {
         </HStack>
       </form>
       {auth.expired && (
-        <Text as="p" color="primary" xstyle={appStyles.error}>
+        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
           You were signed out. Sign in again to sync.
         </Text>
       )}
       {localError && (
-        <Text as="p" color="primary" xstyle={appStyles.error}>
+        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
           {localError}
         </Text>
       )}
@@ -854,23 +908,64 @@ function LessonRow({
   );
 }
 
+function TodayStrip({
+  due,
+  actionsToday,
+  dailyGoal,
+  nextLesson,
+  onReview,
+  onStart,
+}: {
+  due: number | null;
+  actionsToday: number;
+  dailyGoal: DailyGoal;
+  nextLesson: { title: string } | undefined;
+  onReview: () => void;
+  onStart: () => void;
+}) {
+  const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
+  return (
+    <Card padding={2} xstyle={appStyles.sentence}>
+      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+        <Heading level={2}>Today</Heading>
+        <Text type="supporting">
+          {due !== null && `${cards(due)} due · `}Goal {actionsToday}/{dailyGoal}
+        </Text>
+        {due ? (
+          <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
+        ) : (
+          nextLesson && (
+            <>
+              <Text type="supporting">Next: {nextLesson.title}</Text>
+              <Button label="Start lesson" variant="primary" onClick={onStart} />
+            </>
+          )
+        )}
+      </HStack>
+    </Card>
+  );
+}
+
 function LessonList({
   onSelect,
   completedLessons,
   takeFocus,
+  today,
 }: {
   onSelect: (id: string) => void;
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
+  today: Omit<Parameters<typeof TodayStrip>[0], "nextLesson" | "onStart">;
 }) {
   const { data, loading, error, retry } = useLessons();
+  // The first library lesson not yet completed; the strip reads the list this component already loads.
+  const nextLesson = data?.find((lesson) => !completedLessons.has(lesson.id));
 
+  let content: ReactNode;
   if (loading) {
-    return <Text as="p">Loading lessons...</Text>;
-  }
-
-  if (error) {
-    return (
+    content = <Text as="p">Loading lessons...</Text>;
+  } else if (error) {
+    content = (
       <VStack gap={1}>
         <ErrorMessage error={error} subject="lessons" />
         <Text as="p" type="supporting">
@@ -879,27 +974,32 @@ function LessonList({
         <Button label="Retry" variant="secondary" xstyle={appStyles.viewToggle} onClick={retry} />
       </VStack>
     );
-  }
-
-  if (!data || data.length === 0) {
-    return <Text as="p">No lessons available.</Text>;
+  } else if (!data || data.length === 0) {
+    content = <Text as="p">No lessons available.</Text>;
+  } else {
+    content = (
+      <VStack as="ul" gap={2} padding={0}>
+        {data.map((lesson) => (
+          <li key={lesson.id}>
+            <LessonRow
+              title={lesson.title}
+              level={lesson.level}
+              sentenceCount={lesson.sentenceCount}
+              targetWpm={lesson.targetWpm}
+              completed={completedLessons.has(lesson.id)}
+              onSelect={() => onSelect(lesson.id)}
+              takeFocus={() => takeFocus(lesson.id)}
+            />
+          </li>
+        ))}
+      </VStack>
+    );
   }
 
   return (
-    <VStack as="ul" gap={2} padding={0}>
-      {data.map((lesson) => (
-        <li key={lesson.id}>
-          <LessonRow
-            title={lesson.title}
-            level={lesson.level}
-            sentenceCount={lesson.sentenceCount}
-            targetWpm={lesson.targetWpm}
-            completed={completedLessons.has(lesson.id)}
-            onSelect={() => onSelect(lesson.id)}
-            takeFocus={() => takeFocus(lesson.id)}
-          />
-        </li>
-      ))}
+    <VStack gap={4}>
+      <TodayStrip {...today} nextLesson={nextLesson} onStart={() => nextLesson && onSelect(nextLesson.id)} />
+      {content}
     </VStack>
   );
 }
@@ -953,7 +1053,7 @@ function UserLessonList({
             />
           </HStack>
           {deleteFailedId === lesson.id && (
-            <Text as="p" color="primary" xstyle={appStyles.error}>
+            <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
               Couldn't delete. Try again.
             </Text>
           )}
@@ -1054,7 +1154,7 @@ function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<vo
         </HStack>
         <Button label="Create" variant="primary" type="submit" />
         {error && (
-          <Text as="p" color="primary" xstyle={appStyles.error}>
+          <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
             {error}
           </Text>
         )}
@@ -1084,6 +1184,7 @@ function SaveToReview({
   const [isSaving, setIsSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const isSavingRef = useRef(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const showToast = useToast();
 
   const undo = async (tombstone: VocabCard, dismiss: () => void) => {
@@ -1095,6 +1196,8 @@ function SaveToReview({
     } catch {
       showToast({ body: "Couldn't undo. Try again." });
     }
+    // The dismissed toast took the focused Undo with it; the toggle it undid is the next target.
+    buttonRef.current?.focus();
   };
 
   const toggle = async () => {
@@ -1126,6 +1229,7 @@ function SaveToReview({
   return (
     <>
       <Button
+        ref={buttonRef}
         label={saved ? "Saved" : label}
         aria-label={saved ? "Saved, remove from review deck" : undefined}
         variant="ghost"
@@ -1135,7 +1239,7 @@ function SaveToReview({
         onClick={() => void toggle()}
       />
       {failed && (
-        <Text as="p" color="primary" xstyle={appStyles.error}>
+        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
           Couldn't save. Try again.
         </Text>
       )}
@@ -1262,6 +1366,7 @@ function WordPanel({
           label="Define"
           variant="secondary"
           isDisabled={lookup === "pending"}
+          tooltip={lookup === "pending" ? "Looking up…" : undefined}
           onClick={() => void define()}
         />
         <Link
@@ -1273,18 +1378,35 @@ function WordPanel({
           Hear it on YouGlish
         </Link>
       </HStack>
-      {lookup === "pending" && <Text as="p" type="supporting">Looking up…</Text>}
-      {lookup === null && <Text as="p" type="supporting">No definition</Text>}
-      {lookup === "unreachable" && (
-        <Text as="p" type="supporting">Couldn't reach the dictionary. Check your connection.</Text>
-      )}
-      {typeof lookup === "object" && lookup !== null && (
-        <Text as="p">
-          {lookup.phonetic && `${lookup.phonetic} · `}
-          <Text weight="semibold">{lookup.partOfSpeech}</Text> — {lookup.definition}
-        </Text>
-      )}
+      <Status>
+        {lookup === "pending" && <Text as="p" type="supporting">Looking up…</Text>}
+        {lookup === null && <Text as="p" type="supporting">No definition</Text>}
+        {lookup === "unreachable" && (
+          <Text as="p" type="supporting">Couldn't reach the dictionary. Check your connection.</Text>
+        )}
+        {typeof lookup === "object" && lookup !== null && (
+          <Text as="p">
+            {lookup.phonetic && `${lookup.phonetic} · `}
+            <Text weight="semibold">{lookup.partOfSpeech}</Text> — {lookup.definition}
+          </Text>
+        )}
+      </Status>
     </VStack>
+  );
+}
+
+// Word cards store `${sentence} — ${vi}` (see LessonDetail). Only library lessons have Vietnamese:
+// user lessons keep vi empty, and library text has no " — ", so the split is unambiguous.
+function CardBack({ card }: { card: VocabCard }) {
+  const split = card.back.lastIndexOf(" — ");
+  if (card.source.word === "" || card.source.lessonId.startsWith("user-") || split === -1) {
+    return card.back;
+  }
+  return (
+    <>
+      {card.back.slice(0, split + 3)}
+      <span lang="vi">{card.back.slice(split + 3)}</span>
+    </>
   );
 }
 
@@ -1347,7 +1469,7 @@ function ReviewDeck({
   }
 
   const rateErrorLine = rateError !== null && (
-    <Text as="p" color="primary" xstyle={appStyles.error}>
+    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
       {rateError}
     </Text>
   );
@@ -1387,12 +1509,13 @@ function ReviewDeck({
       } else {
         setRateError("This card changed on another device. Showing the latest.");
       }
-      setFocusTarget("prompt");
     } catch {
       setRateError("Couldn't save. Try again.");
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
+      // The disabled rating buttons drop focus, so it moves to the card, whether or not the rating saved.
+      setFocusTarget("prompt");
     }
   };
 
@@ -1402,7 +1525,7 @@ function ReviewDeck({
         <VStack gap={2}>
           <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>{card.front}</Text>
           {showAnswer && (
-            <Text as="p" xstyle={appStyles.answer} ref={answerRef} tabIndex={-1}>{card.back}</Text>
+            <Text as="p" xstyle={appStyles.answer} ref={answerRef} tabIndex={-1}><CardBack card={card} /></Text>
           )}
           {!showAnswer ? (
             <Button
@@ -1459,6 +1582,7 @@ interface LessonDetailProps {
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   completedLessons: Set<string>;
   markLessonComplete: (lessonId: string) => Promise<void>;
+  takeHeadingFocus: () => boolean;
 }
 
 function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string }) {
@@ -1467,6 +1591,7 @@ function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string 
   if (error) {
     return (
       <VStack gap={3}>
+        <ViewHeading takeFocus={props.takeHeadingFocus}>Lesson unavailable</ViewHeading>
         <ErrorMessage error={error} subject="lesson" />
         <Button label="Back to lessons" variant="ghost" onClick={props.onBack} />
       </VStack>
@@ -1491,6 +1616,7 @@ function LessonDetail({
   recordPractice,
   completedLessons,
   markLessonComplete,
+  takeHeadingFocus,
 }: LessonDetailProps & { lesson: Lesson }) {
   const completed = completedLessons.has(data.id);
   const [mode, setMode] = useState<LessonMode>("shadow");
@@ -1531,7 +1657,14 @@ function LessonDetail({
     }
   };
   const video = useYouTubePlayer(data.videoId, () => stopMedia({ keepVideo: true }));
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Opening and closing the disclosure disables or removes the focused control, so focus moves across.
+  const disclosureFocus = useRef<"enable" | "toggle" | null>(null);
+  const takeDisclosureFocus = (target: "enable" | "toggle") => (element: HTMLElement | null) => {
+    if (element && disclosureFocus.current === target && !element.hasAttribute("disabled")) {
+      disclosureFocus.current = null;
+      element.focus();
+    }
+  };
   // Each sentence and mode counts once per lesson visit; retries are not counted.
   const practiced = useRef(new Set<string>());
   const practice = (sentenceId: string, mode: PracticeMode) => {
@@ -1542,10 +1675,6 @@ function LessonDetail({
     practiced.current.add(key);
     void recordPractice({ newCard: false });
   };
-
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -1565,22 +1694,24 @@ function LessonDetail({
         </HStack>
       </HStack>
       <VStack gap={1}>
-        <Heading level={2} ref={headingRef} tabIndex={-1}>{data.title}</Heading>
+        <ViewHeading takeFocus={takeHeadingFocus}>{data.title}</ViewHeading>
         <Text type="supporting">Level {data.level}</Text>
       </VStack>
       {data.videoId && (
         <VStack gap={1}>
           <div ref={video.containerRef} className={stylex.props(appStyles.video).className} />
-          {video.status === "loading" && (
-            <Text as="p" type="supporting">
-              Loading video…
-            </Text>
-          )}
-          {video.status === "failed" && (
-            <Text as="p" color="primary" xstyle={appStyles.error}>
-              The video couldn't load. You can keep practising with Listen.
-            </Text>
-          )}
+          <Status>
+            {video.status === "loading" && (
+              <Text as="p" type="supporting">
+                Loading video…
+              </Text>
+            )}
+            {video.status === "failed" && (
+              <Text as="p" color="primary" xstyle={appStyles.error}>
+                The video couldn't load. You can keep practising with Listen.
+              </Text>
+            )}
+          </Status>
           <Text as="p" type="supporting">
             Video from YouTube; playing it connects to YouTube.
           </Text>
@@ -1590,13 +1721,15 @@ function LessonDetail({
         label={completed ? "Completed" : "Mark complete"}
         variant="secondary"
         isDisabled={completed}
+        // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+        tooltip={completed ? "You completed this lesson" : undefined}
         onClick={() => {
           setCompleteFailed(false);
           markLessonComplete(data.id).catch(() => setCompleteFailed(true));
         }}
       />
       {completeFailed && (
-        <Text as="p" color="primary" xstyle={appStyles.error}>
+        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
           Couldn't save. Try again.
         </Text>
       )}
@@ -1643,11 +1776,13 @@ function LessonDetail({
               onClick={() => setShowVietnamese((shown) => !shown)}
             />
             <ToggleButton
+              ref={takeDisclosureFocus("toggle")}
               label="Pronunciation check"
               isPressed={pronunciationSupported && pronunciationCheck}
               isDisabled={!pronunciationSupported || disclosureOpen}
               onPressedChange={(pressed) => {
                 if (pressed) {
+                  disclosureFocus.current = "enable";
                   setDisclosureOpen(true);
                 } else {
                   localStorage.removeItem(PRONUNCIATION_CHECK_KEY);
@@ -1673,15 +1808,24 @@ function LessonDetail({
             </Text>
             <HStack gap={1}>
               <Button
+                ref={takeDisclosureFocus("enable")}
                 label="Enable"
                 variant="primary"
                 onClick={() => {
                   localStorage.setItem(PRONUNCIATION_CHECK_KEY, "on");
                   setPronunciationCheck(true);
+                  disclosureFocus.current = "toggle";
                   setDisclosureOpen(false);
                 }}
               />
-              <Button label="Cancel" variant="ghost" onClick={() => setDisclosureOpen(false)} />
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onClick={() => {
+                  disclosureFocus.current = "toggle";
+                  setDisclosureOpen(false);
+                }}
+              />
             </HStack>
           </VStack>
         </Card>
@@ -1730,7 +1874,7 @@ function LessonDetail({
                   )}
                   {showVietnamese && (
                     <Text as="p" type="supporting">
-                      {sentence.vi}
+                      <span lang="vi">{sentence.vi}</span>
                     </Text>
                   )}
                   {showTranscript && selectedWord?.sentenceId === sentence.id && (
@@ -1840,18 +1984,28 @@ export function App() {
   const syncRef = useRef<SyncScheduler | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const returnFocusId = useRef<string | null>(null);
+  const headingFocus = useRef(false);
+  const userLessonsHeading = useRef<HTMLHeadingElement>(null);
   const [storageKept, setStorageKept] = useState<boolean | null>(null);
   const persistRequested = useRef(false);
 
   // A pending return focus is dropped once the user moves on, so a late row mount cannot steal focus.
   const showView = (nextView: "library" | "review") => {
     returnFocusId.current = null;
+    headingFocus.current = true;
     setView(nextView);
   };
 
   const select = (next: { kind: "library"; id: string } | { kind: "user"; lesson: Lesson }) => {
     returnFocusId.current = null;
+    headingFocus.current = true;
     setSelected(next);
+  };
+
+  const takeHeadingFocus = () => {
+    const take = headingFocus.current;
+    headingFocus.current = false;
+    return take;
   };
 
   const takeReturnFocus = (id: string) => {
@@ -1960,6 +2114,8 @@ export function App() {
       return;
     }
     await reloadUserLessons();
+    // The deleted row took the focused Delete with it.
+    userLessonsHeading.current?.focus();
   };
 
   const exportBackup = async () => {
@@ -2008,6 +2164,7 @@ export function App() {
   const detailProps: LessonDetailProps = {
     onBack: () => {
       returnFocusId.current = selected?.kind === "user" ? selected.lesson.id : (selected?.id ?? null);
+      headingFocus.current = false;
       setSelected(null);
     },
     savedCardIds: deck.savedCardIds,
@@ -2017,39 +2174,34 @@ export function App() {
     recordPractice: progress.recordPractice,
     completedLessons: progress.completedLessons,
     markLessonComplete: progress.markLessonComplete,
+    takeHeadingFocus,
   };
 
   return (
     <Theme theme={neutralTheme}>
-      <main className={stylex.props(appStyles.page).className}>
+      <div className={stylex.props(appStyles.page).className}>
         <div className={stylex.props(appStyles.content).className}>
           <VStack gap={4}>
-            <VStack gap={1} xstyle={appStyles.header}>
-              <Heading level={1}>
-                {view === "library" ? "Lesson library" : "Review deck"}
-              </Heading>
-              <Text type="large">
-                {view === "library"
-                  ? "Choose a lesson to practise reading and speaking."
-                  : "Review saved sentences with spaced repetition."}
-              </Text>
+            <VStack as="header" gap={1} xstyle={appStyles.header}>
               <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
                 <Badge
                   label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
                   variant="info"
                 />
-                <Badge label={`${progress.xp} XP`} variant="info" />
+                <HStack as="span" gap={1} align="center" role="status" xstyle={appStyles.shadowingControls}>
+                  <Badge label={`${progress.xp} XP`} variant="info" />
+                  <Badge
+                    label={`Goal ${progress.actionsToday}/${dailyGoal}`}
+                    variant={goalMet ? "success" : "info"}
+                  />
+                </HStack>
                 <Badge label={`Freezes ${progress.freezes}/2`} variant="info" />
                 <Badge
                   label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
                   variant={progress.practicedToday ? "success" : "info"}
                 />
-                <Badge
-                  label={`Goal ${progress.actionsToday}/${dailyGoal}`}
-                  variant={goalMet ? "success" : "info"}
-                />
                 <ToggleButtonGroup
-                  label="Daily goal"
+                  label="Daily goal: practice actions per day"
                   value={dailyGoal}
                   onChange={(nextGoal) => {
                     if (nextGoal) {
@@ -2088,78 +2240,101 @@ export function App() {
                 </Text>
               )}
               {storageError && (
-                <Text as="p" color="primary" xstyle={appStyles.error}>
+                <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
                   Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
                 </Text>
               )}
               {backupError && (
-                <Text as="p" color="primary" xstyle={appStyles.error}>
+                <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
                   Backup error: {backupError}
                 </Text>
               )}
-              {syncMessage && (
-                <Text as="p" color="primary" xstyle={appStyles.error}>
-                  {syncMessage}
-                </Text>
-              )}
+              <Status>
+                {syncMessage && (
+                  <Text as="p" color="primary" xstyle={appStyles.error}>
+                    {syncMessage}
+                  </Text>
+                )}
+              </Status>
               <AccountArea auth={auth} />
             </VStack>
-            <ToggleButtonGroup
-              label="App view"
-              value={view}
-              onChange={(nextView) => {
-                if (nextView) {
-                  showView(nextView as "library" | "review");
-                }
-              }}
-              xstyle={appStyles.viewToggle}
-            >
-              <ToggleButton value="library" label="Library" />
-              <ToggleButton value="review" label="Review" />
-            </ToggleButtonGroup>
-            {view === "review" ? (
-              <VStack gap={2}>
-                <Badge label={`${reviewDeck.length} due`} variant="info" />
-                <ReviewDeck
-                  due={reviewDeck}
-                  hiddenNew={deck.due.length - reviewDeck.length}
-                  nextDueInMinutes={deck.nextDueInMinutes}
-                  hasCards={deck.savedCardIds.size > 0}
-                  loading={deck.loading}
-                  loadFailed={deck.error !== null}
-                  review={deck.review}
-                  recordPractice={progress.recordPractice}
-                  onGoToLibrary={() => showView("library")}
-                />
-              </VStack>
-            ) : selected === null ? (
-              <VStack gap={4}>
-                <LessonList
-                  onSelect={(id) => select({ kind: "library", id })}
-                  completedLessons={progress.completedLessons}
-                  takeFocus={takeReturnFocus}
-                />
+            <nav aria-label="Views" className={stylex.props(appStyles.viewToggle).className}>
+              <ToggleButtonGroup
+                label="App view"
+                value={view}
+                onChange={(nextView) => {
+                  if (nextView) {
+                    showView(nextView as "library" | "review");
+                  }
+                }}
+              >
+                <ToggleButton value="library" label="Library" />
+                <ToggleButton value="review" label="Review" />
+              </ToggleButtonGroup>
+            </nav>
+            <VStack as="main" gap={4}>
+              {(view === "review" || selected === null) && (
+                <VStack gap={1}>
+                  <ViewHeading takeFocus={takeHeadingFocus}>
+                    {view === "library" ? "Lesson library" : "Review deck"}
+                  </ViewHeading>
+                  <Text type="large">
+                    {view === "library"
+                      ? "Choose a lesson to practise reading and speaking."
+                      : "Review saved sentences with spaced repetition."}
+                  </Text>
+                </VStack>
+              )}
+              {view === "review" ? (
                 <VStack gap={2}>
-                  <Heading level={2}>Your lessons</Heading>
-                  <UserLessonList
-                    lessons={userLessons}
-                    onSelect={(lesson) => select({ kind: "user", lesson })}
-                    onDelete={(lesson) => void deleteLesson(lesson)}
-                    deleteFailedId={deleteFailedId}
-                    completedLessons={progress.completedLessons}
-                    takeFocus={takeReturnFocus}
+                  <Badge label={`${reviewDeck.length} due`} variant="info" />
+                  <ReviewDeck
+                    due={reviewDeck}
+                    hiddenNew={deck.due.length - reviewDeck.length}
+                    nextDueInMinutes={deck.nextDueInMinutes}
+                    hasCards={deck.savedCardIds.size > 0}
+                    loading={deck.loading}
+                    loadFailed={deck.error !== null}
+                    review={deck.review}
+                    recordPractice={progress.recordPractice}
+                    onGoToLibrary={() => showView("library")}
                   />
                 </VStack>
-                <ImportTextForm onCreate={createLesson} />
-              </VStack>
-            ) : selected.kind === "library" ? (
-              <LibraryLessonDetail id={selected.id} {...detailProps} />
-            ) : (
-              <LessonDetail lesson={selected.lesson} {...detailProps} />
-            )}
+              ) : selected === null ? (
+                <VStack gap={4}>
+                  <LessonList
+                    onSelect={(id) => select({ kind: "library", id })}
+                    completedLessons={progress.completedLessons}
+                    takeFocus={takeReturnFocus}
+                    today={{
+                      due: deck.error === null ? reviewDeck.length : null,
+                      actionsToday: progress.actionsToday,
+                      dailyGoal,
+                      onReview: () => showView("review"),
+                    }}
+                  />
+                  <VStack gap={2}>
+                    <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
+                    <UserLessonList
+                      lessons={userLessons}
+                      onSelect={(lesson) => select({ kind: "user", lesson })}
+                      onDelete={(lesson) => void deleteLesson(lesson)}
+                      deleteFailedId={deleteFailedId}
+                      completedLessons={progress.completedLessons}
+                      takeFocus={takeReturnFocus}
+                    />
+                  </VStack>
+                  <ImportTextForm onCreate={createLesson} />
+                </VStack>
+              ) : selected.kind === "library" ? (
+                <LibraryLessonDetail id={selected.id} {...detailProps} />
+              ) : (
+                <LessonDetail lesson={selected.lesson} {...detailProps} />
+              )}
+            </VStack>
           </VStack>
         </div>
-      </main>
+      </div>
     </Theme>
   );
 }
