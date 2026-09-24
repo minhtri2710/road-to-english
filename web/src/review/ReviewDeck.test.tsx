@@ -6,7 +6,9 @@ import * as vocab from "../lib/vocab";
 import { createCard, Rating, State, type VocabCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
 import { getAllCards, putCard } from "../lib/vocabStore";
+import * as progressStore from "../lib/progressStore";
 import {
+  actionsToday,
   buttonsNamed,
   click,
   harnessAct,
@@ -348,5 +350,241 @@ describe("ReviewDeck", () => {
     await rate(container, "Again");
     await waitForCondition(hasText(container, "Rated Again"));
     expect(buttonsNamed(container, "Listen")).toHaveLength(0);
+  });
+
+  it("renders a sentence card's Vietnamese in Vietnamese and a user lesson's notes as they are", async () => {
+    await putCard(
+      createCard(
+        vocab.sentenceCard("greetings-basics", { id: "s1", text: "I like tea.", vi: "Tôi thích trà.", notes: "like + noun" }),
+        new Date(Date.now() - 1_000),
+      ),
+    );
+    await putCard(createCard(vocab.sentenceCard("user-1", { id: "s1", text: "Hi.", vi: "", notes: "a greeting" }), new Date()));
+    const { container } = await renderApp();
+    await click(container, "Review");
+    await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+
+    await click(container, "Show answer");
+    const answer = () => document.activeElement as HTMLElement;
+    expect(answer().textContent).toBe("Tôi thích trà. — like + noun");
+    expect(Array.from(answer().querySelectorAll("[lang]")).map((span) => [span.getAttribute("lang"), span.textContent])).toEqual([
+      ["vi", "Tôi thích trà."],
+    ]);
+
+    await rate(container, "Good");
+    await waitForCondition(settledOn(container, "Hi."));
+    await click(container, "Show answer");
+    expect(answer().textContent).toBe("a greeting");
+    expect(answer().querySelector("[lang]")).toBeNull();
+  });
+
+  describe("Listen first", () => {
+    const LISTEN_FIRST_KEY = "road-to-english.listenFirst";
+    const toggle = (container: HTMLElement) => buttonsNamed(container, "Listen first")[0]!;
+
+    it("hides the front until Show answer, speaks each new card once, and replays on Listen and R", async () => {
+      const speech = installSpeechFakes();
+      const { container } = await openReview("alpha", "bravo");
+      expect(toggle(container).getAttribute("aria-pressed")).toBe("false");
+      expect(speech.spoken).toHaveLength(0);
+
+      await click(container, "Listen first");
+      expect(toggle(container).getAttribute("aria-pressed")).toBe("true");
+      expect(localStorage.getItem(LISTEN_FIRST_KEY)).toBe("on");
+      expect(prompt(container).textContent).toBe("Listen and recall the card.");
+      expect(container.textContent).not.toContain("alpha");
+      expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha"]);
+
+      await click(container, "Listen");
+      await focusPrompt(container);
+      await press("r");
+      expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha", "alpha", "alpha"]);
+      expect(container.textContent).not.toContain("alpha");
+
+      await press(" ");
+      expect(prompt(container).textContent).toBe("alpha");
+      expect(document.activeElement?.textContent).toBe("alpha back");
+      expect(speech.spoken).toHaveLength(3);
+
+      await rate(container, "Good");
+      await waitForCondition(settledOn(container, "Listen and recall the card."));
+      expect(container.textContent).not.toContain("bravo");
+      expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha", "alpha", "alpha", "bravo"]);
+      expect(document.activeElement).toBe(prompt(container));
+
+      await click(container, "Listen first");
+      expect(localStorage.getItem(LISTEN_FIRST_KEY)).toBeNull();
+      expect(prompt(container).textContent).toBe("bravo");
+      expect(speech.spoken).toHaveLength(4);
+    });
+
+    it("keeps the preference across remounts", async () => {
+      const speech = installSpeechFakes();
+      const first = await openReview("alpha");
+      await click(first.container, "Listen first");
+      await first.unmount();
+
+      const { container } = await renderApp();
+      await click(container, "Review");
+      await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+      expect(toggle(container).getAttribute("aria-pressed")).toBe("true");
+      expect(prompt(container).textContent).toBe("Listen and recall the card.");
+      expect(speech.spoken.at(-1)?.text).toBe("alpha");
+    });
+
+    it("is disabled with the reason, and cards show their text, without speech synthesis", async () => {
+      removeBrowserGlobals();
+      localStorage.setItem(LISTEN_FIRST_KEY, "on");
+      const { container } = await openReview("alpha");
+      expect(toggle(container).disabled).toBe(true);
+      expect(toggle(container).getAttribute("aria-pressed")).toBe("false");
+      expect(container.textContent).toContain("Listen first disabled: speech synthesis is not supported in this browser.");
+      expect(prompt(container).textContent).toBe("alpha");
+    });
+  });
+
+  describe("Say it", () => {
+    class FakeRecognition {
+      static instances: FakeRecognition[] = [];
+      lang = "";
+      continuous = true;
+      interimResults = true;
+      maxAlternatives = 5;
+      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.instances.push(this);
+      }
+    }
+
+    function consent({ on = true, supported = true } = {}) {
+      if (on) localStorage.setItem("road-to-english.pronunciationCheck", "on");
+      FakeRecognition.instances = [];
+      if (supported) vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    }
+
+    async function hear(transcript: string) {
+      await harnessAct(async () => {
+        const recognition = FakeRecognition.instances.at(-1)!;
+        recognition.onresult?.({ results: [[{ transcript }]] });
+        recognition.onend?.();
+      });
+    }
+
+    it("is offered only with the pronunciation consent on and recognition supported", async () => {
+      consent({ on: false });
+      const off = await openReview("alpha");
+      expect(buttonsNamed(off.container, "Say it")).toHaveLength(0);
+      await off.unmount();
+      await resetApp();
+
+      consent({ supported: false });
+      const unsupported = await openReview("alpha");
+      expect(buttonsNamed(unsupported.container, "Say it")).toHaveLength(0);
+      await unsupported.unmount();
+      await resetApp();
+
+      consent();
+      const { container } = await openReview("alpha");
+      expect(buttonsNamed(container, "Say it")).toHaveLength(1);
+      await click(container, "Show answer");
+      expect(buttonsNamed(container, "Say it")).toHaveLength(0);
+    });
+
+    it("shows what the browser heard against the front, never the back, and Try again repeats it", async () => {
+      consent();
+      const { container } = await openReview("good morning");
+      await click(container, "Say it");
+      expect(buttonsNamed(container, "Listening…")[0]?.getAttribute("aria-disabled")).toBe("true");
+      expect(FakeRecognition.instances).toHaveLength(1);
+
+      await hear("good evening");
+      expect(container.textContent).toContain("What the browser heard: good evening");
+      expect(container.textContent).toContain("The browser matched 1 of 2 words");
+      expect(container.textContent).toContain('morning (you said "evening")');
+      expect(container.textContent).not.toContain("good morning back");
+
+      await click(container, "Try again");
+      expect(container.textContent).not.toContain("What the browser heard");
+      expect(document.activeElement).toBe(buttonsNamed(container, "Say it")[0]);
+      await click(container, "Say it");
+      expect(FakeRecognition.instances).toHaveLength(2);
+    });
+
+    it("shows a recognition failure and Try again clears it", async () => {
+      consent();
+      const { container } = await openReview("alpha");
+      await click(container, "Say it");
+      await harnessAct(async () => {
+        FakeRecognition.instances.at(-1)!.onerror?.({ error: "audio-capture" });
+      });
+      expect(container.textContent).toContain("No microphone was found. Connect a microphone and try again.");
+      await click(container, "Try again");
+      expect(container.textContent).not.toContain("No microphone was found.");
+      expect(buttonsNamed(container, "Say it")).toHaveLength(1);
+    });
+
+    it("drops the result on Show answer and on the next card, and aborts a pending recognition on Show answer and on leaving", async () => {
+      consent();
+      const { container } = await openReview("alpha", "bravo", "charlie");
+      await click(container, "Say it");
+      await hear("alpha");
+      expect(container.textContent).toContain("What the browser heard: alpha");
+      await click(container, "Show answer");
+      expect(container.textContent).not.toContain("What the browser heard");
+      await rate(container, "Good");
+      await waitForCondition(settledOn(container, "bravo"));
+      expect(container.textContent).not.toContain("What the browser heard");
+      expect(buttonsNamed(container, "Try again")).toHaveLength(0);
+      expect(buttonsNamed(container, "Say it")).toHaveLength(1);
+
+      await click(container, "Say it");
+      const onReveal = FakeRecognition.instances.at(-1)!;
+      await click(container, "Show answer");
+      expect(onReveal.abort).toHaveBeenCalledOnce();
+      expect(container.textContent).not.toContain("Speech recognition stopped");
+      await rate(container, "Good");
+      await waitForCondition(settledOn(container, "charlie"));
+      expect(buttonsNamed(container, "Say it")).toHaveLength(1);
+
+      await click(container, "Say it");
+      const onLeave = FakeRecognition.instances.at(-1)!;
+      await click(container, "Library");
+      expect(onLeave.abort).toHaveBeenCalledOnce();
+    });
+
+    // PINNED: Say it informs only.
+    it("never changes the card's schedule, due date or rating count, or the day's practice and XP", async () => {
+      consent();
+      const { container } = await openReview("alpha");
+      const saveReview = vi.spyOn(vocabStore, "saveReview");
+      const practice = vi.spyOn(progressStore, "recordPractice");
+      const [before] = await getAllCards();
+      const actionsBefore = await actionsToday();
+
+      await click(container, "Say it");
+      await hear("alpha");
+      await waitForCondition(hasText(container, "The browser matched 1 of 1 words"));
+      await click(container, "Try again");
+      await click(container, "Say it");
+      await harnessAct(async () => {
+        FakeRecognition.instances.at(-1)!.onerror?.({ error: "no-speech" });
+      });
+      await harnessAct(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const [after] = await getAllCards();
+      expect(after).toEqual(before);
+      expect(after!.fsrs.due).toEqual(before!.fsrs.due);
+      expect(after!.fsrs.reps).toBe(0);
+      expect(saveReview).not.toHaveBeenCalled();
+      expect(practice).not.toHaveBeenCalled();
+      expect(await actionsToday()).toBe(actionsBefore);
+      expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
+    });
   });
 });

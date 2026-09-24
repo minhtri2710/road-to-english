@@ -20,7 +20,7 @@ import { sharedStyles } from "../components/styles";
 import { useLessons } from "../hooks/lessons";
 import { DAILY_GOALS, type DailyGoal } from "../hooks/useDailyGoal";
 import type { LessonRoute } from "../hooks/useLastLesson";
-import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
+import { filterByLevel, LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 import { useWelcome } from "../hooks/useWelcome";
 import { MAX_FREEZES } from "../lib/progress";
 
@@ -361,7 +361,7 @@ export function LessonList({
     onSettled(!loading);
     return () => onSettled(false);
   }, [loading]);
-  const shown = levelFilter === "All" ? data : data?.filter((lesson) => lesson.level === levelFilter);
+  const shown = filterByLevel(data, levelFilter);
   const unfinished = (lesson: { id: string }) => !completedLessons.has(lesson.id);
   // The last opened lesson while it still exists unfinished, else the first unfinished library lesson in the level.
   const lastPool: { id: string; title: string }[] | undefined = lastLesson?.view === "lesson" ? data ?? undefined : ownLessons;

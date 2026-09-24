@@ -7,14 +7,17 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Kbd } from "@astryxdesign/core/Kbd";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
+import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
-import { Alert } from "../components/feedback";
+import { Alert, Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
+import { WordDiffResult } from "../lesson/SentenceQuiz";
+import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
+import { recognitionSupported, recognizeOnce } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import {
-  CARD_BACK_SEPARATOR,
   formatInterval,
   GRADES,
   NEW_CARDS_PER_DAY,
@@ -60,6 +63,15 @@ const styles = stylex.create({
 
 // No lesson WPM exists for a card; 110 sits mid-way in the seed lessons' 80-150 WPM range.
 const LISTEN_WPM = 110;
+
+const LISTEN_FIRST_KEY = "road-to-english.listenFirst";
+
+// A spoken attempt at the current card: informs only, never rates or records practice.
+type SayIt =
+  | { status: "idle" }
+  | { status: "listening" }
+  | { status: "heard"; transcript: string }
+  | { status: "failed"; message: string };
 
 const GRADE_NAMES: Record<Grade, string> = {
   [Rating.Again]: "Again",
@@ -131,8 +143,9 @@ function CardBack({ card }: { card: VocabCard }) {
   }
   return (
     <>
-      {`${split.sentence}${CARD_BACK_SEPARATOR}`}
+      {split.before}
       <span lang="vi">{split.vi}</span>
+      {split.after}
     </>
   );
 }
@@ -173,6 +186,15 @@ export function ReviewDeck({
   const card = due[0];
   const cardTurn = card ? `${card.id}@${card.updatedAt}` : null;
   const showAnswer = cardTurn !== null && revealedFor === cardTurn;
+  const canSpeak = speechSupported();
+  const [listenFirstPref, setListenFirstPref] = useState(() => readPref(LISTEN_FIRST_KEY) === "on");
+  const listenFirst = canSpeak && listenFirstPref;
+  const canSayIt = readPref(PRONUNCIATION_CHECK_KEY) === "on" && recognitionSupported();
+  // The card turn a Say it attempt belongs to; a new turn or Show answer drops it.
+  const [sayIt, setSayIt] = useState<{ turn: string | null; state: SayIt }>({ turn: null, state: { status: "idle" } });
+  const sayItState: SayIt = sayIt.turn === cardTurn && !showAnswer ? sayIt.state : { status: "idle" };
+  const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
+  const sayItRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (focusTarget === null) {
@@ -183,6 +205,21 @@ export function ReviewDeck({
   }, [focusTarget]);
 
   useEffect(() => stopListening, [cardTurn]);
+
+  // Listen first speaks each card as it is first shown, or as the switch turns on.
+  useEffect(() => {
+    if (card && listenFirst && !showAnswer) {
+      listen(card.front);
+    }
+  }, [cardTurn, listenFirst, showAnswer]);
+
+  useEffect(
+    () => () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    },
+    [cardTurn, showAnswer],
+  );
 
   // The interval labels count from now, so they re-render once a minute while the answer is shown.
   const [, refreshIntervals] = useReducer((ticks: number) => ticks + 1, 0);
@@ -210,8 +247,6 @@ export function ReviewDeck({
   }
 
   const rateErrorLine = rateError !== null && <Alert>{rateError}</Alert>;
-
-  const canSpeak = speechSupported();
 
   if (!card) {
     return (
@@ -274,6 +309,32 @@ export function ReviewDeck({
     }
   };
 
+  const startSayIt = () => {
+    stopListening();
+    const turn = cardTurn;
+    setSayIt({ turn, state: { status: "listening" } });
+    const recognition = recognizeOnce();
+    recognitionRef.current = recognition;
+    recognition.result.then(
+      (transcript) => {
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        setSayIt({ turn, state: { status: "heard", transcript } });
+      },
+      (error: Error) => {
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        setSayIt({ turn, state: error.name === "AbortError" ? { status: "idle" } : { status: "failed", message: error.message } });
+      },
+    );
+  };
+
+  // Try again removes itself, so focus goes back to Say it.
+  const sayItAgain = () => {
+    setSayIt({ turn: cardTurn, state: { status: "idle" } });
+    sayItRef.current?.focus();
+  };
+
   const reveal = () => {
     setRevealedFor(cardTurn);
     setFocusTarget("answer");
@@ -309,9 +370,28 @@ export function ReviewDeck({
 
   return (
     <VStack gap={3}>
+      <VStack gap={1}>
+        <ToggleButton
+          label="Listen first"
+          isPressed={listenFirst}
+          isDisabled={!canSpeak}
+          xstyle={sharedStyles.viewToggle}
+          onPressedChange={(pressed) => {
+            writePref(LISTEN_FIRST_KEY, pressed ? "on" : null);
+            setListenFirstPref(pressed);
+          }}
+        />
+        {!canSpeak && (
+          <Text as="p" type="supporting">
+            Listen first disabled: speech synthesis is not supported in this browser.
+          </Text>
+        )}
+      </VStack>
       <Card padding={3} xstyle={styles.reviewCard} onKeyDown={onKeyDown}>
         <VStack gap={2}>
-          <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>{card.front}</Text>
+          <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>
+            {listenFirst && !showAnswer ? "Listen and recall the card." : card.front}
+          </Text>
           {canSpeak && (
             <HStack gap={1} vAlign="center">
               <Button label="Listen" variant="secondary" aria-keyshortcuts="R" onClick={() => listen(card.front)} />
@@ -320,6 +400,39 @@ export function ReviewDeck({
           )}
           {showAnswer && (
             <Text as="p" xstyle={styles.answer} ref={answerRef} tabIndex={-1}><CardBack card={card} /></Text>
+          )}
+          {canSayIt && !showAnswer && (
+            <VStack gap={1}>
+              <Button
+                ref={sayItRef}
+                label={sayItState.status === "listening" ? "Listening…" : "Say it"}
+                variant="secondary"
+                xstyle={sharedStyles.viewToggle}
+                isDisabled={sayItState.status === "listening"}
+                tooltip={sayItState.status === "listening" ? "Say the card" : undefined}
+                onClick={startSayIt}
+              />
+              <Status>
+                {sayItState.status === "heard" && (
+                  <WordDiffResult
+                    text={card.front}
+                    answer={sayItState.transcript}
+                    verb="said"
+                    targetWpm={LISTEN_WPM}
+                    speed={1}
+                    stopMedia={stopListening}
+                  />
+                )}
+                {sayItState.status === "failed" && (
+                  <Text as="p" color="primary" xstyle={sharedStyles.error}>
+                    {sayItState.message}
+                  </Text>
+                )}
+              </Status>
+              {(sayItState.status === "heard" || sayItState.status === "failed") && (
+                <Button label="Try again" variant="ghost" xstyle={sharedStyles.viewToggle} onClick={sayItAgain} />
+              )}
+            </VStack>
           )}
           {!showAnswer ? (
             <HStack gap={1} vAlign="center">

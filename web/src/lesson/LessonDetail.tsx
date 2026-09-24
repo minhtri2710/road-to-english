@@ -17,7 +17,7 @@ import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import { splitWords } from "../lib/dictation";
-import { readPref, writePref } from "../lib/prefs";
+import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "../lib/vocab";
@@ -38,8 +38,6 @@ const styles = stylex.create({
 });
 
 const SPEEDS = ["0.5", "0.75", "1"] as const;
-
-const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";
 
 function readPronunciationCheck(): boolean {
   return readPref(PRONUNCIATION_CHECK_KEY) === "on";
@@ -505,8 +503,9 @@ export function LessonDetail({
           {...summaryProps}
         />
       )}
+      {/* Only a stored completion is announced; a failed save announces through its Alert. */}
       <VisuallyHidden>
-        <Status>{allAttempted && "Lesson complete."}</Status>
+        <Status>{allAttempted && completed && "Lesson complete."}</Status>
       </VisuallyHidden>
     </VStack>
   );

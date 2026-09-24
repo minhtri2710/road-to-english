@@ -315,6 +315,37 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
     await inspect();
   }],
+  ["review with Listen first, before and after Show answer", async (page, inspect) => {
+    await openReviewWithDueCard(page);
+    await page.getByRole("button", { name: "Listen first" }).click();
+    await expect(page.getByText("Listen and recall the card.")).toBeVisible();
+    await inspect();
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
+    await inspect();
+  }],
+  ["review Say it result", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("button", { name: "Pronunciation check" }).click();
+    await page.getByRole("button", { name: "Enable" }).click();
+    await page.getByRole("button", { name: "morning", exact: true }).click();
+    await page.getByRole("button", { name: "Save word" }).click();
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await page.evaluate(() => {
+      (window as unknown as { __speechTranscript: string }).__speechTranscript = "evening";
+    });
+    await page.getByRole("button", { name: "Say it" }).click();
+    await expect(page.getByText("The browser matched 0 of 1 words")).toBeVisible();
+    await inspect();
+  }],
+  ["review with a sentence card's Vietnamese back", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("button", { name: "Save to review" }).first().click();
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await expect(page.locator('[lang="vi"]')).toBeVisible();
+    await inspect();
+  }],
   ["review recap with a card rated Again", async (page, inspect) => {
     await openReviewWithDueCard(page);
     await page.getByRole("button", { name: "Show answer" }).click();

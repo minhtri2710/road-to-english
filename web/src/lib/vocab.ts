@@ -53,34 +53,46 @@ export function cardId({ lessonId, sentenceId, word }: CardSource): string {
   return word === "" ? `${lessonId}:${sentenceId}` : `${lessonId}:${sentenceId}:${word}`;
 }
 
-// A sentence card: the sentence text on the front, its notes on the back.
+export const CARD_BACK_SEPARATOR = " — ";
+
+// A sentence card: the sentence text on the front; on the back its Vietnamese, when the lesson has
+// it, then its notes.
 export function sentenceCard(
   lessonId: string,
-  sentence: { id: string; text: string; notes?: string },
+  sentence: { id: string; text: string; vi: string; notes?: string },
 ): NewCard {
   return {
     front: sentence.text,
-    back: sentence.notes ?? "",
+    back: [sentence.vi, sentence.notes].filter(Boolean).join(CARD_BACK_SEPARATOR),
     source: { lessonId, sentenceId: sentence.id, word: "" },
   };
 }
-
-export const CARD_BACK_SEPARATOR = " — ";
 
 // A word card's back: its sentence, then the Vietnamese when the lesson has it.
 export function wordCardBack(sentence: string, vi: string): string {
   return vi ? `${sentence}${CARD_BACK_SEPARATOR}${vi}` : sentence;
 }
 
-// The Vietnamese part of a word card's back written by wordCardBack, or null when it has none.
-// Only library lessons have Vietnamese: user lessons keep vi empty, and library text has no
-// separator, so the split is unambiguous.
-export function splitCardBack(card: VocabCard): { sentence: string; vi: string } | null {
-  const split = card.back.lastIndexOf(CARD_BACK_SEPARATOR);
-  if (card.source.word === "" || card.source.lessonId.startsWith("user-") || split === -1) {
+// A card back split around its Vietnamese, or null when it has none. Only library lessons have
+// Vietnamese, never empty and never holding the separator: user lessons keep vi empty. So a word
+// card's Vietnamese follows its last separator, and a sentence card's runs to its first, or is the
+// whole back without notes.
+export function splitCardBack(card: VocabCard): { before: string; vi: string; after: string } | null {
+  if (card.source.lessonId.startsWith("user-")) {
     return null;
   }
-  return { sentence: card.back.slice(0, split), vi: card.back.slice(split + CARD_BACK_SEPARATOR.length) };
+  if (card.source.word === "") {
+    const end = card.back.indexOf(CARD_BACK_SEPARATOR);
+    return end === -1
+      ? { before: "", vi: card.back, after: "" }
+      : { before: "", vi: card.back.slice(0, end), after: card.back.slice(end) };
+  }
+  const start = card.back.lastIndexOf(CARD_BACK_SEPARATOR);
+  if (start === -1) {
+    return null;
+  }
+  const viStart = start + CARD_BACK_SEPARATOR.length;
+  return { before: card.back.slice(0, viStart), vi: card.back.slice(viStart), after: "" };
 }
 
 // The api MaxKeyBytes: the longest card id, in UTF-8 bytes, that sync accepts.

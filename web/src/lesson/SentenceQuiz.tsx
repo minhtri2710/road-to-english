@@ -83,11 +83,18 @@ export function WordDiffResult({
   };
   return (
     <VStack gap={1}>
-      <Text as="p" weight="semibold">
-        {matched === diff.length
-          ? `Correct: ${total} of ${total} words`
-          : `Not quite: ${matched} of ${total} words matched`}
-      </Text>
+      {verb === "said" ? (
+        <>
+          <Text as="p">What the browser heard: {answer}</Text>
+          <Text as="p" weight="semibold">The browser matched {matched} of {total} words</Text>
+        </>
+      ) : (
+        <Text as="p" weight="semibold">
+          {matched === diff.length
+            ? `Correct: ${total} of ${total} words`
+            : `Not quite: ${matched} of ${total} words matched`}
+        </Text>
+      )}
       <Text as="p">Reference: {text}</Text>
       <Text as="p">
         {diff.map((entry, index) => (

@@ -15,7 +15,8 @@ test("pronunciation check: disclosure, enable, wrong word, persists on reload", 
   });
   await page.getByRole("button", { name: "Check pronunciation" }).first().click();
   await expect(page.getByText('morning (you said "evening")')).toBeVisible();
-  await expect(page.getByText("Not quite")).toBeVisible();
+  await expect(page.getByText("What the browser heard: Good evening, how are you today?")).toBeVisible();
+  await expect(page.getByText("The browser matched 5 of 6 words")).toBeVisible();
 
   await page.reload();
   await openLibraryLesson(page, "Greetings & Basics");

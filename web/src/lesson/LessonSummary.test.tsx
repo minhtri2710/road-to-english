@@ -21,7 +21,7 @@ import {
   waitForCondition,
 } from "../test/app";
 import { installSpeechFakes } from "../test/browser";
-import { greetingsLesson, userLesson } from "../test/fixtures";
+import { deferred, greetingsLesson, userLesson } from "../test/fixtures";
 
 const [first, second, third] = greetingsLesson.sentences;
 
@@ -114,7 +114,35 @@ describe("lesson summary", () => {
     }
     await settle();
     expect(summary(container)).not.toBeNull();
+    expect(completionStatus(container)).toHaveLength(1);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it("announces completion only after the save succeeds: nothing while saving, only the failure, then Try again", async () => {
+    const gate = deferred<void>();
+    const save = vi.spyOn(progressStore, "markLessonComplete").mockImplementationOnce(async () => {
+      await gate.promise;
+      throw new Error("quota");
+    });
+    const { container } = await openGreetings();
+    for (const sentence of greetingsLesson.sentences) {
+      await answer(container, "dictation", sentence.id);
+    }
+    await waitForCondition(() => summary(container) !== null);
+    await settle();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(completionStatus(container)).toHaveLength(0);
+
+    await harnessAct(async () => {
+      gate.resolve();
+    });
+    await waitForCondition(hasText(container, "Couldn't save your progress."));
+    await settle();
+    expect(completionStatus(container)).toHaveLength(0);
+
+    await click(summary(container)!, "Try again");
+    await waitForCondition(hasText(container, "Completed"));
+    expect(completionStatus(container)).toHaveLength(1);
   });
 
   it("shows an Alert when the save fails and Try again retries it", async () => {
@@ -230,8 +258,7 @@ describe("lesson summary", () => {
     input.focus();
     expect(completionStatus(container)).toHaveLength(0);
     await submitInput(input, "anything");
-    await waitForCondition(() => summary(container) !== null);
-    expect(completionStatus(container)).toHaveLength(1);
+    await waitForCondition(() => completionStatus(container).length === 1);
     expect(document.activeElement).toBe(input);
     expect(summary(container)!.contains(document.activeElement)).toBe(false);
 

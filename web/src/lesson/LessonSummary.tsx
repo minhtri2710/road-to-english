@@ -9,7 +9,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import type { Lesson } from "../api/lessons";
 import { Alert } from "../components/feedback";
 import { useLessons } from "../hooks/lessons";
-import type { LevelFilter } from "../hooks/useLevelFilter";
+import { filterByLevel, type LevelFilter } from "../hooks/useLevelFilter";
 
 // The list the learner came from: the library under its level filter, or their own lessons.
 export type LessonSource = { view: "lesson"; levelFilter: LevelFilter } | { view: "my"; lessons: Lesson[] };
@@ -88,7 +88,7 @@ function LibraryNextLesson({
   openLesson: (id: string) => void;
 }) {
   const { data } = useLessons();
-  const shown = levelFilter === "All" ? data : data?.filter((lesson) => lesson.level === levelFilter);
+  const shown = filterByLevel(data, levelFilter);
   return <NextLesson lessonId={lessonId} lessons={shown ?? []} openLesson={openLesson} />;
 }
 

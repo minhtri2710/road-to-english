@@ -15,6 +15,7 @@ import {
   Rating,
   restoreCard,
   reviewCard,
+  sentenceCard,
   splitCardBack,
   State,
   wordCardBack,
@@ -280,19 +281,49 @@ describe("card words", () => {
   });
 });
 
-describe("word card backs", () => {
+describe("card backs", () => {
   const wordCard = (lessonId: string, back: string) =>
     createCard({ front: "tea", back, source: { lessonId, sentenceId: "s1", word: "tea" } }, now);
+  const savedSentence = (lessonId: string, sentence: { text: string; vi: string; notes?: string }) =>
+    createCard(sentenceCard(lessonId, { id: "s1", ...sentence }), now);
 
   it("splits the Vietnamese back out of what wordCardBack wrote", () => {
     const back = wordCardBack("I like tea.", "Tôi thích trà.");
-    expect(splitCardBack(wordCard("greetings-basics", back))).toEqual({ sentence: "I like tea.", vi: "Tôi thích trà." });
+    expect(splitCardBack(wordCard("greetings-basics", back))).toEqual({
+      before: "I like tea. — ",
+      vi: "Tôi thích trà.",
+      after: "",
+    });
   });
 
-  it("finds no Vietnamese without it, on a user lesson, or on a sentence card", () => {
+  it("finds no Vietnamese in a word card without it or on a user lesson", () => {
     expect(wordCardBack("I like tea.", "")).toBe("I like tea.");
     expect(splitCardBack(wordCard("greetings-basics", "I like tea."))).toBeNull();
     expect(splitCardBack(wordCard("user-1", wordCardBack("I like tea.", "x")))).toBeNull();
-    expect(splitCardBack(createCard({ ...input, back: wordCardBack("a", "b") }, now))).toBeNull();
+  });
+
+  it("backs a sentence card with its Vietnamese, then its notes", () => {
+    const card = savedSentence("greetings-basics", { text: "I like tea.", vi: "Tôi thích trà.", notes: "like + noun" });
+    expect(card.back).toBe("Tôi thích trà. — like + noun");
+    expect(splitCardBack(card)).toEqual({ before: "", vi: "Tôi thích trà.", after: " — like + noun" });
+  });
+
+  it("backs a sentence card without notes with its Vietnamese alone", () => {
+    const card = savedSentence("greetings-basics", { text: "I like tea.", vi: "Tôi thích trà." });
+    expect(card.back).toBe("Tôi thích trà.");
+    expect(splitCardBack(card)).toEqual({ before: "", vi: "Tôi thích trà.", after: "" });
+  });
+
+  // Library Vietnamese never holds the separator (and is never empty), so it ends at the first one.
+  it("keeps notes that hold the separator after the Vietnamese", () => {
+    const card = savedSentence("greetings-basics", { text: "I like tea.", vi: "Tôi thích trà.", notes: "a — b" });
+    expect(splitCardBack(card)).toEqual({ before: "", vi: "Tôi thích trà.", after: " — a — b" });
+  });
+
+  it("backs a user lesson's sentence card with its notes and finds no Vietnamese", () => {
+    const card = savedSentence("user-1", { text: "I like tea.", vi: "", notes: "like + noun" });
+    expect(card.back).toBe("like + noun");
+    expect(splitCardBack(card)).toBeNull();
+    expect(savedSentence("user-1", { text: "I like tea.", vi: "" }).back).toBe("");
   });
 });

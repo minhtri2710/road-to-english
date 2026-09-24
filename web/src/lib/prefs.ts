@@ -31,3 +31,6 @@ export function writePref(key: string, value: string | null): void {
     session.set(key, value);
   }
 }
+
+// "on" once the learner accepts the pronunciation check disclosure in a lesson; review reads it too.
+export const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";

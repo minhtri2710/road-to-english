@@ -91,3 +91,27 @@ for (const width of [360, 320]) {
     });
   });
 }
+
+test("Listen first hides the card front until Show answer and speaks it", async ({ page }) => {
+  await saveWords(page, ["morning"]);
+  const toggle = page.getByRole("button", { name: "Listen first" });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Listen and recall the card.")).toBeVisible();
+  await expect(page.getByText("morning", { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken.at(-1))).toBe("morning");
+
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await expect(page.getByText("morning", { exact: true })).toBeVisible();
+  await expect(page.getByText("Listen and recall the card.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
+});
+
+test("a saved sentence card shows the sentence's Vietnamese on its back", async ({ page }) => {
+  await openLibraryLesson(page, "Greetings & Basics");
+  await page.getByRole("button", { name: "Save to review" }).first().click();
+  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await expect(page.locator('[lang="vi"]')).toHaveText("Chào buổi sáng, hôm nay bạn thế nào?");
+});

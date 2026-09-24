@@ -647,7 +647,12 @@ describe("LessonDetail", () => {
         recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
         recognition.onend?.();
       });
-      expect(view.container.textContent).toContain("Correct: 6 of 6 words");
+      const lines = Array.from(view.container.querySelectorAll('[role="status"] p')).map((p) => p.textContent);
+      expect(lines.slice(0, 2)).toEqual([
+        "What the browser heard: good morning how are you today",
+        "The browser matched 6 of 6 words",
+      ]);
+      expect(view.container.textContent).not.toContain("Correct");
       await waitForActions(1);
       await harnessAct(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -666,7 +671,9 @@ describe("LessonDetail", () => {
         recognition.onresult?.({ results: [[{ transcript: "good morning how are you tomorrow" }]] });
       });
       expect(view.container.textContent).toContain('today (you said "tomorrow")');
-      expect(view.container.textContent).toContain("Not quite");
+      expect(view.container.textContent).toContain("What the browser heard: good morning how are you tomorrow");
+      expect(view.container.textContent).toContain("The browser matched 5 of 6 words");
+      expect(view.container.textContent).not.toContain("Not quite");
     });
 
     it("shows a recognition error", async () => {
@@ -1320,7 +1327,7 @@ describe("LessonDetail", () => {
         instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
         instances.at(-1)?.onend?.();
       });
-      expect(card(view.container, 0).textContent).toContain("Correct: 6 of 6 words");
+      expect(card(view.container, 0).textContent).toContain("The browser matched 6 of 6 words");
       expect(buttonsNamed(card(view.container, 0), "morning")).toHaveLength(0);
       expect(buttonsNamed(card(view.container, 0), "Text")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(card(view.container, 1).textContent).toContain("nice");
