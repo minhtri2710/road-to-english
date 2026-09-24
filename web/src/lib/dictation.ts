@@ -9,11 +9,12 @@ function normalize(s: string): string {
     .trim();
 }
 
-// Reference entries carry the word as the lesson writes it; typed entries carry the normalized token.
+// Reference entries carry the word as the lesson writes it and the whole written word it came from
+// ("T-shirt" for "t" and "shirt"); typed entries carry the normalized token.
 export type WordDiff =
-  | { kind: "correct"; word: string }
-  | { kind: "missed"; word: string }
-  | { kind: "replaced"; word: string; typed: string }
+  | { kind: "correct"; word: string; written: string }
+  | { kind: "missed"; word: string; written: string }
+  | { kind: "replaced"; word: string; written: string; typed: string }
   | { kind: "extra"; typed: string };
 
 const ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(" ");
@@ -49,11 +50,11 @@ function tokens(s: string): string[] {
 // The reference's tokens, each with the word the lesson writes for it: a word that is one token keeps
 // its own form ("John's"), trimmed of edge punctuation; a word of several tokens ("T-shirt", "7:00")
 // shows each token.
-function referenceWords(reference: string): { token: string; word: string }[] {
+function referenceWords(reference: string): { token: string; word: string; written: string }[] {
   return reference.split(/\s+/).flatMap((chunk) => {
     const parts = tokens(chunk);
     const written = chunk.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
-    return parts.map((token) => ({ token, word: parts.length === 1 ? written : token }));
+    return parts.map((token) => ({ token, word: parts.length === 1 ? written : token, written }));
   });
 }
 
@@ -88,8 +89,8 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
       if (cost[i][j] === cost[i + 1][j + 1] + (same ? 0 : 1)) {
         diff.push(
           same
-            ? { kind: "correct", word: words[i].word }
-            : { kind: "replaced", word: words[i].word, typed: got[j] },
+            ? { kind: "correct", word: words[i].word, written: words[i].written }
+            : { kind: "replaced", word: words[i].word, written: words[i].written, typed: got[j] },
         );
         i++;
         j++;
@@ -97,7 +98,7 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
       }
     }
     if (i < ref.length && cost[i][j] === cost[i + 1][j] + 1) {
-      diff.push({ kind: "missed", word: words[i].word });
+      diff.push({ kind: "missed", word: words[i].word, written: words[i].written });
       i++;
     } else {
       diff.push({ kind: "extra", typed: got[j] });

@@ -33,6 +33,7 @@ const styles = stylex.create({
 export function SaveToReview({
   card,
   label,
+  word,
   saved,
   addCard,
   removeCard,
@@ -40,6 +41,8 @@ export function SaveToReview({
 }: {
   card: NewCard;
   label: string;
+  // Names the word in the accessible name, for a list of word save buttons.
+  word?: string;
   saved: boolean;
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
@@ -106,7 +109,15 @@ export function SaveToReview({
       <Button
         ref={buttonRef}
         label={saved ? "Saved" : label}
-        aria-label={saved ? "Saved, remove from review deck" : undefined}
+        aria-label={
+          word === undefined
+            ? saved
+              ? "Saved, remove from review deck"
+              : undefined
+            : saved
+              ? `Saved “${word}”, remove from review deck`
+              : `Save “${word}” to review`
+        }
         variant="ghost"
         isDisabled={isSaving}
         // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.

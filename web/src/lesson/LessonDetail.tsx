@@ -20,7 +20,7 @@ import { splitWords } from "../lib/dictation";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
-import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "../lib/vocab";
+import { cardId, cardWord, isCardWord, sentenceCard, wordCard, type NewCard, type VocabCard } from "../lib/vocab";
 import { GuidedShadowing } from "./GuidedShadowing";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation, type PracticeMode } from "./SentenceQuiz";
@@ -156,6 +156,20 @@ export function LessonDetail({
     practiced.current.add(key);
     void recordPractice({ newCard: false });
   };
+  // Card words missed in a typed answer this visit, in first-occurrence order, each under the sentence
+  // where it was first missed.
+  const [missed, setMissed] = useState<readonly NewCard[]>([]);
+  const miss = (sentence: Lesson["sentences"][number], words: string[]) =>
+    setMissed((current) => {
+      const next = [...current];
+      for (const word of words) {
+        const key = cardWord(word);
+        if (isCardWord(key) && !next.some((card) => card.source.word === key)) {
+          next.push(wordCard(data.id, sentence, word));
+        }
+      }
+      return next.length === current.length ? current : next;
+    });
   // With autoHideText on, a sentence's first recording or check this visit hides its text.
   const shadowPractice = (sentenceId: string, mode: PracticeMode) => {
     const first = !["recording", "check"].some((shadowMode) => practiced.current.has(`${sentenceId}:${shadowMode}`));
@@ -227,15 +241,7 @@ export function LessonDetail({
                 key={cardWord(selectedWord.text)}
                 id={wordPanelId(sentence.id)}
                 text={selectedWord.text}
-                card={{
-                  front: selectedWord.text,
-                  back: wordCardBack(sentence.text, sentence.vi),
-                  source: {
-                    lessonId: data.id,
-                    sentenceId: sentence.id,
-                    word: cardWord(selectedWord.text),
-                  },
-                }}
+                card={wordCard(data.id, sentence, selectedWord.text)}
                 savedCardIds={savedCardIds}
                 addCard={addCard}
                 removeCard={removeCard}
@@ -279,6 +285,7 @@ export function LessonDetail({
                 targetWpm={data.targetWpm}
                 speed={Number(speed)}
                 practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                miss={(words) => miss(sentence, words)}
                 stopMedia={stopMedia}
               />
             ) : (
@@ -288,6 +295,7 @@ export function LessonDetail({
                 targetWpm={data.targetWpm}
                 speed={Number(speed)}
                 practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                miss={(words) => miss(sentence, words)}
                 stopMedia={stopMedia}
                 lessonWords={bankWords}
               />
@@ -500,6 +508,11 @@ export function LessonDetail({
           saveFailed={saveFailed}
           retrySave={saveCompletion}
           onBack={onBack}
+          missed={missed}
+          savedCardIds={savedCardIds}
+          addCard={addCard}
+          removeCard={removeCard}
+          undoRemove={undoRemove}
           {...summaryProps}
         />
       )}

@@ -19,84 +19,84 @@ describe("normalization", () => {
 describe("diffWords", () => {
   it("marks identical input all correct", () => {
     expect(diffWords("good morning", "good morning")).toEqual([
-      { kind: "correct", word: "good" },
-      { kind: "correct", word: "morning" },
+      { kind: "correct", word: "good", written: "good" },
+      { kind: "correct", word: "morning", written: "morning" },
     ]);
   });
 
   it("keeps the lesson's own word on reference entries and the normalized typed token", () => {
     expect(diffWords("johns book", "“John's book.”")).toEqual([
-      { kind: "correct", word: "John's" },
-      { kind: "correct", word: "book" },
+      { kind: "correct", word: "John's", written: "John's" },
+      { kind: "correct", word: "book", written: "book" },
     ]);
     expect(diffWords("Its thor", "It’s there")).toEqual([
-      { kind: "correct", word: "It’s" },
-      { kind: "replaced", word: "there", typed: "thor" },
+      { kind: "correct", word: "It’s", written: "It’s" },
+      { kind: "replaced", word: "there", written: "there", typed: "thor" },
     ]);
   });
 
   it("normalizes case, punctuation and apostrophes away", () => {
     expect(diffWords("its a SIGN off", "It’s a sign-off!")).toEqual([
-      { kind: "correct", word: "It’s" },
-      { kind: "correct", word: "a" },
-      { kind: "correct", word: "sign" },
-      { kind: "correct", word: "off" },
+      { kind: "correct", word: "It’s", written: "It’s" },
+      { kind: "correct", word: "a", written: "a" },
+      { kind: "correct", word: "sign", written: "sign-off" },
+      { kind: "correct", word: "off", written: "sign-off" },
     ]);
   });
 
   it("reports one omission", () => {
     expect(diffWords("good today", "good morning today")).toEqual([
-      { kind: "correct", word: "good" },
-      { kind: "missed", word: "morning" },
-      { kind: "correct", word: "today" },
+      { kind: "correct", word: "good", written: "good" },
+      { kind: "missed", word: "morning", written: "morning" },
+      { kind: "correct", word: "today", written: "today" },
     ]);
   });
 
   it("reports one insertion", () => {
     expect(diffWords("good sunny morning", "good morning")).toEqual([
-      { kind: "correct", word: "good" },
+      { kind: "correct", word: "good", written: "good" },
       { kind: "extra", typed: "sunny" },
-      { kind: "correct", word: "morning" },
+      { kind: "correct", word: "morning", written: "morning" },
     ]);
   });
 
   it("reports one substitution", () => {
     expect(diffWords("good evening today", "good morning today")).toEqual([
-      { kind: "correct", word: "good" },
-      { kind: "replaced", word: "morning", typed: "evening" },
-      { kind: "correct", word: "today" },
+      { kind: "correct", word: "good", written: "good" },
+      { kind: "replaced", word: "morning", written: "morning", typed: "evening" },
+      { kind: "correct", word: "today", written: "today" },
     ]);
   });
 
   it("marks every reference word missed for empty input", () => {
     expect(diffWords("  ", "See you tomorrow.")).toEqual([
-      { kind: "missed", word: "See" },
-      { kind: "missed", word: "you" },
-      { kind: "missed", word: "tomorrow" },
+      { kind: "missed", word: "See", written: "See" },
+      { kind: "missed", word: "you", written: "you" },
+      { kind: "missed", word: "tomorrow", written: "tomorrow" },
     ]);
   });
 
   it("does not mis-pair a repeated word", () => {
     expect(diffWords("the saw the dog", "the cat saw the dog")).toEqual([
-      { kind: "correct", word: "the" },
-      { kind: "missed", word: "cat" },
-      { kind: "correct", word: "saw" },
-      { kind: "correct", word: "the" },
-      { kind: "correct", word: "dog" },
+      { kind: "correct", word: "the", written: "the" },
+      { kind: "missed", word: "cat", written: "cat" },
+      { kind: "correct", word: "saw", written: "saw" },
+      { kind: "correct", word: "the", written: "the" },
+      { kind: "correct", word: "dog", written: "dog" },
     ]);
   });
 
   it("aligns a sentence typed in a different order", () => {
     expect(diffWords("the dog saw the cat", "the cat saw the dog")).toEqual([
-      { kind: "correct", word: "the" },
-      { kind: "replaced", word: "cat", typed: "dog" },
-      { kind: "correct", word: "saw" },
-      { kind: "correct", word: "the" },
-      { kind: "replaced", word: "dog", typed: "cat" },
+      { kind: "correct", word: "the", written: "the" },
+      { kind: "replaced", word: "cat", written: "cat", typed: "dog" },
+      { kind: "correct", word: "saw", written: "saw" },
+      { kind: "correct", word: "the", written: "the" },
+      { kind: "replaced", word: "dog", written: "dog", typed: "cat" },
     ]);
     expect(diffWords("morning good", "good morning")).toEqual([
-      { kind: "replaced", word: "good", typed: "morning" },
-      { kind: "replaced", word: "morning", typed: "good" },
+      { kind: "replaced", word: "good", written: "good", typed: "morning" },
+      { kind: "replaced", word: "morning", written: "morning", typed: "good" },
     ]);
   });
 });
@@ -182,17 +182,17 @@ describe("number equivalence", () => {
   });
 
   it("leaves 1000 and up as digits", () => {
-    expect(diffWords("2026", "2026")).toEqual([{ kind: "correct", word: "2026" }]);
+    expect(diffWords("2026", "2026")).toEqual([{ kind: "correct", word: "2026", written: "2026" }]);
     expect(allCorrect("2026", "two thousand twenty six")).toBe(false);
   });
 
   it("still marks a wrong number and a non-number word", () => {
     expect(diffWords("I get up at 6:45", "I get up at six thirty.").slice(-3)).toEqual([
-      { kind: "correct", word: "six" },
-      { kind: "replaced", word: "thirty", typed: "forty" },
+      { kind: "correct", word: "six", written: "six" },
+      { kind: "replaced", word: "thirty", written: "thirty", typed: "forty" },
       { kind: "extra", typed: "five" },
     ]);
-    expect(diffWords("cat", "dog")).toEqual([{ kind: "replaced", word: "dog", typed: "cat" }]);
+    expect(diffWords("cat", "dog")).toEqual([{ kind: "replaced", word: "dog", written: "dog", typed: "cat" }]);
   });
 
   it("scores a recognizer transcript with digits all correct", () => {

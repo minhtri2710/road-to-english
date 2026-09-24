@@ -122,6 +122,21 @@ export async function attemptEverySentence(page: Page): Promise<void> {
   }
 }
 
+// Answers every sentence's dictation with its text, read in Shadow mode, but leaves "today" out of the
+// first, so the summary lists one missed word.
+export async function missOneWord(page: Page): Promise<void> {
+  const texts = await page.locator("ol > li").evaluateAll((items) => items.map((item) => item.querySelector("p")?.textContent ?? ""));
+  expect(texts[0]).toBe("Good morning, how are you today?");
+  await page.getByRole("button", { name: "Dictation" }).click();
+  const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
+  expect(ids).toHaveLength(texts.length);
+  for (const [index, id] of ids.entries()) {
+    const form = page.locator("form", { has: page.locator(`[id="${id}"]`) });
+    await form.getByLabel("What did you hear?").fill(index === 0 ? "Good morning, how are you" : texts[index]);
+    await form.getByRole("button", { name: "Check" }).click();
+  }
+}
+
 export const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
 
 // Fills the library's create form and submits it; callers assert what the new lesson shows.

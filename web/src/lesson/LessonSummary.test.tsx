@@ -5,7 +5,7 @@ import { getCompletedLessons } from "../lib/progressStore";
 import { putUserLesson } from "../lib/userLessons";
 import { createCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
-import { putCard } from "../lib/vocabStore";
+import { getAllCards, putCard } from "../lib/vocabStore";
 import {
   buttonsNamed,
   click,
@@ -20,6 +20,7 @@ import {
   submitInput,
   waitForCondition,
 } from "../test/app";
+import type { Lesson } from "../api/lessons";
 import { installSpeechFakes } from "../test/browser";
 import { deferred, greetingsLesson, userLesson } from "../test/fixtures";
 
@@ -285,5 +286,212 @@ describe("lesson summary", () => {
     expect(summary(container)).toBeNull();
     await answer(container, "dictation", first.id);
     expect(summary(container)).toBeNull();
+  });
+});
+
+describe("missed words", () => {
+  afterEach(async () => {
+    await resetApp();
+    localStorage.clear();
+  });
+
+  const missedList = (container: HTMLElement) => summary(container)?.querySelector('ul[aria-labelledby="missed-words"]') ?? null;
+  // Each item's save button names its word: Save “went” to review.
+  const missedWords = (container: HTMLElement) =>
+    Array.from(missedList(container)?.querySelectorAll("li button") ?? []).map(
+      (button) => /“(.+)”/.exec(button.getAttribute("aria-label") ?? "")?.[1],
+    );
+  const saveButton = (container: HTMLElement, word: string) => {
+    const button = Array.from(missedList(container)?.querySelectorAll("li button") ?? []).find((candidate) =>
+      candidate.getAttribute("aria-label")?.includes(`“${word}”`),
+    );
+    if (!(button instanceof HTMLButtonElement)) throw new Error(`save button for ${word} not found`);
+    return button;
+  };
+
+  it("lists dictation's missed and replaced words in first-occurrence order, once each across sentences and tries", async () => {
+    const lesson = {
+      ...greetingsLesson,
+      sentences: [
+        { id: "s1", text: "I went to the park today.", vi: "" },
+        { id: "s2", text: "We went home.", vi: "" },
+      ],
+    } satisfies Lesson;
+    installSpeechFakes();
+    const { container } = await openLesson(lesson);
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+    await answer(container, "dictation", "s1", "I go to the park");
+    await click(container, "Try again");
+    await answer(container, "dictation", "s1", "I went to the park");
+    await answer(container, "dictation", "s2", "we go");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["went", "today", "home"]);
+    expect(missedList(container)!.querySelectorAll("li")[0].textContent).toContain("went");
+  });
+
+  it("lists a missed hyphenated word once, with the word panel's card id", async () => {
+    const lesson = {
+      ...greetingsLesson,
+      sentences: [{ id: "s1", text: "I bought a one-way ticket for twenty-five dollars.", vi: "" }],
+    } satisfies Lesson;
+    installSpeechFakes();
+    const { container } = await openLesson(lesson);
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+    await answer(container, "dictation", "s1", "I bought a way ticket for twenty dollars");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["one-way", "twenty-five"]);
+
+    for (const word of ["one-way", "twenty-five"]) {
+      await harnessAct(() => {
+        saveButton(container, word).click();
+      });
+      await waitForCondition(() => saveButton(container, word).getAttribute("aria-label") === `Saved “${word}”, remove from review deck`);
+    }
+    await click(container, "Shadow");
+    for (const word of ["one-way", "twenty-five"]) {
+      await click(container, word);
+      expect(buttonsNamed(container, "Saved")).toHaveLength(3);
+    }
+    expect((await getAllCards()).map((card) => card.id).sort()).toEqual([
+      `${greetingsLesson.id}:s1:one-way`,
+      `${greetingsLesson.id}:s1:twenty-five`,
+    ]);
+  });
+
+  it("never lists a word the word panel does not offer", async () => {
+    const lesson = {
+      ...greetingsLesson,
+      sentences: [{ id: "s1", text: "A naïve plan, e.g. this one.", vi: "" }],
+    } satisfies Lesson;
+    installSpeechFakes();
+    const { container } = await openLesson(lesson);
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+    // The panel offers "na", "ve", "e" and "g" but never "naïve" or "e.g"; the diff misses those whole words.
+    await answer(container, "dictation", "s1", "a plan this");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["one"]);
+  });
+
+  it("lists a wrong fill-the-blank word, never a right answer or an empty check", async () => {
+    const { container } = await openGreetings();
+    await answer(container, "blank", first.id, "");
+    await answer(container, "blank", first.id, "morning");
+    await answer(container, "blank", second.id, "nice");
+    await answer(container, "blank", third.id, "today");
+    await waitForCondition(() => missedList(container) !== null);
+    await click(container, "Try again", 0);
+    await answer(container, "blank", first.id, "evening");
+    await settle();
+    expect(missedWords(container)).toEqual(["tomorrow", "morning"]);
+  });
+
+  it("never lists an extra typed token or a pronunciation-check result", async () => {
+    class FakeRecognition {
+      static instances: FakeRecognition[] = [];
+      lang = "";
+      continuous = true;
+      interimResults = true;
+      maxAlternatives = 5;
+      processLocally = false;
+      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.instances.push(this);
+      }
+    }
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    const { container } = await openGreetings();
+    await click(container, "Pronunciation check");
+    await click(container, "Enable");
+    await click(container, "Check pronunciation");
+    const recognition = FakeRecognition.instances.at(-1)!;
+    await harnessAct(async () => {
+      recognition.onresult?.({ results: [[{ transcript: "good evening how are you" }]] });
+      recognition.onend?.();
+    });
+    await answer(container, "dictation", first.id, "good morning how are you today friend");
+    await answer(container, "dictation", second.id, "it is nice to meet you");
+    await answer(container, "dictation", third.id, "see you");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["tomorrow"]);
+  });
+
+  it("keeps one card with the word panel's id whichever control saves it, and both show it saved", async () => {
+    const { container } = await openGreetings();
+    await answer(container, "dictation", first.id, "good evening how are you today");
+    await answer(container, "dictation", second.id, "it is nice to meet");
+    await answer(container, "dictation", third.id, "see you tomorrow");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["morning", "you"]);
+
+    // Summary first, then the word panel.
+    await harnessAct(() => {
+      saveButton(container, "morning").click();
+    });
+    await waitForCondition(() => saveButton(container, "morning").getAttribute("aria-label") === "Saved “morning”, remove from review deck");
+    await click(container, "Shadow");
+    await click(container, "morning");
+    expect(buttonsNamed(container, "Saved")).toHaveLength(2);
+    expect((await getAllCards()).map((card) => card.id)).toEqual([`${greetingsLesson.id}:${first.id}:morning`]);
+
+    // The word panel first, then the summary.
+    await click(container, "you", 1);
+    await click(container, "Save word");
+    await waitForCondition(() => saveButton(container, "you").getAttribute("aria-label") === "Saved “you”, remove from review deck");
+    const cards = await getAllCards();
+    expect(cards.map((card) => card.id).sort()).toEqual([
+      `${greetingsLesson.id}:${first.id}:morning`,
+      `${greetingsLesson.id}:${second.id}:you`,
+    ]);
+    expect(cards.find((card) => card.source.word === "you")).toMatchObject({
+      front: "you",
+      back: `${second.text} — ${second.vi}`,
+    });
+  });
+
+  it("names each save button's word in both states", async () => {
+    const { container } = await openGreetings();
+    await answer(container, "dictation", first.id, "good evening how are you today");
+    await answer(container, "dictation", second.id, "it is nice to meet");
+    await answer(container, "dictation", third.id, "see you tomorrow");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(saveButton(container, "morning").getAttribute("aria-label")).toBe("Save “morning” to review");
+    expect(saveButton(container, "you").getAttribute("aria-label")).toBe("Save “you” to review");
+    expect(summary(container)!.querySelector("#missed-words")?.textContent).toBe("Missed words");
+    await harnessAct(() => {
+      saveButton(container, "you").click();
+    });
+    await waitForCondition(() => saveButton(container, "you").getAttribute("aria-label") === "Saved “you”, remove from review deck");
+    expect(saveButton(container, "morning").getAttribute("aria-label")).toBe("Save “morning” to review");
+  });
+
+  it("shows no Missed words section when nothing was missed", async () => {
+    const { container } = await openGreetings();
+    for (const sentence of greetingsLesson.sentences) {
+      await answer(container, "dictation", sentence.id, sentence.text);
+    }
+    await waitForCondition(() => summary(container) !== null);
+    await settle();
+    expect(summary(container)!.textContent).not.toContain("Missed words");
+    expect(missedList(container)).toBeNull();
+  });
+
+  it("starts the list afresh on a new visit", async () => {
+    const { container } = await openGreetings();
+    for (const sentence of greetingsLesson.sentences) {
+      await answer(container, "dictation", sentence.id, "anything");
+    }
+    await waitForCondition(() => missedList(container) !== null);
+    await click(container, "Back to lessons");
+    await reopenGreetings(container);
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics" && summary(container) === null);
+    await answer(container, "dictation", first.id, first.text);
+    await answer(container, "dictation", second.id, second.text);
+    await answer(container, "dictation", third.id, "see you");
+    await waitForCondition(() => missedList(container) !== null);
+    expect(missedWords(container)).toEqual(["tomorrow"]);
   });
 });

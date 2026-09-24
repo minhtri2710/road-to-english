@@ -126,10 +126,12 @@ interface QuizProps {
   targetWpm: number;
   speed: number;
   practice: (mode: PracticeMode) => void;
+  // Reports the whole written reference words that a checked answer missed.
+  miss: (words: string[]) => void;
   stopMedia: () => void;
 }
 
-function PlayButton({ text, targetWpm, speed, stopMedia }: Omit<QuizProps, "id" | "practice">) {
+function PlayButton({ text, targetWpm, speed, stopMedia }: Omit<QuizProps, "id" | "practice" | "miss">) {
   const supported = speechSupported();
   return (
     <>
@@ -200,7 +202,7 @@ function AnswerForm({
   );
 }
 
-export function SentenceDictation({ id, text, notes, targetWpm, speed, practice, stopMedia }: QuizProps & { notes?: string }) {
+export function SentenceDictation({ id, text, notes, targetWpm, speed, practice, miss, stopMedia }: QuizProps & { notes?: string }) {
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
@@ -211,6 +213,7 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
     setChecked(typed);
     if (typed.trim()) {
       practice("dictation");
+      miss(diffWords(typed, text).flatMap((entry) => (entry.kind === "missed" || entry.kind === "replaced" ? [entry.written] : [])));
     }
   };
 
@@ -266,6 +269,7 @@ export function SentenceBlank({
   targetWpm,
   speed,
   practice,
+  miss,
   stopMedia,
   lessonWords,
 }: QuizProps & { lessonWords?: string[] }) {
@@ -281,9 +285,13 @@ export function SentenceBlank({
   const choices = lessonWords ? wordBank(parts[index], lessonWords, id) : [];
 
   const checkAnswer = () => {
-    setCorrect(blankMatches(typed, answer));
+    const matches = blankMatches(typed, answer);
+    setCorrect(matches);
     if (typed.trim()) {
       practice("blank");
+      if (!matches) {
+        miss([parts[index]]);
+      }
     }
   };
 

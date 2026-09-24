@@ -10,6 +10,8 @@ import type { Lesson } from "../api/lessons";
 import { Alert } from "../components/feedback";
 import { useLessons } from "../hooks/lessons";
 import { filterByLevel, type LevelFilter } from "../hooks/useLevelFilter";
+import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
+import { SaveToReview } from "./WordPanel";
 
 // The list the learner came from: the library under its level filter, or their own lessons.
 export type LessonSource = { view: "lesson"; levelFilter: LevelFilter } | { view: "my"; lessons: Lesson[] };
@@ -28,6 +30,11 @@ export function LessonSummary({
   saveFailed,
   retrySave,
   onBack,
+  missed,
+  savedCardIds,
+  addCard,
+  removeCard,
+  undoRemove,
   due,
   onReview,
   source,
@@ -39,6 +46,12 @@ export function LessonSummary({
   // Resolves to whether the save succeeded.
   retrySave: () => Promise<boolean>;
   onBack: () => void;
+  // Word cards for the words missed this visit.
+  missed: readonly NewCard[];
+  savedCardIds: Set<string>;
+  addCard: (input: NewCard) => Promise<void>;
+  removeCard: (id: string) => Promise<VocabCard>;
+  undoRemove: (tombstone: VocabCard) => Promise<boolean>;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   return (
@@ -56,6 +69,31 @@ export function LessonSummary({
             variant="secondary"
             onClick={() => void retrySave().then((saved) => saved && heading.current?.focus())}
           />
+        </VStack>
+      )}
+      {missed.length > 0 && (
+        <VStack gap={1}>
+          <Heading id="missed-words" level={3}>
+            Missed words
+          </Heading>
+          <VStack as="ul" gap={1} aria-labelledby="missed-words">
+            {missed.map((card) => (
+              <li key={card.source.word}>
+                <HStack gap={1} align="center">
+                  <Text weight="semibold">{card.front}</Text>
+                  <SaveToReview
+                    card={card}
+                    label="Save"
+                    word={card.front}
+                    saved={savedCardIds.has(cardId(card.source))}
+                    addCard={addCard}
+                    removeCard={removeCard}
+                    undoRemove={undoRemove}
+                  />
+                </HStack>
+              </li>
+            ))}
+          </VStack>
         </VStack>
       )}
       {due !== null && due > 0 && (

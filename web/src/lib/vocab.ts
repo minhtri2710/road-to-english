@@ -73,6 +73,15 @@ export function wordCardBack(sentence: string, vi: string): string {
   return vi ? `${sentence}${CARD_BACK_SEPARATOR}${vi}` : sentence;
 }
 
+// A word card: the word as the sentence writes it on the front, its sentence card's context on the back.
+export function wordCard(lessonId: string, sentence: { id: string; text: string; vi: string }, word: string): NewCard {
+  return {
+    front: word,
+    back: wordCardBack(sentence.text, sentence.vi),
+    source: { lessonId, sentenceId: sentence.id, word: cardWord(word) },
+  };
+}
+
 // A card back split around its Vietnamese, or null when it has none. Only library lessons have
 // Vietnamese, never empty and never holding the separator: user lessons keep vi empty. So a word
 // card's Vietnamese follows its last separator, and a sentence card's runs to its first, or is the

@@ -9,6 +9,7 @@ import {
   createLesson,
   expect,
   limitLogin,
+  missOneWord,
   openAccountForm,
   openLibraryLesson,
   submitAccount,
@@ -600,6 +601,17 @@ test.describe("axe", () => {
       });
     });
   }
+});
+
+test("axe on the summary with missed words, before and after saving one", async ({ page }) => {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await missOneWord(page);
+  const missed = page.getByRole("list", { name: "Missed words" });
+  await expect(missed.getByRole("button", { name: "Save “today” to review" })).toBeVisible();
+  expect(await axeViolations(page), "before saving").toEqual([]);
+  await missed.getByRole("button", { name: "Save “today” to review" }).click();
+  await expect(missed.getByRole("button", { name: "Saved “today”, remove from review deck" })).toBeVisible();
+  expect(await axeViolations(page), "after saving").toEqual([]);
 });
 
 test.describe("axe at 320px", () => {
