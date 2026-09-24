@@ -31,6 +31,51 @@ describe("LessonList", () => {
   const todayStrip = (container: HTMLElement) =>
     Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Today")?.parentElement?.parentElement ?? null;
 
+  it("names each lesson row by its title and describes it by level, sentence count, WPM and completion", async () => {
+    await progressStore.markLessonComplete("greetings-basics");
+    const { container } = await renderApp();
+    await waitForCondition(hasText(container, "Completed"));
+    const described = (title: string) => {
+      const row = Array.from(container.querySelectorAll("main li button")).find((button) => button.getAttribute("aria-label") === title);
+      if (!row) throw new Error(`${title} row not found`);
+      return (row.getAttribute("aria-describedby") ?? "")
+        .split(" ")
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(" ");
+    };
+    expect(described("Greetings & Basics")).toBe("A2 · 3 sentences 90 WPMCompleted");
+    expect(described("Daily Routine")).toBe("B1 · 3 sentences 110 WPM");
+  });
+
+  it("describes Start lesson and Continue by the lesson they open", async () => {
+    const { container } = await renderApp();
+    await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+    const described = (name: string) =>
+      document.getElementById(buttonsNamed(container, name)[0]?.getAttribute("aria-describedby") ?? "")?.textContent;
+    expect(described("Start lesson")).toBe("Next: Greetings & Basics");
+
+    await click(container, "Start lesson");
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+    await click(container, "Back to lessons");
+    await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
+    expect(described("Continue")).toBe("Continue: Greetings & Basics");
+  });
+
+  it("heads the library list between Today and Your lessons, and names the two level choices apart", async () => {
+    const { container } = await renderApp();
+    await waitForCondition(hasText(container, "Greetings & Basics"));
+    expect(Array.from(container.querySelectorAll("h2")).map((heading) => heading.textContent)).toEqual([
+      "Today",
+      "Library lessons",
+      "Your lessons",
+      "Import text",
+      "Your data",
+    ]);
+    expect(container.querySelector('[role="radiogroup"][aria-label="Library level"]')).not.toBeNull();
+    expect(container.querySelector('form [role="group"][aria-label="Lesson level"]')).not.toBeNull();
+    expect(container.querySelectorAll('[aria-label="Level"]')).toHaveLength(0);
+  });
+
   it("Retry re-fetches the library after a failure", async () => {
     let fail = true;
     let release: () => void = () => undefined;
@@ -190,7 +235,7 @@ describe("LessonList", () => {
   });
 
   const radio = (container: HTMLElement, name: string) =>
-    Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Level"] [role="radio"]')).find(
+    Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Library level"] [role="radio"]')).find(
       (item) => item.textContent === name,
     );
   const choose = async (container: HTMLElement, name: string) => {

@@ -100,13 +100,19 @@ describe("SentenceShadowing", () => {
         ?.click();
     });
     expect(container.textContent).toContain("Stop");
+    const announced = () =>
+      Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
+    expect(announced()).toContain("Recording.");
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
         .find((button) => button.textContent === "Stop")
         ?.click();
     });
+    expect(announced()).toContain("Recording stopped.");
+    expect(announced()).not.toContain("Recording.");
     expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
+    expect(container.querySelector("audio")?.getAttribute("aria-label")).toBe("Your recording");
     expect(trackStop).toHaveBeenCalled();
 
     await act(async () => {

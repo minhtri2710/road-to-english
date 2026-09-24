@@ -142,7 +142,7 @@ describe("useSync", () => {
     } });
     await waitForCondition(() => syncLine(container) !== undefined);
     await click(container, "Sign out");
-    await waitForCondition(hasText(container, "Sign in"));
+    await waitForCondition(hasText(container, "Account"));
     expect(syncLine(container)).toBeUndefined();
     expect(container.textContent).not.toContain(syncFailed);
   });

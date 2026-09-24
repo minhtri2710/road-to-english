@@ -7,6 +7,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Switch } from "@astryxdesign/core/Switch";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
@@ -123,6 +124,9 @@ export function LessonDetail({
     charIndex: number;
   } | null>(null);
   const [completeFailed, setCompleteFailed] = useState(false);
+  // Set when this visit marks the lesson complete, so the change to Completed is announced.
+  const [completedNow, setCompletedNow] = useState(false);
+  const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
   // A1 blanks offer a word bank drawn from the whole lesson.
   const bankWords =
     data.level === "A1" ? data.sentences.flatMap((sentence) => splitWords(sentence.text)) : undefined;
@@ -206,10 +210,16 @@ export function LessonDetail({
         tooltip={completed ? "You completed this lesson" : undefined}
         onClick={() => {
           setCompleteFailed(false);
-          markLessonComplete(data.id).catch(() => setCompleteFailed(true));
+          markLessonComplete(data.id).then(
+            () => setCompletedNow(true),
+            () => setCompleteFailed(true),
+          );
         }}
       />
       {completeFailed && <Alert>Couldn't save. Try again.</Alert>}
+      <VisuallyHidden>
+        <Status>{completedNow && completed && "Lesson marked complete."}</Status>
+      </VisuallyHidden>
       <ToggleButtonGroup
         label="Lesson mode"
         value={mode}
@@ -241,16 +251,8 @@ export function LessonDetail({
         </ToggleButtonGroup>
         {mode === "shadow" && (
           <>
-            <Button
-              label={showTranscript ? "Hide transcript" : "Show transcript"}
-              variant="ghost"
-              onClick={() => setShowTranscript((shown) => !shown)}
-            />
-            <Button
-              label={showVietnamese ? "Hide Vietnamese" : "Show Vietnamese"}
-              variant="ghost"
-              onClick={() => setShowVietnamese((shown) => !shown)}
-            />
+            <ToggleButton label="Transcript" isPressed={showTranscript} onPressedChange={setShowTranscript} />
+            <ToggleButton label="Vietnamese" isPressed={showVietnamese} onPressedChange={setShowVietnamese} />
             <ToggleButton
               ref={takeDisclosureFocus("toggle")}
               label="Pronunciation check"
@@ -338,15 +340,16 @@ export function LessonDetail({
               )}
               {mode === "shadow" ? (
                 <VStack gap={1}>
-                  <Button
-                    label={textHidden ? "Show text" : "Hide text"}
-                    variant="ghost"
+                  <ToggleButton
+                    label="Text"
+                    isPressed={!textHidden}
                     xstyle={styles.modeToggle}
-                    onClick={() => setTextHidden(sentence.id, !textHidden)}
+                    onPressedChange={(pressed) => setTextHidden(sentence.id, !pressed)}
                   />
                   {showText && (
                     <SentenceWords
                       text={sentence.text}
+                      panelId={wordPanelId(sentence.id)}
                       selected={
                         selectedWord?.sentenceId === sentence.id
                           ? selectedWord.text
@@ -375,6 +378,7 @@ export function LessonDetail({
                   {showText && selectedWord?.sentenceId === sentence.id && (
                     <WordPanel
                       key={cardWord(selectedWord.text)}
+                      id={wordPanelId(sentence.id)}
                       text={selectedWord.text}
                       card={{
                         front: selectedWord.text,

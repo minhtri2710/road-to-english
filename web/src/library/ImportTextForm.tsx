@@ -107,7 +107,7 @@ export function ImportTextForm({
         />
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
           <ToggleButtonGroup
-            label="Level"
+            label="Lesson level"
             value={level}
             onChange={(nextLevel) => {
               if (nextLevel) {

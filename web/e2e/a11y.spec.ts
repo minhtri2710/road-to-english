@@ -21,7 +21,7 @@ const USER_LESSON = "My pasted text";
 
 async function axeViolations(page: Page): Promise<string[]> {
   const { violations } = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
   return violations.flatMap((violation) =>
     violation.nodes.map((node) => `${violation.id}: ${node.target.join(" ")}`),
@@ -74,8 +74,9 @@ async function openA1WordBank(page: Page): Promise<void> {
 
 async function hideFirstSentenceText(page: Page): Promise<void> {
   await openLibraryLesson(page, LIBRARY_LESSON);
-  await page.getByRole("button", { name: "Hide text" }).first().click();
-  await expect(page.getByRole("button", { name: "Show text" })).toBeVisible();
+  const text = page.getByRole("button", { name: "Text", exact: true }).first();
+  await text.click();
+  await expect(text).toHaveAttribute("aria-pressed", "false");
 }
 
 async function openVideoLesson(page: Page): Promise<void> {
@@ -99,7 +100,7 @@ async function openSignIn(page: Page): Promise<void> {
 
 async function openCreateAccount(page: Page): Promise<void> {
   await openSignIn(page);
-  await accountModes(page).getByRole("button", { name: "Create account" }).click();
+  await accountModes(page).getByRole("radio", { name: "Create account" }).click();
   await expect(page.getByText("At least 8 characters.")).toBeVisible();
 }
 
@@ -276,7 +277,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await openVideoLesson(page);
     await inspect();
   }],
-  ["account Sign in disclosure collapsed", async (page, inspect) => {
+  ["account disclosure collapsed", async (page, inspect) => {
     await showCollapsedAccount(page);
     await inspect();
   }],
@@ -454,7 +455,7 @@ async function layoutProblems(page: Page): Promise<string[]> {
     if (document.documentElement.scrollWidth > width) {
       problems.push(`page scrolls horizontally: ${document.documentElement.scrollWidth} > ${width}`);
     }
-    const controls = document.querySelectorAll<HTMLElement>("button, a[href], input, textarea, select, audio[controls]");
+    const controls = document.querySelectorAll<HTMLElement>('button, a[href], input, textarea, select, audio[controls], [tabindex="0"]');
     for (const el of controls) {
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) {
@@ -573,6 +574,21 @@ for (const width of [320, 360]) {
     }
   });
 }
+
+test.describe("streak text at 320px with 200% text", () => {
+  test.use({ viewport: { width: 320, height: 740 } });
+
+  for (const [streak, reach] of [["Start a new streak today", showLibraryTop], ["1-day streak", practiseOnce]] as const) {
+    test(`"${streak}" stays inside the Today card`, async ({ page }) => {
+      await reach(page);
+      await page.addStyleTag({ content: "html { font-size: 200%; }" });
+      const card = await todayCard(page).boundingBox();
+      const text = await todayCard(page).getByText(streak).boundingBox();
+      expect(text!.x + text!.width).toBeLessThanOrEqual(card!.x + card!.width);
+      expect(card!.x + card!.width).toBeLessThanOrEqual(320);
+    });
+  }
+});
 
 const ACCOUNT_STATES: [string, (page: Page) => Promise<void>][] = [
   ["collapsed", showCollapsedAccount],

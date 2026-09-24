@@ -118,10 +118,14 @@ describe("LessonDetail", () => {
       (button) => button.textContent === "Mark complete",
     );
     if (!completeButton) throw new Error("Mark complete button not found");
+    const announced = () =>
+      Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
+    expect(announced()).not.toContain("Lesson marked complete.");
     await act(async () => {
       completeButton.click();
     });
     await waitForCondition(() => container.textContent?.includes("Completed") ?? false);
+    await waitForCondition(() => announced().includes("Lesson marked complete."));
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
@@ -155,17 +159,22 @@ describe("LessonDetail", () => {
     installSpeechFakes();
     const { container } = await openLesson();
 
+    const transcript = buttonsNamed(container, "Transcript")[0]!;
+    expect(transcript.getAttribute("aria-pressed")).toBe("true");
     await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
+      transcript.click();
     });
+    expect(buttonsNamed(container, "Transcript")[0]).toBe(transcript);
+    expect(transcript.getAttribute("aria-pressed")).toBe("false");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.text);
     }
     expect(container.textContent).not.toContain("casual sign-off");
 
     await act(async () => {
-      buttonsNamed(container, "Show transcript")[0]?.click();
+      transcript.click();
     });
+    expect(transcript.getAttribute("aria-pressed")).toBe("true");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.text);
     }
@@ -179,16 +188,19 @@ describe("LessonDetail", () => {
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.vi);
     }
+    const vietnamese = buttonsNamed(container, "Vietnamese")[0]!;
+    expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
 
     await act(async () => {
-      buttonsNamed(container, "Show Vietnamese")[0]?.click();
+      vietnamese.click();
     });
+    expect(vietnamese.getAttribute("aria-pressed")).toBe("true");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.vi);
     }
 
     await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
+      buttonsNamed(container, "Transcript")[0]?.click();
     });
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.text);
@@ -196,14 +208,15 @@ describe("LessonDetail", () => {
     }
 
     await act(async () => {
-      buttonsNamed(container, "Hide Vietnamese")[0]?.click();
+      vietnamese.click();
     });
+    expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.vi);
     }
 
     await act(async () => {
-      buttonsNamed(container, "Show transcript")[0]?.click();
+      buttonsNamed(container, "Transcript")[0]?.click();
     });
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.text);
@@ -1223,7 +1236,7 @@ describe("LessonDetail", () => {
       await click(container, "Define");
       await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
       expect(dictionaryUrls).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/don't"]);
-      const link = Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
+      const link = Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent?.startsWith("Hear it on YouGlish"));
       expect(link?.getAttribute("href")).toBe("https://youglish.com/pronounce/don't/english");
 
       await click(container, "Save word");
@@ -1253,7 +1266,7 @@ describe("LessonDetail", () => {
         return api(input, init);
       });
       const youglish = () =>
-        Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
+        Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent?.startsWith("Hear it on YouGlish"));
 
       for (const [token, word] of [["'hello'", "hello"], ["students'", "students"]]) {
         await click(container, token);
@@ -1340,15 +1353,17 @@ describe("LessonDetail", () => {
     it("hides one sentence's text, notes and translation and keeps its practice controls", async () => {
       installSpeechFakes();
       const view = await openLesson();
-      await click(view.container, "Show Vietnamese");
+      await click(view.container, "Vietnamese");
       const third = greetingsLesson.sentences[2];
-      const toggle = buttonsNamed(view.container, "Hide text")[2];
+      const toggle = buttonsNamed(view.container, "Text")[2];
+      expect(toggle.getAttribute("aria-pressed")).toBe("true");
       toggle.focus();
       await act(async () => {
         toggle.click();
       });
 
-      expect(toggle.textContent).toBe("Show text");
+      expect(toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(buttonsNamed(view.container, "Text")[2]).toBe(toggle);
       expect(document.activeElement).toBe(toggle);
       const hidden = card(view.container, 2);
       expect(hidden.textContent).not.toContain("tomorrow");
@@ -1362,7 +1377,7 @@ describe("LessonDetail", () => {
       await act(async () => {
         toggle.click();
       });
-      expect(toggle.textContent).toBe("Hide text");
+      expect(toggle.getAttribute("aria-pressed")).toBe("true");
       expect(document.activeElement).toBe(toggle);
       expect(card(view.container, 2).textContent).toContain(third.notes);
     });
@@ -1370,9 +1385,9 @@ describe("LessonDetail", () => {
     it("keeps the global transcript toggle hiding every sentence", async () => {
       installSpeechFakes();
       const view = await openLesson();
-      await click(view.container, "Hide transcript");
-      await click(view.container, "Hide text");
-      await click(view.container, "Show text");
+      await click(view.container, "Transcript");
+      await click(view.container, "Text");
+      await click(view.container, "Text");
       expect(card(view.container, 0).textContent).not.toContain("morning");
     });
 
@@ -1410,21 +1425,21 @@ describe("LessonDetail", () => {
       });
       expect(card(view.container, 0).textContent).toContain("Correct: 6 of 6 words");
       expect(buttonsNamed(card(view.container, 0), "morning")).toHaveLength(0);
-      expect(buttonsNamed(card(view.container, 0), "Show text")).toHaveLength(1);
+      expect(buttonsNamed(card(view.container, 0), "Text")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(card(view.container, 1).textContent).toContain("nice");
 
-      await click(card(view.container, 0), "Show text");
+      await click(card(view.container, 0), "Text");
       await click(view.container, "Try again");
       await click(view.container, "Check pronunciation");
       await act(async () => {
         instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
       });
-      expect(buttonsNamed(card(view.container, 0), "Hide text")).toHaveLength(1);
+      expect(buttonsNamed(card(view.container, 0), "Text")[0]?.getAttribute("aria-pressed")).toBe("true");
       await close(view);
 
       const again = await openLesson();
       expect(autoHideSwitch(again.container)?.checked).toBe(true);
-      expect(buttonsNamed(again.container, "Hide text")).toHaveLength(3);
+      expect(buttonsNamed(again.container, "Text").map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
       await act(async () => {
         autoHideSwitch(again.container)?.click();
       });

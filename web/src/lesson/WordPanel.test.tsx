@@ -19,6 +19,63 @@ import { greetingsLesson } from "../test/fixtures";
 describe("WordPanel", () => {
   afterEach(resetApp);
 
+  it("expands the selected word's button and points it at the word panel", async () => {
+    installSpeechFakes();
+    const { container } = await openLesson();
+    const word = buttonsNamed(container, "morning")[0]!;
+    expect(word.getAttribute("aria-expanded")).toBe("false");
+    expect(word.hasAttribute("aria-controls")).toBe(false);
+
+    await act(async () => {
+      word.click();
+    });
+    expect(word.getAttribute("aria-expanded")).toBe("true");
+    const panel = document.getElementById(word.getAttribute("aria-controls") ?? "");
+    expect(buttonsNamed(panel!, "Hear word")).toHaveLength(1);
+    expect(buttonsNamed(container, "Good")[0]!.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("announces a saved word, and keeps the removal toast with Undo until it is dismissed", async () => {
+    installSpeechFakes();
+    const { container } = await openLesson();
+    await act(async () => {
+      buttonsNamed(container, "morning")[0]!.click();
+    });
+    const announced = () =>
+      Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
+    expect(announced()).not.toContain("Saved to your review deck.");
+    await act(async () => {
+      buttonsNamed(container, "Save word")[0]!.click();
+    });
+    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    expect(announced()).toContain("Saved to your review deck.");
+
+    // Earlier tests can leave toasts behind.
+    const earlier = new Set(buttonsNamed(document.body, "Undo"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        buttonsNamed(container, "Saved")[0]!.click();
+      });
+      await waitForCondition(() => buttonsNamed(document.body, "Undo").some((undo) => !earlier.has(undo)));
+      expect(announced()).not.toContain("Saved to your review deck.");
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      const undo = buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button))!;
+      // jsdom runs no transitions: end the toast row's own, which removes the row if it is hiding.
+      await act(async () => {
+        for (let node: HTMLElement | null = undo; node; node = node.parentElement) {
+          node.dispatchEvent(Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "grid-template-rows" }));
+        }
+      });
+      expect(undo.isConnected).toBe(true);
+      expect(undo?.closest("[data-toast-id]")?.textContent).toContain("Removed from your review deck. Undo restores it.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("persists only one card when save is clicked twice synchronously", async () => {
     const { container } = await openLesson();
     const sentence = greetingsLesson.sentences[0];
@@ -224,6 +281,8 @@ describe("WordPanel", () => {
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     const toggle = buttonsNamed(container, "Saved")[0]!;
     expect(toggle.getAttribute("aria-label")).toBe("Saved, remove from review deck");
+    // Earlier tests can leave toasts behind: jsdom never ends a toast's exit transition.
+    const earlier = new Set(buttonsNamed(document.body, "Undo"));
     toggle.focus();
     await act(async () => {
       toggle.click();
@@ -237,7 +296,7 @@ describe("WordPanel", () => {
     await waitForCondition(() => dueBadge() === "0");
     await reopenLesson();
 
-    const undo = buttonsNamed(document.body, "Undo")[0];
+    const undo = buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
     if (!undo) throw new Error("Undo button not found");
     await act(async () => {
       undo.click();
@@ -414,7 +473,7 @@ describe("WordPanel", () => {
     });
     expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
     await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
+      buttonsNamed(container, "Transcript")[0]?.click();
     });
     expect(buttonsNamed(container, "morning")).toHaveLength(0);
     expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
@@ -529,13 +588,15 @@ describe("WordPanel", () => {
         buttonsNamed(container, "Good")[0]?.click();
       });
       const link = Array.from(container.querySelectorAll("a")).find(
-        (anchor) => anchor.textContent === "Hear it on YouGlish",
+        (anchor) => anchor.textContent?.startsWith("Hear it on YouGlish"),
       );
       expect(link?.getAttribute("href")).toBe(
         "https://youglish.com/pronounce/" + encodeURIComponent("good") + "/english",
       );
       expect(link?.getAttribute("target")).toBe("_blank");
       expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+      // Astryx's external link says it opens a new tab.
+      expect(link?.textContent).not.toBe("Hear it on YouGlish");
       expect(dictionaryCalls()).toHaveLength(0);
     });
   });

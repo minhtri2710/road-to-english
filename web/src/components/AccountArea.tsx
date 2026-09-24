@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
-import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
+import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
@@ -74,7 +75,7 @@ export function AccountArea({ auth }: { auth: AuthState }) {
   const [password, setPassword] = useState("");
   const [passwordShown, setPasswordShown] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  // Signed out, the form sits behind a "Sign in" disclosure so the header stays short.
+  // Signed out, the form sits behind an "Account" disclosure so the header stays short.
   const [open, setOpen] = useState(false);
   const disclosure = useRef<HTMLButtonElement | null>(null);
   // The countdown's seconds left for the 429 it belongs to.
@@ -212,7 +213,7 @@ export function AccountArea({ auth }: { auth: AuthState }) {
             disclosure.current = element;
             takeFocus("signedOut")(element);
           }}
-          label="Sign in"
+          label="Account"
           variant="secondary"
           aria-expanded={open}
           aria-controls={formRegionId}
@@ -242,19 +243,14 @@ export function AccountArea({ auth }: { auth: AuthState }) {
             void submit();
           }}>
             <VStack gap={0.5}>
-              <ToggleButtonGroup
+              <SegmentedControl
                 label="Sign in or create an account"
                 value={mode}
-                xstyle={styles.accountControls}
-                onChange={(next) => {
-                  if (next) {
-                    switchMode(next as Mode);
-                  }
-                }}
+                onChange={(next) => switchMode(next as Mode)}
               >
-                <ToggleButton value="signIn" label="Sign in" />
-                <ToggleButton value="signUp" label="Create account" />
-              </ToggleButtonGroup>
+                <SegmentedControlItem value="signIn" label="Sign in" />
+                <SegmentedControlItem value="signUp" label="Create account" />
+              </SegmentedControl>
               <VStack gap={0.5}>
                 <label htmlFor={`${ids}-email`}>
                   <Text as="span" type="supporting">Email</Text>
@@ -321,8 +317,16 @@ export function AccountArea({ auth }: { auth: AuthState }) {
                   variant="primary"
                   type="submit"
                   isDisabled={secondsLeft !== null}
+                  // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+                  tooltip={secondsLeft !== null ? "Wait for the countdown to end" : undefined}
                 />
-                <Button label="Close" variant="secondary" isDisabled={locked} onClick={collapse} />
+                <Button
+                  label="Close"
+                  variant="secondary"
+                  isDisabled={locked}
+                  tooltip={locked ? "The form stays open while a message needs you" : undefined}
+                  onClick={collapse}
+                />
               </HStack>
             </VStack>
           </form>

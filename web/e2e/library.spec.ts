@@ -18,7 +18,7 @@ test("the level filter narrows the library rows and survives a reload", async ({
   await expect(rows.first()).toContainText("About Me");
   await expect(page.getByText("0 of 31 completed")).toBeVisible();
 
-  const level = page.getByRole("radiogroup", { name: "Level" });
+  const level = page.getByRole("radiogroup", { name: "Library level" });
   await level.getByRole("radio", { name: "B2" }).click();
   await expect(level.getByRole("radio", { name: "B2" })).toBeFocused();
   await expect(rows).toHaveCount(7);
@@ -107,7 +107,7 @@ test.describe("first-run welcome", () => {
     await expect(page.getByText("0 of 5 practice actions today")).toBeVisible();
     await page.reload();
     await expect(page.getByText("0 of 5 practice actions today")).toBeVisible();
-    await expect(page.getByRole("radiogroup", { name: "Level" }).getByRole("radio", { name: "B2" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radiogroup", { name: "Library level" }).getByRole("radio", { name: "B2" })).toHaveAttribute("aria-checked", "true");
     await expect(rows).toHaveCount(7);
     await expect(welcome).toHaveCount(0);
   });

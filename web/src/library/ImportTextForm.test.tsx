@@ -6,7 +6,7 @@ import { hasText, renderApp, resetApp, waitForCondition } from "../test/app";
 const HINT = "Paste the transcript from YouTube's Show transcript panel (timestamps included).";
 
 const levelButton = (container: HTMLElement, name: string) =>
-  Array.from(container.querySelectorAll<HTMLButtonElement>('form [role="group"][aria-label="Level"] button')).find(
+  Array.from(container.querySelectorAll<HTMLButtonElement>('form [role="group"][aria-label="Lesson level"] button')).find(
     (button) => button.textContent?.startsWith(name),
   );
 

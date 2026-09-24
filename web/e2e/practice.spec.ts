@@ -43,15 +43,18 @@ test("hide one sentence's text and keep practising it", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
   const first = page.getByRole("listitem").first();
 
-  const toggle = first.getByRole("button", { name: "Hide text" });
+  const toggle = first.getByRole("button", { name: "Text", exact: true });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await toggle.click();
   await expect(first.getByRole("button", { name: "morning", exact: true })).toHaveCount(0);
-  await expect(first.getByRole("button", { name: "Show text" })).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toBeFocused();
   await expect(page.getByRole("button", { name: "nice", exact: true })).toBeVisible();
 
   await first.getByRole("button", { name: "Listen" }).click();
   await expect.poll(() => spoken(page)).toContain("Good morning, how are you today?");
 
-  await first.getByRole("button", { name: "Show text" }).click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(first.getByRole("button", { name: "morning", exact: true })).toBeVisible();
 });

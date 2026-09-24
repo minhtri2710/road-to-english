@@ -12,19 +12,21 @@ function readDailyGoal(): DailyGoal {
 }
 
 // The stored daily goal, whether today's practice meets it, and whether to announce that it was met.
-// armGoal marks the next count change as the user's practice action; disarmGoal withdraws that after a failed save.
+// armGoal marks the next count change as the user's practice action; disarmGoal withdraws one arm after a failed save,
+// so a failure cannot silence the announcement owed to an overlapping save that succeeded.
 export function useDailyGoal(actionsToday: number) {
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = actionsToday >= Number(dailyGoal);
   // Only a practice action or a goal change can announce the goal, so loading a met goal stays quiet.
-  const goalArmed = useRef(false);
+  // Arms not yet withdrawn by a failed save.
+  const goalArms = useRef(0);
   const goalMetBefore = useRef(goalMet);
   const [goalAnnounced, setGoalAnnounced] = useState(false);
 
   // Each count or goal change consumes the arm, so a later reload (sync, import) cannot announce on its own.
   useEffect(() => {
-    const armed = goalArmed.current;
-    goalArmed.current = false;
+    const armed = goalArms.current > 0;
+    goalArms.current = 0;
     if (goalMet !== goalMetBefore.current) {
       goalMetBefore.current = goalMet;
       setGoalAnnounced(goalMet && armed);
@@ -32,15 +34,16 @@ export function useDailyGoal(actionsToday: number) {
   }, [actionsToday, dailyGoal, goalMet]);
 
   const armGoal = () => {
-    goalArmed.current = true;
+    goalArms.current += 1;
   };
 
+  // The count change of an overlapping successful save may already have consumed every arm.
   const disarmGoal = () => {
-    goalArmed.current = false;
+    goalArms.current = Math.max(0, goalArms.current - 1);
   };
 
   const chooseGoal = (goal: DailyGoal) => {
-    goalArmed.current = true;
+    goalArms.current += 1;
     writePref(DAILY_GOAL_KEY, goal);
     setDailyGoal(goal);
   };

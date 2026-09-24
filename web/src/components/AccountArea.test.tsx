@@ -33,15 +33,19 @@ describe("AccountArea", () => {
   const user = () => new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), { status: 200 });
 
   const modeGroup = (container: HTMLElement) => {
-    const group = container.querySelector<HTMLElement>('[role="group"][aria-label="Sign in or create an account"]');
+    const group = container.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Sign in or create an account"]');
     if (!group) throw new Error("mode control not found");
     return group;
   };
   const modeButton = (container: HTMLElement, name: "Sign in" | "Create account") => {
-    const button = buttonsNamed(modeGroup(container), name)[0];
-    if (!button) throw new Error(`${name} mode not found`);
-    return button;
+    const radio = Array.from(modeGroup(container).querySelectorAll<HTMLElement>('[role="radio"]')).find(
+      (candidate) => candidate.textContent === name,
+    );
+    if (!radio) throw new Error(`${name} mode not found`);
+    return radio;
   };
+  // Astryx keeps a disabled button with a tooltip focusable and marks it aria-disabled.
+  const isDisabled = (button: HTMLButtonElement) => button.disabled || button.getAttribute("aria-disabled") === "true";
   const submitButton = (container: HTMLElement) => {
     const buttons = inputLabelled(container, "Email").form?.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
     if (buttons?.length !== 1) throw new Error("expected one submit button");
@@ -111,19 +115,34 @@ describe("AccountArea", () => {
 
   it("offers Sign in and Create account modes, Sign in first, with one submit button named for the mode", async () => {
     const { container } = await renderOpen();
-    expect(modeButton(container, "Sign in").getAttribute("aria-pressed")).toBe("true");
-    expect(modeButton(container, "Create account").getAttribute("aria-pressed")).toBe("false");
+    expect(modeButton(container, "Sign in").getAttribute("aria-checked")).toBe("true");
+    expect(modeButton(container, "Create account").getAttribute("aria-checked")).toBe("false");
     expect(submitButton(container).textContent).toBe("Sign in");
     expect(submitButton(container).getAttribute("data-variant")).toBe("primary");
 
     await chooseMode(container, "Create account");
-    expect(modeButton(container, "Sign in").getAttribute("aria-pressed")).toBe("false");
-    expect(modeButton(container, "Create account").getAttribute("aria-pressed")).toBe("true");
+    expect(modeButton(container, "Sign in").getAttribute("aria-checked")).toBe("false");
+    expect(modeButton(container, "Create account").getAttribute("aria-checked")).toBe("true");
     expect(submitButton(container).textContent).toBe("Create account");
 
     // Pressing the chosen mode again keeps it.
     await chooseMode(container, "Create account");
     expect(submitButton(container).textContent).toBe("Create account");
+  });
+
+  it("names only the submit button Sign in or Create account; the disclosure is Account and the modes are radios", async () => {
+    const { container } = await renderOpen();
+    // Role button, as getAllByRole("button", { name }) counts: a radio is not a button.
+    const named = (name: string) =>
+      Array.from(container.querySelectorAll("button:not([role])")).filter(
+        (button) => (button.getAttribute("aria-label") ?? button.textContent) === name,
+      );
+    expect(named("Sign in")).toEqual([submitButton(container)]);
+    expect(named("Account")).toEqual([accountDisclosure(container)]);
+    expect(modeButton(container, "Sign in").getAttribute("role")).toBe("radio");
+
+    await chooseMode(container, "Create account");
+    expect(named("Create account")).toEqual([submitButton(container)]);
   });
 
   it("labels the fields and sets autocomplete by mode", async () => {
@@ -284,7 +303,7 @@ describe("AccountArea", () => {
     expect(inputLabelled(container, "Password").hasAttribute("aria-invalid")).toBe(false);
 
     await click(container, "Sign in instead?");
-    expect(modeButton(container, "Sign in").getAttribute("aria-pressed")).toBe("true");
+    expect(modeButton(container, "Sign in").getAttribute("aria-checked")).toBe("true");
     expect(submitButton(container).textContent).toBe("Sign in");
     expect(inputLabelled(container, "Email").value).toBe("learner@example.com");
     expect(inputLabelled(container, "Email").hasAttribute("aria-invalid")).toBe(false);
@@ -330,7 +349,7 @@ describe("AccountArea", () => {
     });
     await submit(container, "learner@example.com", "password");
     await waitForCondition(hasText(container, "Too many attempts. Try again in a few minutes."));
-    expect(submitButton(container).disabled).toBe(false);
+    expect(isDisabled(submitButton(container))).toBe(false);
   });
 
   describe("a 429 with Retry-After", () => {
@@ -350,16 +369,45 @@ describe("AccountArea", () => {
       const { container } = await renderOpen({ route: limited(3) });
       await submit(container, "learner@example.com", "password");
       await waitForCondition(hasText(container, "Too many attempts. Try again in 3 s"));
-      expect(submitButton(container).disabled).toBe(true);
+      expect(isDisabled(submitButton(container))).toBe(true);
 
       await tick(1);
       expect(container.textContent).toContain("Too many attempts. Try again in 2 s");
       await tick(1);
       expect(container.textContent).toContain("Too many attempts. Try again in 1 s");
-      expect(submitButton(container).disabled).toBe(true);
+      expect(isDisabled(submitButton(container))).toBe(true);
       await tick(1);
       expect(container.textContent).not.toContain("Too many attempts");
-      expect(submitButton(container).disabled).toBe(false);
+      expect(isDisabled(submitButton(container))).toBe(false);
+    });
+
+    it("keeps focus on the pressed submit and on Close during the countdown, and ignores both", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      const { container } = await renderOpen({ route: limited(30) });
+      await fill(container, "learner@example.com", "password");
+      const submit = submitButton(container);
+      await act(async () => {
+        submit.focus();
+        submit.click();
+      });
+      await waitForCondition(hasText(container, "Too many attempts. Try again in 30 s"));
+      expect(document.activeElement).toBe(submit);
+      const attempts = callsTo("/login");
+
+      await act(async () => {
+        submit.click();
+      });
+      await tick(1);
+      expect(callsTo("/login")).toBe(attempts);
+      expect(document.activeElement).toBe(submit);
+
+      const close = buttonsNamed(container, "Close")[0]!;
+      await act(async () => {
+        close.focus();
+        close.click();
+      });
+      expect(document.activeElement).toBe(close);
+      expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("true");
     });
 
     it("shows minutes from 60 s up and announces the wait once", async () => {
@@ -401,7 +449,7 @@ describe("AccountArea", () => {
 
       await chooseMode(container, "Create account");
       expect(container.textContent).not.toContain("Too many attempts");
-      expect(submitButton(container).disabled).toBe(false);
+      expect(isDisabled(submitButton(container))).toBe(false);
       expect(vi.getTimerCount()).toBe(idle);
     });
 
@@ -471,7 +519,7 @@ describe("AccountArea", () => {
       await submit(container, "learner@example.com", "short");
       await pressEscape(container);
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("true");
-      expect(closeButton(container).disabled).toBe(true);
+      expect(isDisabled(closeButton(container))).toBe(true);
       await act(async () => {
         closeButton(container).click();
         accountDisclosure(container).click();
@@ -487,7 +535,7 @@ describe("AccountArea", () => {
       await waitForCondition(hasText(container, "Invalid email or password."));
       await pressEscape(container);
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("true");
-      expect(closeButton(container).disabled).toBe(true);
+      expect(isDisabled(closeButton(container))).toBe(true);
     });
 
     it("stays open during a 429 countdown and collapses once it ends", async () => {
@@ -504,7 +552,7 @@ describe("AccountArea", () => {
       await act(async () => {
         vi.advanceTimersByTime(2000);
       });
-      expect(closeButton(container).disabled).toBe(false);
+      expect(isDisabled(closeButton(container))).toBe(false);
       await pressEscape(container);
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("false");
     });

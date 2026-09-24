@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 
 import { Status } from "../components/feedback";
@@ -242,11 +243,19 @@ export function SentenceShadowing({
       {recorder.url && (
         <audio
           ref={audioRef}
+          aria-label="Your recording"
           controls
           src={recorder.url}
           onPlay={(event) => stopMedia({ keepAudio: event.currentTarget })}
         />
       )}
+      {/* Record becomes Stop and back; its own region, as a status region re-reads all of its text on any change. */}
+      <VisuallyHidden>
+        <Status>
+          {recorder.state === "recording" && "Recording."}
+          {recorder.state === "ready" && "Recording stopped."}
+        </Status>
+      </VisuallyHidden>
       <Status>
         {speechFailed && (
           <Text as="p" type="supporting">

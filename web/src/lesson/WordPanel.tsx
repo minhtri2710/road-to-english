@@ -5,6 +5,7 @@ import { Link } from "@astryxdesign/core/Link";
 import { HStack } from "@astryxdesign/core/HStack";
 import { useToast } from "@astryxdesign/core/Toast";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
@@ -46,6 +47,8 @@ export function SaveToReview({
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Set by a save this visit, so the Saved state is announced; the Undo toast announces a removal.
+  const [announced, setAnnounced] = useState(false);
   const isSavingRef = useRef(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const showToast = useToast();
@@ -76,15 +79,19 @@ export function SaveToReview({
     isSavingRef.current = true;
     setIsSaving(true);
     setFailed(false);
+    setAnnounced(false);
     try {
       if (saved) {
         const tombstone = await removeCard(cardId(card.source));
+        // The toast stays until dismissed, so there is time to reach Undo.
         const dismiss = showToast({
-          body: "Removed from your review deck.",
+          body: "Removed from your review deck. Undo restores it.",
+          isAutoHide: false,
           endContent: <Button label="Undo" variant="secondary" size="sm" onClick={(event) => void undo(tombstone, dismiss, event.currentTarget)} />,
         });
       } else {
         await addCard(card);
+        setAnnounced(true);
       }
     } catch {
       setFailed(true);
@@ -107,6 +114,9 @@ export function SaveToReview({
         onClick={() => void toggle()}
       />
       {failed && <Alert>Couldn't save. Try again.</Alert>}
+      <VisuallyHidden>
+        <Status>{announced && saved && "Saved to your review deck."}</Status>
+      </VisuallyHidden>
     </>
   );
 }
@@ -116,15 +126,18 @@ export function SaveToReview({
 // run whose cardWord() is a card word as a button; everything
 // else stays plain text, so the sentence text reads exactly as authored. The
 // word whose character range holds spokenChar is marked as currently spoken.
+// The selected word's button is expanded and controls its word panel, panelId.
 export function SentenceWords({
   text,
   selected,
   spokenChar,
+  panelId,
   onSelect,
 }: {
   text: string;
   selected: string | null;
   spokenChar: number | null;
+  panelId: string;
   onSelect: (text: string) => void;
 }) {
   let start = 0;
@@ -138,12 +151,15 @@ export function SentenceWords({
         }
         const spoken =
           spokenChar !== null && spokenChar >= partStart && spokenChar < start;
+        const expanded = part === selected;
         return (
           <Button
             key={index}
             label={part}
             size="sm"
-            variant={part === selected ? "secondary" : "ghost"}
+            variant={expanded ? "secondary" : "ghost"}
+            aria-expanded={expanded}
+            aria-controls={expanded ? panelId : undefined}
             aria-current={spoken ? "true" : undefined}
             xstyle={[styles.sentenceWord, spoken && styles.spokenWord]}
             onClick={() => onSelect(part)}
@@ -155,6 +171,7 @@ export function SentenceWords({
 }
 
 export function WordPanel({
+  id,
   text,
   card,
   savedCardIds,
@@ -163,6 +180,7 @@ export function WordPanel({
   undoRemove,
   hear,
 }: {
+  id: string;
   text: string;
   card: NewCard;
   savedCardIds: Set<string>;
@@ -186,7 +204,7 @@ export function WordPanel({
   };
 
   return (
-    <VStack gap={1}>
+    <VStack gap={1} id={id}>
       <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
         <Text weight="semibold">{text}</Text>
         <Button
@@ -213,8 +231,7 @@ export function WordPanel({
         />
         <Link
           href={"https://youglish.com/pronounce/" + encodeURIComponent(word) + "/english"}
-          target="_blank"
-          rel="noopener noreferrer"
+          isExternalLink
           xstyle={styles.tapTarget}
         >
           Hear it on YouGlish

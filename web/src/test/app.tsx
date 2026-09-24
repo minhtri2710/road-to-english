@@ -168,12 +168,12 @@ export function inputLabelled(container: HTMLElement, text: string): HTMLInputEl
   return input;
 }
 
-// The signed-out header's "Sign in" disclosure; a missing one fails the test.
+// The signed-out header's "Account" disclosure; a missing one fails the test.
 export function accountDisclosure(container: HTMLElement): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")).find(
-    (candidate) => candidate.textContent === "Sign in",
+    (candidate) => candidate.textContent === "Account",
   );
-  if (!button) throw new Error("Sign in disclosure not found");
+  if (!button) throw new Error("Account disclosure not found");
   return button;
 }
 

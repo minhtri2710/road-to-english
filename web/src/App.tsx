@@ -15,7 +15,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Lesson } from "./api/lessons";
 import { AccountArea } from "./components/AccountArea";
 import { BackupControls } from "./components/BackupControls";
-import { Alert, Status, ViewHeading } from "./components/feedback";
+import { Alert, ErrorBoundary, Status, ViewHeading } from "./components/feedback";
 import { sharedStyles } from "./components/styles";
 import { useAuth } from "./hooks/auth";
 import { useUserLessons } from "./hooks/lessons";
@@ -58,7 +58,18 @@ const appStyles = stylex.create({
   },
 });
 
+// The one Theme wraps the ErrorBoundary, so its fallback renders styled like the App.
 export function App() {
+  return (
+    <Theme theme={neutralTheme}>
+      <ErrorBoundary>
+        <AppViews />
+      </ErrorBoundary>
+    </Theme>
+  );
+}
+
+function AppViews() {
   const [route, setRoute] = useState(readRoute);
   const shownRoute = useRef(route);
   const {
@@ -233,165 +244,164 @@ export function App() {
   };
 
   return (
-    <Theme theme={neutralTheme}>
-      <div className={stylex.props(appStyles.page).className}>
-        <div className={stylex.props(appStyles.content).className}>
-          <VStack gap={4}>
-            <VStack as="header" gap={1} xstyle={appStyles.header}>
-              {/* Only reaching the goal is announced; the count lives in the library's Today card. */}
-              <Status>
-                {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
-              </Status>
-              {storageKept === false && (
-                <Banner
-                  status="info"
-                  title="Progress saved only in this browser"
-                  endContent={
-                    <Button label="Back up" variant="secondary" onClick={() => navigate({ view: "library" }, YOUR_DATA)} />
-                  }
+    <div className={stylex.props(appStyles.page).className}>
+      <div className={stylex.props(appStyles.content).className}>
+        <VStack gap={4}>
+          <VStack as="header" gap={1} xstyle={appStyles.header}>
+            {/* Only reaching the goal is announced; the count lives in the library's Today card. */}
+            <Status>
+              {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
+            </Status>
+            {storageKept === false && (
+              <Banner
+                status="info"
+                title="Progress saved only in this browser"
+                endContent={
+                  <Button label="Back up" variant="secondary" onClick={() => navigate({ view: "library" }, YOUR_DATA)} />
+                }
+              />
+            )}
+            {storageError && (
+              <Alert>
+                Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
+              </Alert>
+            )}
+            {backupError && <Alert>Backup error: {backupError}</Alert>}
+            {/* The synced line changes every minute, so the live region carries only problems and one "Synced." after a failure. */}
+            <Status>
+              {syncLine?.status === "failed" && <Text as="p" type="supporting">{syncLine.text}</Text>}
+              {syncLine?.status === "ownerMismatch" && (
+                <Text as="p" color="primary" xstyle={sharedStyles.error}>
+                  {syncLine.text}
+                </Text>
+              )}
+              {syncLine?.recovered && <VisuallyHidden>Synced.</VisuallyHidden>}
+            </Status>
+            {syncLine?.status === "synced" && <Text as="p" type="supporting">{syncLine.text}</Text>}
+            <AccountArea auth={auth} />
+          </VStack>
+          <nav aria-label="Views" className={stylex.props(sharedStyles.viewToggle).className}>
+            <ToggleButtonGroup
+              label="App view"
+              // Inside a lesson no view is pressed, so Library and Review both navigate.
+              value={view === "review" || view === "library" ? view : null}
+              onChange={(nextView) => {
+                if (nextView) {
+                  navigate({ view: nextView as "library" | "review" });
+                }
+              }}
+            >
+              <ToggleButton value="library" label="Library" />
+              <ToggleButton value="review" label="Review" />
+            </ToggleButtonGroup>
+          </nav>
+          <VStack as="main" gap={4}>
+            {(view === "review" || view === "library") && (
+              <VStack gap={1}>
+                <ViewHeading takeFocus={takeHeadingFocus}>
+                  {view === "library" ? "Lesson library" : "Review deck"}
+                </ViewHeading>
+                <Text type="large">
+                  {view === "library"
+                    ? "Choose a lesson to practise reading and speaking."
+                    : "Review saved sentences with spaced repetition."}
+                </Text>
+              </VStack>
+            )}
+            {view === "review" ? (
+              <VStack gap={2}>
+                <Badge label={`${reviewDeck.length} due`} variant="info" />
+                <ReviewDeck
+                  due={reviewDeck}
+                  hiddenNew={deck.due.length - reviewDeck.length}
+                  nextDueInMinutes={deck.nextDueInMinutes}
+                  hasCards={deck.savedCardIds.size > 0}
+                  loading={deck.loading}
+                  loadFailed={deck.error !== null}
+                  review={deck.review}
+                  recordPractice={recordPractice}
+                  onGoToLibrary={() => navigate({ view: "library" })}
                 />
-              )}
-              {storageError && (
-                <Alert>
-                  Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
-                </Alert>
-              )}
-              {backupError && <Alert>Backup error: {backupError}</Alert>}
-              {/* The synced line changes every minute, so the live region carries only problems and one "Synced." after a failure. */}
-              <Status>
-                {syncLine?.status === "failed" && <Text as="p" type="supporting">{syncLine.text}</Text>}
-                {syncLine?.status === "ownerMismatch" && (
-                  <Text as="p" color="primary" xstyle={sharedStyles.error}>
-                    {syncLine.text}
-                  </Text>
-                )}
-                {syncLine?.recovered && <VisuallyHidden>Synced.</VisuallyHidden>}
-              </Status>
-              {syncLine?.status === "synced" && <Text as="p" type="supporting">{syncLine.text}</Text>}
-              <AccountArea auth={auth} />
-            </VStack>
-            <nav aria-label="Views" className={stylex.props(sharedStyles.viewToggle).className}>
-              <ToggleButtonGroup
-                label="App view"
-                value={view === "review" ? "review" : "library"}
-                onChange={(nextView) => {
-                  if (nextView) {
-                    navigate({ view: nextView as "library" | "review" });
-                  }
-                }}
-              >
-                <ToggleButton value="library" label="Library" />
-                <ToggleButton value="review" label="Review" />
-              </ToggleButtonGroup>
-            </nav>
-            <VStack as="main" gap={4}>
-              {(view === "review" || view === "library") && (
-                <VStack gap={1}>
-                  <ViewHeading takeFocus={takeHeadingFocus}>
-                    {view === "library" ? "Lesson library" : "Review deck"}
-                  </ViewHeading>
-                  <Text type="large">
-                    {view === "library"
-                      ? "Choose a lesson to practise reading and speaking."
-                      : "Review saved sentences with spaced repetition."}
-                  </Text>
-                </VStack>
-              )}
-              {view === "review" ? (
+              </VStack>
+            ) : view === "library" ? (
+              <VStack gap={4}>
+                <LessonList
+                  onSelect={(id) => navigate({ view: "lesson", id })}
+                  completedLessons={progress.completedLessons}
+                  takeFocus={takeReturnFocus}
+                  focusHeading={focusHeading}
+                  onSettled={(settled) => {
+                    librarySettled.current = settled;
+                    settleReturnFocus();
+                  }}
+                  levelFilter={levelFilter}
+                  chooseLevelFilter={chooseLevelFilter}
+                  lastLesson={lastLesson}
+                  ownLessons={Array.isArray(userLessons) ? userLessons : []}
+                  onContinue={() => lastLesson && navigate(lastLesson)}
+                  today={{
+                    due: deck.error === null && !deck.loading ? reviewDeck.length : null,
+                    actionsToday: progress.actionsToday,
+                    dailyGoal,
+                    goalMet,
+                    chooseGoal,
+                    streak: progress.streak,
+                    freezes: progress.freezes,
+                    xp: progress.xp,
+                    week: progress.week,
+                    onReview: () => navigate({ view: "review" }),
+                  }}
+                />
                 <VStack gap={2}>
-                  <Badge label={`${reviewDeck.length} due`} variant="info" />
-                  <ReviewDeck
-                    due={reviewDeck}
-                    hiddenNew={deck.due.length - reviewDeck.length}
-                    nextDueInMinutes={deck.nextDueInMinutes}
-                    hasCards={deck.savedCardIds.size > 0}
-                    loading={deck.loading}
-                    loadFailed={deck.error !== null}
-                    review={deck.review}
-                    recordPractice={recordPractice}
-                    onGoToLibrary={() => navigate({ view: "library" })}
-                  />
-                </VStack>
-              ) : view === "library" ? (
-                <VStack gap={4}>
-                  <LessonList
-                    onSelect={(id) => navigate({ view: "lesson", id })}
+                  <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
+                  <UserLessonList
+                    lessons={userLessons}
+                    onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
+                    onDelete={(lesson) => void deleteLesson(lesson)}
+                    deleteFailedId={deleteFailedId}
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
-                    focusHeading={focusHeading}
-                    onSettled={(settled) => {
-                      librarySettled.current = settled;
-                      settleReturnFocus();
-                    }}
-                    levelFilter={levelFilter}
-                    chooseLevelFilter={chooseLevelFilter}
-                    lastLesson={lastLesson}
-                    ownLessons={Array.isArray(userLessons) ? userLessons : []}
-                    onContinue={() => lastLesson && navigate(lastLesson)}
-                    today={{
-                      due: deck.error === null && !deck.loading ? reviewDeck.length : null,
-                      actionsToday: progress.actionsToday,
-                      dailyGoal,
-                      goalMet,
-                      chooseGoal,
-                      streak: progress.streak,
-                      freezes: progress.freezes,
-                      xp: progress.xp,
-                      week: progress.week,
-                      onReview: () => navigate({ view: "review" }),
-                    }}
+                    onCreateLesson={() => document.getElementById("import-title")?.focus()}
                   />
-                  <VStack gap={2}>
-                    <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
-                    <UserLessonList
-                      lessons={userLessons}
-                      onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
-                      onDelete={(lesson) => void deleteLesson(lesson)}
-                      deleteFailedId={deleteFailedId}
-                      completedLessons={progress.completedLessons}
-                      takeFocus={takeReturnFocus}
-                      onCreateLesson={() => document.getElementById("import-title")?.focus()}
-                    />
-                  </VStack>
-                  <ImportTextForm onCreate={createLesson} levelFilter={levelFilter} />
-                  <VStack as="section" gap={2} aria-labelledby={YOUR_DATA}>
-                    <Heading
-                      id={YOUR_DATA}
-                      level={2}
-                      tabIndex={-1}
-                      ref={(heading) => {
-                        if (heading && takeReturnFocus(YOUR_DATA)) {
-                          heading.focus();
-                        }
-                      }}
-                    >
-                      Your data
-                    </Heading>
-                    <Text as="p" type="supporting">
-                      Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a
-                      spreadsheet. Import replaces the data on this device with a backup file.
-                    </Text>
-                    <BackupControls signedIn={auth.user !== null} setError={setBackupError} onImported={reloadAfterImport} />
-                    {storageKept !== null && (
-                      <Text as="p" type="supporting">
-                        {storageKept
-                          ? "Storage: kept on this device."
-                          : "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it."}
-                      </Text>
-                    )}
-                  </VStack>
                 </VStack>
-              ) : route.view === "lesson" ? (
-                <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
-              ) : userLesson ? (
-                <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
-              ) : (
-                <Text as="p">Loading lesson...</Text>
-              )}
-            </VStack>
+                <ImportTextForm onCreate={createLesson} levelFilter={levelFilter} />
+                <VStack as="section" gap={2} aria-labelledby={YOUR_DATA}>
+                  <Heading
+                    id={YOUR_DATA}
+                    level={2}
+                    tabIndex={-1}
+                    ref={(heading) => {
+                      if (heading && takeReturnFocus(YOUR_DATA)) {
+                        heading.focus();
+                      }
+                    }}
+                  >
+                    Your data
+                  </Heading>
+                  <Text as="p" type="supporting">
+                    Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a
+                    spreadsheet. Import replaces the data on this device with a backup file.
+                  </Text>
+                  <BackupControls signedIn={auth.user !== null} setError={setBackupError} onImported={reloadAfterImport} />
+                  {storageKept !== null && (
+                    <Text as="p" type="supporting">
+                      {storageKept
+                        ? "Storage: kept on this device."
+                        : "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it."}
+                    </Text>
+                  )}
+                </VStack>
+              </VStack>
+            ) : route.view === "lesson" ? (
+              <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
+            ) : userLesson ? (
+              <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
+            ) : (
+              <Text as="p">Loading lesson...</Text>
+            )}
           </VStack>
-        </div>
+        </VStack>
       </div>
-    </Theme>
+    </div>
   );
 }

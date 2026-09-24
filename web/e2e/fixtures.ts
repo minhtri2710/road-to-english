@@ -133,7 +133,7 @@ export function uniqueEmail(): string {
   return `learner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
 }
 
-export const accountDisclosure = (page: Page) => page.locator("button[aria-controls][aria-expanded]", { hasText: "Sign in" });
+export const accountDisclosure = (page: Page) => page.getByRole("button", { name: "Account", exact: true });
 
 // Expands the signed-out account form if it is collapsed.
 export async function openAccountForm(page: Page): Promise<void> {
@@ -144,13 +144,13 @@ export async function openAccountForm(page: Page): Promise<void> {
   await expect(page.getByLabel("Email")).toBeFocused();
 }
 
-export const accountModes = (page: Page) => page.getByRole("group", { name: "Sign in or create an account" });
+export const accountModes = (page: Page) => page.getByRole("radiogroup", { name: "Sign in or create an account" });
 export const accountSubmit = (page: Page) => page.locator('form:has(input[type="email"]) button[type="submit"]');
 
 // Fills and submits the account form in the given mode.
 export async function submitAccount(page: Page, mode: "Sign in" | "Create account", email: string, password: string): Promise<void> {
   await openAccountForm(page);
-  await accountModes(page).getByRole("button", { name: mode }).click();
+  await accountModes(page).getByRole("radio", { name: mode }).click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await accountSubmit(page).click();

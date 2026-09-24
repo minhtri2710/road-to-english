@@ -41,7 +41,7 @@ test("create an account, see it sync, sign out, reject a wrong password, show th
   await expect(page.getByText("Synced just now")).toBeVisible();
 });
 
-test("the Sign in disclosure expands the form and collapses on Escape and Close", async ({ page }) => {
+test("the Account disclosure expands the form and collapses on Escape and Close", async ({ page }) => {
   await page.goto("/");
   const disclosure = accountDisclosure(page);
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
@@ -51,6 +51,9 @@ test("the Sign in disclosure expands the form and collapses on Escape and Close"
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   const region = page.locator(`[id="${await disclosure.getAttribute("aria-controls")}"]`);
   await expect(region.getByLabel("Email")).toBeFocused();
+  // "Sign in" names only the submit button; the mode choice is a radio.
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(1);
+  await expect(accountModes(page).getByRole("radio", { name: "Sign in" })).toBeChecked();
   await page.keyboard.press("Escape");
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(disclosure).toBeFocused();
@@ -71,13 +74,16 @@ test("a 429 with Retry-After counts down with submit disabled, then re-enables",
   const countdown = page.locator("p:not([role=alert])", { hasText: /^Too many attempts\. Try again in/ });
   await expect(countdown).toHaveText("Too many attempts. Try again in 3 s");
   await expect(accountSubmit(page)).toBeDisabled();
+  // Disabled by aria-disabled, so the pressed submit keeps focus through the countdown.
+  await expect(accountSubmit(page)).toBeFocused();
 
   await page.clock.runFor(1000);
   await expect(countdown).toHaveText("Too many attempts. Try again in 2 s");
   await expect(accountSubmit(page)).toBeDisabled();
+  await expect(accountSubmit(page)).toBeFocused();
 
   await page.clock.runFor(2000);
   await expect(page.getByText(/Too many attempts/)).toHaveCount(0);
   await expect(accountSubmit(page)).toBeEnabled();
-  await expect(accountModes(page).getByRole("button", { name: "Sign in" })).toHaveAttribute("aria-pressed", "true");
+  await expect(accountModes(page).getByRole("radio", { name: "Sign in" })).toHaveAttribute("aria-checked", "true");
 });

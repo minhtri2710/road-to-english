@@ -1112,7 +1112,8 @@ describe("App", () => {
         setInputValue(input, "Good morning");
         input.form?.requestSubmit();
       });
-      expect(card.querySelectorAll('[role="status"]:not([aria-live])')).toHaveLength(1);
+      // The result region and Save to review's saved region; the result lands in the region mounted before it.
+      expect(card.querySelectorAll('[role="status"]:not([aria-live])')).toHaveLength(2);
       expect(card.querySelector('[role="status"]:not([aria-live])')).toBe(region);
       expect(region?.textContent).toContain("Not quite");
       expect(region?.querySelector("button")).toBeNull();
@@ -1144,7 +1145,7 @@ describe("App", () => {
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       expect(container.querySelectorAll("[lang]")).toHaveLength(0);
-      await click(container, "Show Vietnamese");
+      await click(container, "Vietnamese");
       expect(Array.from(container.querySelectorAll("[lang]")).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual(
         greetingsLesson.sentences.map(({ vi }) => ["vi", vi]),
       );
@@ -1311,6 +1312,18 @@ describe("App", () => {
       });
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       expect(document.activeElement).toBe(container.querySelector("main h1"));
+    });
+
+    it("presses no view inside a lesson, and Library returns to the library", async () => {
+      const { container } = await openLesson();
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      const views = container.querySelectorAll('nav[aria-label="Views"] button');
+      expect(views).toHaveLength(2);
+      expect(Array.from(views).map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false"]);
+
+      await click(container, "Library");
+      await waitForCondition(() => h1Texts(container)[0] === "Lesson library");
+      expect(window.location.hash).toBe("#/");
     });
 
     it("leaves focus where the user moved it while an Undo was saving", async () => {
