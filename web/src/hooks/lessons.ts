@@ -6,6 +6,7 @@ import {
   type Lesson,
   type LessonSummary,
 } from "../api/lessons";
+import { deleteUserLesson, listUserLessons, putUserLesson } from "../lib/userLessons";
 
 interface AsyncData<T> {
   data: T | null;
@@ -93,4 +94,43 @@ export function useLesson(id: string): AsyncData<Lesson> {
   }, [id]);
 
   return { data, loading, error };
+}
+
+// This device's own lessons: null while loading, or the load error. Reload never throws.
+export function useUserLessons() {
+  const [lessons, setLessons] = useState<Lesson[] | Error | null>(null);
+
+  const load = () =>
+    listUserLessons().catch((loadError: unknown) =>
+      loadError instanceof Error ? loadError : new Error("Unable to load your lessons"),
+    );
+
+  const reload = async () => {
+    setLessons(await load());
+  };
+
+  useEffect(() => {
+    let active = true;
+    void load().then((loaded) => {
+      if (active) {
+        setLessons(loaded);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const create = async (lesson: Lesson) => {
+    await putUserLesson(lesson);
+    await reload();
+  };
+
+  // Throws if the delete fails, before reloading.
+  const remove = async (id: string) => {
+    await deleteUserLesson(id);
+    await reload();
+  };
+
+  return { lessons, reload, create, remove };
 }

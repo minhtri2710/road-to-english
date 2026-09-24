@@ -1,10 +1,7 @@
-import { act, StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "./App";
 import { exportData } from "./lib/backup";
-import { cardsCsv } from "./lib/csv";
 import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
 import { createCard, deleteCard, Rating, reviewCard, State } from "./lib/vocab";
@@ -15,30 +12,26 @@ import * as progressStore from "./lib/progressStore";
 import * as userLessonsStore from "./lib/userLessons";
 import * as vocabStore from "./lib/vocabStore";
 import { listUserLessons, putUserLesson } from "./lib/userLessons";
-import { greetingsLesson, lessonSummaries, userLesson } from "./test/fixtures";
-
-const fetchMock = vi.fn<typeof fetch>();
-const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
-const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
-const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
-
-function responseFor(path: string, lesson = greetingsLesson): Response {
-  if (path === "/me") {
-    return new Response(null, { status: 401 });
-  }
-
-  if (path === "/sync") {
-    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [] }), {
-      status: 200,
-    });
-  }
-
-  if (path === "/lessons") {
-    return new Response(JSON.stringify(lessonSummaries), { status: 200 });
-  }
-
-  return new Response(JSON.stringify(lesson), { status: 200 });
-}
+import {
+  buttonsNamed,
+  callsTo,
+  click,
+  close,
+  fetchMock,
+  h1Texts,
+  hasText,
+  openLesson,
+  pathOf,
+  renderApp,
+  resetApp,
+  responseFor,
+  restoreProperty,
+  routeFetch,
+  setInputValue,
+  userResponse,
+  waitForCondition,
+} from "./test/app";
+import { greetingsLesson, userLesson } from "./test/fixtures";
 
 function installMediaDevices(getUserMedia: () => Promise<MediaStream>): void {
   Object.defineProperty(navigator, "mediaDevices", {
@@ -61,40 +54,6 @@ function installObjectUrlFakes(): { revokeObjectURL: ReturnType<typeof vi.fn> } 
   return { revokeObjectURL };
 }
 
-async function waitForCondition(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (condition()) {
-      return;
-    }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-
-  throw new Error("Timed out waiting for condition");
-}
-
-function setInputValue(input: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  setter?.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function restoreProperty(
-  target: object,
-  key: string,
-  descriptor: PropertyDescriptor | undefined,
-): void {
-  if (descriptor) {
-    Object.defineProperty(target, key, descriptor);
-  } else {
-    delete (target as Record<string, unknown>)[key];
-  }
-}
-
 function removeBrowserGlobals(): void {
   vi.stubGlobal("speechSynthesis", undefined);
   vi.stubGlobal("SpeechSynthesisUtterance", undefined);
@@ -111,34 +70,6 @@ async function reopenGreetings(container: HTMLElement): Promise<void> {
   await act(async () => {
     row()?.click();
   });
-}
-
-async function openLesson(lesson = greetingsLesson) {
-  fetchMock.mockImplementation(async (input) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return responseFor(new URL(url, "http://localhost").pathname, lesson);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
-  await act(async () => {
-    root.render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    );
-  });
-  await act(async () => {
-    const button = Array.from(container.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent?.includes("Greetings & Basics"),
-    );
-    button?.click();
-  });
-
-  return { container, root };
 }
 
 interface FakeSpokenUtterance {
@@ -179,44 +110,11 @@ function installSpeechFakes() {
   return { spoken, speak, cancel, finish };
 }
 
-function buttonsNamed(container: HTMLElement, name: string): HTMLButtonElement[] {
-  // ToggleButton repeats its label in an aria-hidden width reservation span.
-  return Array.from(container.querySelectorAll("button")).filter((button) => {
-    const visible = button.cloneNode(true) as HTMLElement;
-    visible.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
-    return visible.textContent === name;
-  });
-}
-
 describe("App", () => {
-  afterEach(() => {
-    window.history.replaceState(null, "", "/");
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    fetchMock.mockReset();
-    restoreProperty(navigator, "mediaDevices", originalMediaDevices);
-    restoreProperty(URL, "createObjectURL", originalCreateObjectURL);
-    restoreProperty(URL, "revokeObjectURL", originalRevokeObjectURL);
-  });
+  afterEach(resetApp);
 
   it("renders the lesson list and opens a lesson detail", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return responseFor(new URL(url, "http://localhost").pathname);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
+    const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("Greetings & Basics");
     expect(container.textContent).toContain("Daily Routine");
@@ -291,85 +189,6 @@ describe("App", () => {
       low.root.unmount();
     });
     low.container.remove();
-  });
-
-  it("keeps dictation references hidden until checking and reveals the result", async () => {
-    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
-    vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const { container, root } = await openLesson();
-    const sentence = greetingsLesson.sentences[0];
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
-
-    expect(container.textContent).not.toContain(sentence.text);
-    expect(container.textContent).not.toContain("casual sign-off");
-
-    const input = container.querySelector<HTMLInputElement>(
-      `#dictation-${sentence.id}`,
-    );
-    // The visible label names the input (WCAG 2.5.3 label in name), so no aria-label overrides it.
-    expect(input?.hasAttribute("aria-label")).toBe(false);
-    expect(container.querySelector(`label[for="dictation-${sentence.id}"]`)?.textContent).toBe("What did you hear?");
-
-    await act(async () => {
-      if (!input) throw new Error("dictation input not found");
-      setInputValue(input, sentence.text);
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-      input.form?.requestSubmit();
-    });
-
-    expect(container.textContent).toContain(`Reference: ${sentence.text}`);
-    expect(container.textContent).toContain("Correct");
-    expect(container.textContent).not.toMatch(/\((missed|extra|you typed)/);
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Try again"))
-        ?.click();
-    });
-    expect(container.textContent).not.toContain(sentence.text);
-    expect(input?.value).toBe("");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("marks missed and wrong words after checking dictation", async () => {
-    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
-    vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
-
-    const input = container.querySelector<HTMLInputElement>(
-      `#dictation-${greetingsLesson.sentences[0].id}`,
-    );
-    if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, "Good, how are you tomorrow?");
-      input.form?.requestSubmit();
-    });
-
-    expect(container.textContent).toContain(
-      'good morning (missed) how are you today (you typed "tomorrow")',
-    );
-    expect(container.textContent).not.toContain("(extra)");
-    expect(container.textContent).toContain("Not quite");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("records dictation practice and shows the streak witness", async () => {
@@ -485,69 +304,6 @@ describe("App", () => {
       return lessonButton?.textContent?.includes("Completed") ?? false;
     });
     expect(container.textContent).toContain("Completed");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("plays dictation and shows positive and negative results", async () => {
-    const speak = vi.fn();
-    const cancel = vi.fn();
-    class FakeUtterance {
-      lang = "";
-      rate = 1;
-      constructor(readonly text: string) {}
-    }
-    vi.stubGlobal("speechSynthesis", { speak, cancel });
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Play"))
-        ?.click();
-    });
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({
-      text: greetingsLesson.sentences[0].text,
-      rate: greetingsLesson.targetWpm / 180,
-      lang: "en-US",
-    }));
-
-    const input = container.querySelector<HTMLInputElement>(
-      `#dictation-${greetingsLesson.sentences[0].id}`,
-    );
-    if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, "wrong answer");
-      input.form?.requestSubmit();
-    });
-    expect(container.textContent).toContain("Not quite");
-    expect(container.textContent).toContain(
-      `Reference: ${greetingsLesson.sentences[0].text}`,
-    );
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Try again"))
-        ?.click();
-    });
-    const retryInput = container.querySelector<HTMLInputElement>(
-      `#dictation-${greetingsLesson.sentences[1].id}`,
-    );
-    if (!retryInput) throw new Error("second dictation input not found");
-    await act(async () => {
-      setInputValue(retryInput, greetingsLesson.sentences[1].text);
-      retryInput.form?.requestSubmit();
-    });
-    expect(container.textContent).toContain("Correct");
 
     await act(async () => {
       root.unmount();
@@ -679,16 +435,7 @@ describe("App", () => {
     });
     first.container.remove();
 
-    const secondContainer = document.createElement("div");
-    document.body.appendChild(secondContainer);
-    const secondRoot = createRoot(secondContainer);
-    await act(async () => {
-      secondRoot.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
+    const { container: secondContainer, root: secondRoot } = await renderApp();
     await act(async () => {
       Array.from(secondContainer.querySelectorAll("button"))
         .find((button) => button.textContent?.includes("Review"))
@@ -833,106 +580,6 @@ describe("App", () => {
     container.remove();
   });
 
-  it("exports all stored cards as a CSV download", async () => {
-    await putCard(
-      createCard(
-        { front: 'say "hi"', back: "chào, bạn", source: { lessonId: "l", sentenceId: "s", word: "" } },
-        new Date(),
-      ),
-    );
-    const blobs: Blob[] = [];
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn((blob: Blob) => {
-        blobs.push(blob);
-        return "blob:csv";
-      }),
-    });
-    const downloads: string[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      downloads.push(this.download);
-    });
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      buttonsNamed(container, "Export CSV")[0]?.click();
-    });
-    await waitForCondition(() => downloads.length > 0);
-
-    expect(blobs).toHaveLength(1);
-    expect(blobs[0]?.type).toBe("text/csv;charset=utf-8");
-    expect(await blobs[0]?.text()).toBe(cardsCsv(await getAllCards()));
-    expect(downloads).toEqual([`road-to-english-cards-${todayKey(new Date())}.csv`]);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("imports a backup through the UI and refreshes the deck and streak", async () => {
-    const existing = createCard(
-      {
-        front: "old card",
-        back: "old answer",
-        source: { lessonId: "old-lesson", sentenceId: "old-sentence", word: "" },
-      },
-      new Date(),
-    );
-    await putCard(existing);
-    await recordPractice("2025-01-01", { newCard: false });
-
-    const importedCard = createCard(
-      {
-        front: "imported card",
-        back: "imported answer",
-        source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
-      },
-      new Date(),
-    );
-    const text = exportData(
-      {
-        cards: [importedCard],
-        practiceDays: [{ date: todayKey(new Date()) }],
-        lessonCompletion: [{ lessonId: "lesson-1" }],
-        userLessons: [],
-      },
-      new Date(),
-    );
-    vi.stubGlobal("confirm", () => true);
-    const { container, root } = await openLesson();
-    const input = container.querySelector<HTMLInputElement>(
-      'input[type="file"]',
-    );
-    if (!input) throw new Error("backup file input not found");
-
-    await act(async () => {
-      Object.defineProperty(input, "files", {
-        configurable: true,
-        value: [new File([text], "backup.json", { type: "application/json" })],
-      });
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
-
-    expect(container.textContent).toContain("1 day streak");
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Review"))
-        ?.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("imported card") ?? false);
-    expect(container.textContent).toContain("imported card");
-    expect(container.textContent).not.toContain("old card");
-    expect(await getAllCards()).toHaveLength(1);
-    expect(await getPracticeDays()).toHaveLength(1);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
   it("explains when shadowing browser APIs are unsupported", async () => {
     removeBrowserGlobals();
     const { container, root } = await openLesson();
@@ -954,26 +601,13 @@ describe("App", () => {
   });
 
   it("syncs exactly once after sign-in", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me") return new Response(null, { status: 401 });
-      if (path === "/login") {
-        return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), { status: 200 });
-      }
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
+    const { container, root } = await renderApp({
+      route: (path) => {
+        if (path === "/me") return new Response(null, { status: 401 });
+        if (path === "/login") {
+          return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), { status: 200 });
+        }
+      },
     });
     const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
     const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
@@ -985,46 +619,21 @@ describe("App", () => {
         .find((button) => button.textContent === "Sign in")
         ?.click();
     });
-    await waitForCondition(() => fetchMock.mock.calls.filter(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/sync";
-    }).length === 1);
-    expect(fetchMock.mock.calls.filter(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/sync";
-    })).toHaveLength(1);
+    await waitForCondition(() => callsTo("/sync") === 1);
+    expect(callsTo("/sync")).toBe(1);
 
     await act(async () => root.unmount());
     container.remove();
   });
 
   it("syncs exactly once after /me restores a user", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
-      return responseFor(path);
+    const { container, root } = await renderApp({
+      route: (path) => {
+        if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
+      },
     });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
-    await waitForCondition(() => fetchMock.mock.calls.filter(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/sync";
-    }).length === 1);
-    expect(fetchMock.mock.calls.filter(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/sync";
-    })).toHaveLength(1);
+    await waitForCondition(() => callsTo("/sync") === 1);
+    expect(callsTo("/sync")).toBe(1);
 
     await act(async () => root.unmount());
     container.remove();
@@ -1033,238 +642,30 @@ describe("App", () => {
   it("shows the owner mismatch message and sends no sync", async () => {
     const { claimOwner } = await import("./lib/backupStore");
     await claimOwner("another-user");
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
+    const { container, root } = await renderApp({
+      route: (path) => {
+        if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
+      },
     });
     await waitForCondition(() => container.textContent?.includes("This device's data belongs to another account") ?? false);
-    expect(fetchMock.mock.calls.some(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/sync";
-    })).toBe(false);
+    expect(callsTo("/sync")).toBe(0);
 
     await act(async () => root.unmount());
-    container.remove();
-  });
-
-  it("signs in and signs out without reloading", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me") return new Response(null, { status: 401 });
-      if (path === "/login") {
-        return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), {
-          status: 200,
-        });
-      }
-      if (path === "/logout") return new Response(null, { status: 204 });
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
-
-    expect(container.textContent).not.toContain("learner@example.com");
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-in form not found");
-    await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "password");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign in")
-        ?.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("learner@example.com") ?? false);
-    // The form that held focus is gone, so focus moves to the control that replaced it.
-    expect(document.activeElement?.textContent).toBe("Sign out");
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign out")
-        ?.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Sign in") ?? false);
-    expect(container.textContent).not.toContain("learner@example.com");
-    expect(document.activeElement).toBe(container.querySelector('input[aria-label="Email"]'));
-
-    await act(async () => {
-      root.unmount();
-    });
     container.remove();
   });
 
   it("restores a signed-in session from /me", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me") {
-        return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), {
-          status: 200,
-        });
-      }
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
+    const { container, root } = await renderApp({
+      route: (path) => {
+        if (path === "/me") {
+          return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), {
+            status: 200,
+          });
+        }
+      },
     });
     await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
     expect(container.querySelector('input[aria-label="Email"]')).toBeNull();
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("rejects a short sign-up password without sending a request", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return responseFor(new URL(url, "http://localhost").pathname);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
-
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-up form not found");
-    await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "short");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign up")
-        ?.click();
-    });
-
-    expect(container.textContent).toContain(
-      "Password must be at least 8 characters (and at most 72 bytes).",
-    );
-    expect(fetchMock.mock.calls.some(([input]) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname === "/signup";
-    })).toBe(false);
-
-    await act(async () => root.unmount());
-    container.remove();
-  });
-
-  it("shows the email and password message for a sign-up 400", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/signup") return new Response(null, { status: 400 });
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
-
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-up form not found");
-    await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "password");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign up")
-        ?.click();
-    });
-    await waitForCondition(() => container.textContent?.includes(
-      "Check your email address and password. Password must be at least 8 characters (and at most 72 bytes).",
-    ) ?? false);
-
-    expect(container.textContent).toContain(
-      "Check your email address and password. Password must be at least 8 characters (and at most 72 bytes).",
-    );
-
-    await act(async () => root.unmount());
-    container.remove();
-  });
-
-  it("shows an inline sign-in error and stays signed out", async () => {
-    fetchMock.mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const path = new URL(url, "http://localhost").pathname;
-      if (path === "/me" || path === "/login") return new Response(null, { status: path === "/me" ? 401 : 401 });
-      return responseFor(path);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <App />
-        </StrictMode>,
-      );
-    });
-
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-in form not found");
-    await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "wrong");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign in")
-        ?.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Invalid email or password.") ?? false);
-    expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
-    expect(container.textContent).not.toContain("learner@example.com");
 
     await act(async () => {
       root.unmount();
@@ -2364,31 +1765,6 @@ describe("App", () => {
   describe("daily goal and new-card cap", () => {
     const start = new Date(2026, 0, 5, 12, 0, 0);
 
-    async function renderApp() {
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return responseFor(new URL(url, "http://localhost").pathname);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      const unmount = async () => {
-        await act(async () => {
-          root.unmount();
-        });
-        container.remove();
-      };
-      return { container, unmount };
-    }
-
     async function seedNewCards(count: number) {
       for (let index = 0; index < count; index += 1) {
         await putCard(
@@ -2409,9 +1785,6 @@ describe("App", () => {
         buttonsNamed(container, "Review")[0]?.click();
       });
     }
-
-    const hasText = (container: HTMLElement, text: string) => () =>
-      container.textContent?.includes(text) ?? false;
 
     afterEach(() => {
       vi.useRealTimers();
@@ -2526,31 +1899,10 @@ describe("App", () => {
   describe("user lessons", () => {
     const pasted = "I like green tea.\nDo you   like it?\n\nWe drink it every morning.";
 
-    async function renderApp() {
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return responseFor(new URL(url, "http://localhost").pathname);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      await waitForCondition(() => container.textContent?.includes("Your lessons") ?? false);
-      return { container, root };
-    }
-
-    async function unmount({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
+    async function renderLibrary() {
+      const view = await renderApp();
+      await waitForCondition(hasText(view.container, "Your lessons"));
+      return view;
     }
 
     async function createLesson(container: HTMLElement, title: string, text: string) {
@@ -2571,12 +1923,12 @@ describe("App", () => {
 
     function lessonFetches(): string[] {
       return fetchMock.mock.calls
-        .map(([input]) => new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://localhost").pathname)
+        .map(([input]) => pathOf(input))
         .filter((path) => path.startsWith("/lessons/"));
     }
 
     it("creates a lesson from pasted text, opens it without a lesson fetch, and lists it after a remount", async () => {
-      const first = await renderApp();
+      const first = await renderLibrary();
       expect(first.container.textContent).toContain("Your lessons stay on this device; export a backup to move them.");
       expect(buttonsNamed(first.container, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(buttonsNamed(first.container, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
@@ -2608,11 +1960,11 @@ describe("App", () => {
       });
       expect(stored?.id).toMatch(/^user-[0-9a-f-]{36}$/);
       expect(lessonFetches()).toEqual([]);
-      await unmount(first);
+      await close(first);
 
       // The route keeps the created lesson open on a reload; a fresh visit to the app root lists it.
       window.history.replaceState(null, "", "/");
-      const second = await renderApp();
+      const second = await renderLibrary();
       await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
       expect(second.container.textContent).toContain("B2 · 3 sentences");
       await act(async () => {
@@ -2622,12 +1974,12 @@ describe("App", () => {
       });
       expect(second.container.textContent).toContain("We drink it every morning.");
       expect(lessonFetches()).toEqual([]);
-      await unmount(second);
+      await close(second);
     });
 
     it("saves a word whose back is the sentence text only, then deletes the lesson and keeps the card", async () => {
       installSpeechFakes();
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => buttonsNamed(view.container, "green").length === 1);
 
@@ -2665,16 +2017,16 @@ describe("App", () => {
       expect(document.activeElement?.textContent).toBe("Your lessons");
       expect(await listUserLessons()).toEqual([]);
       expect(await getAllCards()).toEqual([card]);
-      await unmount(view);
+      await close(view);
 
-      const remounted = await renderApp();
+      const remounted = await renderLibrary();
       expect(remounted.container.textContent).toContain("No lessons of your own yet.");
       expect(remounted.container.textContent).not.toContain("Tea talk");
-      await unmount(remounted);
+      await close(remounted);
     });
 
     it("creates only one lesson on a synchronous double submit", async () => {
-      const first = await renderApp();
+      const first = await renderLibrary();
       const titleInput = first.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = first.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");
@@ -2688,17 +2040,17 @@ describe("App", () => {
         titleInput.form?.requestSubmit();
       });
       await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
-      await unmount(first);
+      await close(first);
 
       // The route keeps the created lesson open on a reload; a fresh visit to the app root lists it.
       window.history.replaceState(null, "", "/");
-      const second = await renderApp();
+      const second = await renderLibrary();
       await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
       expect(
         Array.from(second.container.querySelectorAll("button")).filter((button) => button.textContent?.includes("Tea talk")),
       ).toHaveLength(1);
       expect(await listUserLessons()).toHaveLength(1);
-      await unmount(second);
+      await close(second);
     });
 
     it.each([
@@ -2708,17 +2060,17 @@ describe("App", () => {
       ["too many sentences", "Tea talk", "Go. ".repeat(201), "Text must contain 1-200 sentences."],
       ["no sentences", "Tea talk", "... !!!", "Text must contain 1-200 sentences."],
     ])("shows an inline error and stores nothing for %s", async (_name, title, text, message) => {
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, title, text);
 
       expect(view.container.textContent).toContain(message);
       expect(view.container.textContent).not.toContain("Back to lessons");
       expect(await listUserLessons()).toEqual([]);
-      await unmount(view);
+      await close(view);
     });
 
     it("returns to the library after importing a backup while a user lesson is open", async () => {
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
       const text = exportData(
@@ -2741,13 +2093,13 @@ describe("App", () => {
       expect(view.container.textContent).toContain("Your lessons");
       expect(view.container.textContent).not.toContain("I like green tea.");
       expect(await listUserLessons()).toEqual([]);
-      await unmount(view);
+      await close(view);
     });
 
     it("runs dictation and the fill-the-blank drill on a user lesson", async () => {
       vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
       vi.stubGlobal("SpeechSynthesisUtterance", class {});
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
@@ -2779,7 +2131,7 @@ describe("App", () => {
       });
       expect(view.container.textContent).toContain("Correct");
       expect(lessonFetches()).toEqual([]);
-      await unmount(view);
+      await close(view);
     });
   });
 
@@ -2837,31 +2189,10 @@ describe("App", () => {
       document.querySelectorAll(`script[src="${iframeApi}"]`).forEach((script) => script.remove());
     });
 
-    async function renderApp() {
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return responseFor(new URL(url, "http://localhost").pathname);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      await waitForCondition(() => container.textContent?.includes("Your lessons") ?? false);
-      return { container, root };
-    }
-
-    async function unmount({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
+    async function renderLibrary() {
+      const view = await renderApp();
+      await waitForCondition(hasText(view.container, "Your lessons"));
+      return view;
     }
 
     async function createLesson(container: HTMLElement, videoUrl: string, text: string) {
@@ -2883,7 +2214,7 @@ describe("App", () => {
 
     async function openVideoLesson() {
       installYouTube();
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=5s", transcript);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
       await waitForCondition(() => FakePlayer.instances.length === 1);
@@ -2896,7 +2227,7 @@ describe("App", () => {
 
     it("creates a video lesson from a URL and a transcript and opens it in a nocookie player", async () => {
       installYouTube();
-      const view = await renderApp();
+      const view = await renderLibrary();
       expect(view.container.textContent).toContain(
         "Paste the transcript from YouTube's Show transcript panel (timestamps included).",
       );
@@ -2935,7 +2266,7 @@ describe("App", () => {
           { text: "We drink it every morning.", cue: { start: 65, end: null } },
         ],
       });
-      await unmount(view);
+      await close(view);
     });
 
     it.each([
@@ -2944,14 +2275,14 @@ describe("App", () => {
       ["non-increasing timestamps", "https://youtu.be/dQw4w9WgXcQ", "0:05\nOne.\n0:05\nTwo.", "Timestamps must increase"],
     ])("shows an inline error and stores nothing for %s", async (_name, videoUrl, text, message) => {
       installYouTube();
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, videoUrl, text);
 
       expect(view.container.textContent).toContain(message);
       expect(view.container.textContent).not.toContain("Back to lessons");
       expect(await listUserLessons()).toEqual([]);
       expect(FakePlayer.instances).toEqual([]);
-      await unmount(view);
+      await close(view);
     });
 
     it("plays a clip at the chosen speed and pauses when the time passes the cue end", async () => {
@@ -2980,7 +2311,7 @@ describe("App", () => {
       });
       expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 65, true], ["playVideo"]]);
       expect(vi.getTimerCount()).toBe(0);
-      await unmount(view);
+      await close(view);
     });
 
     it("cancels the older clip's poll when a newer clip starts", async () => {
@@ -2997,7 +2328,7 @@ describe("App", () => {
       player.time = 3;
       vi.advanceTimersByTime(500);
       expect(player.calls).not.toContainEqual(["pauseVideo"]);
-      await unmount(view);
+      await close(view);
     });
 
     it("destroys the player and cancels the poll on unmount", async () => {
@@ -3016,7 +2347,7 @@ describe("App", () => {
       player.time = 100;
       vi.advanceTimersByTime(500);
       expect(player.calls).not.toContainEqual(["pauseVideo"]);
-      await unmount(view);
+      await close(view);
     });
 
     it("offers Play clip in the dictation and fill-the-blank modes", async () => {
@@ -3033,11 +2364,11 @@ describe("App", () => {
         expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
       }
       expect(FakePlayer.instances).toHaveLength(1);
-      await unmount(view);
+      await close(view);
     });
 
     it("creates no player and injects no script for a plain lesson", async () => {
-      const view = await renderApp();
+      const view = await renderLibrary();
       const titleInput = view.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = view.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");
@@ -3055,7 +2386,7 @@ describe("App", () => {
       expect(window.onYouTubeIframeAPIReady).toBeUndefined();
       expect(buttonsNamed(view.container, "Play clip")).toEqual([]);
       expect(view.container.textContent).not.toContain("Video from YouTube");
-      await unmount(view);
+      await close(view);
     });
 
     class ClipRecognition {
@@ -3099,7 +2430,7 @@ describe("App", () => {
       player.time = 10;
       vi.advanceTimersByTime(1000);
       expect(player.calls).toEqual([["pauseVideo"]]);
-      await unmount(view);
+      await close(view);
     });
 
     it("aborts a listening check silently when Play clip starts", async () => {
@@ -3119,7 +2450,7 @@ describe("App", () => {
       expect(buttonsNamed(view.container, "Try again")).toHaveLength(0);
       expect(view.container.textContent).not.toContain("aborted");
       expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
-      await unmount(view);
+      await close(view);
     });
 
     // The stub fires the script's error event instead of letting happy-dom try the network, the same path as a blocked or offline load.
@@ -3129,7 +2460,7 @@ describe("App", () => {
           setTimeout(() => (node as HTMLScriptElement).dispatchEvent(new Event("error")), 0);
         }
       });
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
@@ -3144,12 +2475,12 @@ describe("App", () => {
         buttonsNamed(view.container, "Dictation")[0]?.click();
       });
       expect(view.container.querySelector("#dictation-s1")).not.toBeNull();
-      await unmount(view);
+      await close(view);
     });
 
     it("sizes the player to fill a 16:9 column and shows Loading video… until ready", async () => {
       installYouTube();
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
       await waitForCondition(() => FakePlayer.instances.length === 1);
       const player = FakePlayer.instances[0]!;
@@ -3159,14 +2490,14 @@ describe("App", () => {
         player.options.events.onReady();
       });
       expect(view.container.textContent).not.toContain("Loading video…");
-      await unmount(view);
+      await close(view);
     });
 
     it("shows the couldn't-load line when the player is not ready after 15 s, keeps the lesson usable, and accepts a late ready", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
       installYouTube();
       installSpeechFakes();
-      const view = await renderApp();
+      const view = await renderLibrary();
       await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
       await waitForCondition(() => FakePlayer.instances.length === 1);
       const player = FakePlayer.instances[0]!;
@@ -3189,7 +2520,7 @@ describe("App", () => {
       });
       expect(view.container.textContent).not.toContain(failed);
       expect(buttonsNamed(view.container, "Play clip").every((button) => !button.disabled)).toBe(true);
-      await unmount(view);
+      await close(view);
     });
 
     it("stops speech and the loop when the video starts playing, and Listen pauses the video", async () => {
@@ -3223,7 +2554,7 @@ describe("App", () => {
         buttonsNamed(view.container, "Listen")[1]?.click();
       });
       expect(player.calls).toEqual([["pauseVideo"]]);
-      await unmount(view);
+      await close(view);
     });
   });
 
@@ -3245,27 +2576,11 @@ describe("App", () => {
       }
     }
 
-    const hasText = (container: HTMLElement, text: string) => () =>
-      container.textContent?.includes(text) ?? false;
-
     async function openShadow() {
       installSpeechFakes();
       FakeRecognition.instances = [];
       vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
       return openLesson();
-    }
-
-    async function close({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    }
-
-    async function click(container: HTMLElement, name: string) {
-      await act(async () => {
-        buttonsNamed(container, name)[0]?.click();
-      });
     }
 
     async function enable(container: HTMLElement) {
@@ -3545,19 +2860,6 @@ describe("App", () => {
       const view = await openLesson(lesson);
       localStorage.removeItem("road-to-english.pronunciationCheck");
       return { ...view, speech };
-    }
-
-    async function close({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    }
-
-    async function click(container: HTMLElement, name: string, index = 0) {
-      await act(async () => {
-        buttonsNamed(container, name)[index]?.click();
-      });
     }
 
     const spokenWords = (container: HTMLElement) =>
@@ -3949,43 +3251,6 @@ describe("App", () => {
   describe("storage failures, retry, and dead ends", () => {
     const storageLine = "Your saved data couldn't be read or saved on this device";
 
-    async function renderApp(route: (path: string) => Response | Promise<Response> = (path) => responseFor(path)) {
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return route(new URL(url, "http://localhost").pathname);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      const unmount = async () => {
-        await act(async () => {
-          root.unmount();
-        });
-        container.remove();
-      };
-      return { container, unmount };
-    }
-
-    const hasText = (container: HTMLElement, text: string) => () =>
-      container.textContent?.includes(text) ?? false;
-
-    async function click(container: HTMLElement, name: string, index = 0) {
-      const button = buttonsNamed(container, name)[index];
-      if (!button) throw new Error(`${name} button not found`);
-      await act(async () => {
-        button.click();
-      });
-      return button;
-    }
-
     async function openGreetings(container: HTMLElement) {
       await waitForCondition(() => buttonsNamed(container, "Greetings & Basics").length > 0 || hasText(container, "Greetings & Basics")());
       await act(async () => {
@@ -4151,89 +3416,6 @@ describe("App", () => {
       await unmount();
     });
 
-    it("Retry re-fetches the library after a failure", async () => {
-      let fail = true;
-      let release: () => void = () => undefined;
-      const { container, unmount } = await renderApp(async (path) => {
-        if (path === "/lessons" && fail) {
-          return new Response("boom", { status: 500 });
-        }
-        if (path === "/lessons") {
-          await new Promise<void>((resolve) => {
-            release = resolve;
-          });
-        }
-        return responseFor(path);
-      });
-      await waitForCondition(hasText(container, "Unable to load lessons"));
-      expect(container.textContent).toContain("Your own lessons below still work offline.");
-
-      fail = false;
-      await click(container, "Retry");
-      expect(container.textContent).toContain("Loading lessons...");
-      await act(async () => {
-        release();
-      });
-      await waitForCondition(hasText(container, "Greetings & Basics"));
-      expect(container.textContent).not.toContain("Unable to load lessons");
-      await unmount();
-    });
-
-    it("moves focus from Retry to the library h1 before Retry unmounts into the loading line", async () => {
-      let fail = true;
-      const { container, unmount } = await renderApp((path) =>
-        path === "/lessons" && fail ? new Response("boom", { status: 500 }) : responseFor(path),
-      );
-      await waitForCondition(hasText(container, "Unable to load lessons"));
-      fail = false;
-      buttonsNamed(container, "Retry")[0]!.focus();
-      await click(container, "Retry");
-      expect(document.activeElement).toBe(container.querySelector("main h1"));
-      await waitForCondition(hasText(container, "Greetings & Basics"));
-      expect(document.activeElement).toBe(container.querySelector("main h1"));
-      await unmount();
-    });
-
-    it("shows the no-cards empty state and Go to library switches the view", async () => {
-      const { container, unmount } = await renderApp();
-      await click(container, "Review");
-      await waitForCondition(
-        hasText(container, "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."),
-      );
-      await click(container, "Go to library");
-      expect(container.querySelector("h1")?.textContent).toBe("Lesson library");
-      await waitForCondition(hasText(container, "Greetings & Basics"));
-      await unmount();
-    });
-
-    it("shows All caught up when cards exist but none are due", async () => {
-      const card = createCard({ front: "f", back: "b", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date());
-      await putCard({ ...card, fsrs: { ...card.fsrs, due: new Date(Date.now() + 86_400_000), state: State.Review } });
-      const { container, unmount } = await renderApp();
-      await click(container, "Review");
-      await waitForCondition(hasText(container, "All caught up. Come back later for your next review."));
-      const line = Array.from(container.querySelectorAll("p")).find((p) => p.textContent?.startsWith("All caught up"));
-      expect(line?.tabIndex).toBe(-1);
-      expect(buttonsNamed(container, "Go to library")).toHaveLength(1);
-      await unmount();
-    });
-
-    it("says how many new cards the daily cap hides", async () => {
-      for (let index = 0; index < 3; index += 1) {
-        await putCard(
-          createCard({ front: `f${index}`, back: "b", source: { lessonId: "l", sentenceId: `s${index}`, word: "" } }, new Date()),
-        );
-      }
-      for (let index = 0; index < 20; index += 1) {
-        await recordPractice(todayKey(new Date()), { newCard: true });
-      }
-      const { container, unmount } = await renderApp();
-      await click(container, "Review");
-      await waitForCondition(hasText(container, "Daily limit of 20 new cards reached. 3 new cards are waiting."));
-      expect(container.textContent).toContain("0 due");
-      await unmount();
-    });
-
     it("never paints Lesson unavailable while a library lesson loads", async () => {
       const seen: string[] = [];
       const { container, unmount } = await renderApp();
@@ -4246,31 +3428,17 @@ describe("App", () => {
       await unmount();
     });
 
-    it("clears a backup error on the next successful export", async () => {
-      Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:backup") });
-      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-      vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
-      const { container, unmount } = await renderApp();
-      await click(container, "Export");
-      await waitForCondition(hasText(container, "Backup error: export broke"));
-      await click(container, "Export");
-      await waitForCondition(() => !hasText(container, "Backup error")());
-      await click(container, "Export CSV");
-      expect(container.textContent).not.toContain("Backup error");
-      await unmount();
-    });
-
     it("drops a pending return focus when the view changes before the rows mount", async () => {
       let release: () => void = () => undefined;
       let lessonsCalls = 0;
-      const { container, unmount } = await renderApp(async (path) => {
+      const { container, unmount } = await renderApp({ route: async (path) => {
         if (path === "/lessons" && ++lessonsCalls > 2) {
           await new Promise<void>((resolve) => {
             release = resolve;
           });
         }
         return responseFor(path);
-      });
+      } });
       await openGreetings(container);
       await click(container, "Back to lessons");
       expect(container.textContent).toContain("Loading lessons...");
@@ -4293,64 +3461,15 @@ describe("App", () => {
       restoreProperty(navigator, "storage", originalStorage);
     });
 
-    function pathOf(input: Parameters<typeof fetch>[0]): string {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return new URL(url, "http://localhost").pathname;
-    }
-
-    function userResponse(): Response {
-      return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
-    }
-
-    function callsTo(path: string): number {
-      return fetchMock.mock.calls.filter(([input]) => pathOf(input) === path).length;
-    }
-
-    async function renderApp(route: (path: string) => Response | undefined) {
-      fetchMock.mockImplementation(async (input) => {
-        const path = pathOf(input);
-        return route(path) ?? responseFor(path);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      const unmount = async () => {
-        await act(async () => root.unmount());
-        container.remove();
-      };
-      return { container, unmount };
-    }
-
-    async function fillAccountForm(container: HTMLElement, emailValue: string, passwordValue: string, buttonText: string) {
-      const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-      const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-      if (!email || !password) throw new Error("account form not found");
-      await act(async () => {
-        setInputValue(email, emailValue);
-        setInputValue(password, passwordValue);
-        Array.from(container.querySelectorAll("button"))
-          .find((button) => button.textContent === buttonText)
-          ?.click();
-      });
-    }
-
     const syncFailed = "Couldn't sync. Your changes are saved on this device and will sync when you're back online.";
 
     it("shows a failed sync and clears it when an online event re-syncs", async () => {
       let offline = true;
-      const { container, unmount } = await renderApp((path) => {
+      const { container, unmount } = await renderApp({ route: (path) => {
         if (path === "/me") return userResponse();
         if (path === "/sync" && offline) throw new TypeError("Failed to fetch");
         return undefined;
-      });
+      } });
       await waitForCondition(() => container.textContent?.includes(syncFailed) ?? false);
       expect(container.textContent).toContain("restored@example.com");
 
@@ -4366,7 +3485,7 @@ describe("App", () => {
     });
 
     it("re-syncs when the window gains focus", async () => {
-      const { container, unmount } = await renderApp((path) => (path === "/me" ? userResponse() : undefined));
+      const { container, unmount } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
       await waitForCondition(() => callsTo("/sync") === 1);
 
       await act(async () => {
@@ -4379,11 +3498,11 @@ describe("App", () => {
     });
 
     it("signs the user out with a message when sync returns 401", async () => {
-      const { container, unmount } = await renderApp((path) => {
+      const { container, unmount } = await renderApp({ route: (path) => {
         if (path === "/me") return userResponse();
         if (path === "/sync") return new Response(null, { status: 401 });
         return undefined;
-      });
+      } });
       await waitForCondition(() => container.textContent?.includes("You were signed out. Sign in again to sync.") ?? false);
       expect(container.textContent).not.toContain("restored@example.com");
       expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
@@ -4394,13 +3513,13 @@ describe("App", () => {
 
     it("shows a friendly line when /me is offline and signs in when an online event retries it", async () => {
       let offline = true;
-      const { container, unmount } = await renderApp((path) => {
+      const { container, unmount } = await renderApp({ route: (path) => {
         if (path === "/me") {
           if (offline) throw new TypeError("Failed to fetch");
           return userResponse();
         }
         return undefined;
-      });
+      } });
       await waitForCondition(() => container.textContent?.includes("Can't reach the server. You can keep practising on this device.") ?? false);
       expect(container.textContent).not.toContain("Failed to fetch");
 
@@ -4415,7 +3534,7 @@ describe("App", () => {
     });
 
     it("does not retry /me on online after a server error", async () => {
-      const { container, unmount } = await renderApp((path) => (path === "/me" ? new Response(null, { status: 500 }) : undefined));
+      const { container, unmount } = await renderApp({ route: (path) => (path === "/me" ? new Response(null, { status: 500 }) : undefined) });
       await waitForCondition(() => container.textContent?.includes("Unable to complete account request. Please try again.") ?? false);
       const before = callsTo("/me");
 
@@ -4425,56 +3544,6 @@ describe("App", () => {
       expect(callsTo("/me")).toBe(before);
 
       await unmount();
-    });
-
-    it("sends no sign-up request for an invalid email", async () => {
-      const { container, unmount } = await renderApp(() => undefined);
-      await fillAccountForm(container, "not-an-email", "password", "Sign up");
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-      expect(callsTo("/signup")).toBe(0);
-
-      await unmount();
-    });
-
-    it("shows the too-many-attempts line for a 429", async () => {
-      const { container, unmount } = await renderApp((path) => (path === "/login" ? new Response(null, { status: 429 }) : undefined));
-      await fillAccountForm(container, "learner@example.com", "password", "Sign in");
-      await waitForCondition(() => container.textContent?.includes("Too many attempts. Try again in a few minutes.") ?? false);
-
-      await unmount();
-    });
-
-    async function importConfirmText(signedIn: boolean): Promise<string> {
-      const confirm = vi.fn<(message?: string) => boolean>(() => false);
-      vi.stubGlobal("confirm", confirm);
-      const { container, unmount } = await renderApp((path) => (path === "/me" && signedIn ? userResponse() : undefined));
-      if (signedIn) {
-        await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
-      }
-      const input = container.querySelector<HTMLInputElement>('input[type="file"]');
-      if (!input) throw new Error("backup file input not found");
-      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
-      await act(async () => {
-        Object.defineProperty(input, "files", {
-          configurable: true,
-          value: [new File([text], "backup.json", { type: "application/json" })],
-        });
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await waitForCondition(() => confirm.mock.calls.length === 1);
-      await unmount();
-      return confirm.mock.calls[0]?.[0] ?? "";
-    }
-
-    it("words the import confirm for signed-out and signed-in users", async () => {
-      expect(await importConfirmText(false)).toBe(
-        "Importing this backup will replace all local data on this device. Continue?",
-      );
-      expect(await importConfirmText(true)).toBe(
-        "Importing this backup will replace all local data on this device. Your next sync merges it with your account, so cards and progress already in your account stay. Continue?",
-      );
     });
 
     const kept = "Storage: kept on this device.";
@@ -4491,7 +3560,7 @@ describe("App", () => {
         configurable: true,
         value: persistMock ? { persist: persistMock } : undefined,
       });
-      const { container, unmount } = await renderApp(() => undefined);
+      const { container, unmount } = await renderApp();
       await waitForCondition(() => container.textContent?.includes(expected) ?? false);
       if (persistMock) {
         expect(persistMock).toHaveBeenCalledTimes(1);
@@ -4503,43 +3572,6 @@ describe("App", () => {
   });
 
   describe("accessibility", () => {
-    async function renderApp() {
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        return responseFor(new URL(url, "http://localhost").pathname);
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
-      });
-      return { container, root };
-    }
-
-    async function close({ container, root }: { container: HTMLElement; root: ReturnType<typeof createRoot> }) {
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    }
-
-    async function click(container: HTMLElement, name: string) {
-      const button = buttonsNamed(container, name)[0];
-      if (!button) throw new Error(`${name} button not found`);
-      await act(async () => {
-        button.click();
-      });
-      return button;
-    }
-
-    const h1Texts = (container: HTMLElement) => Array.from(container.querySelectorAll("h1")).map((h1) => h1.textContent);
-
     // Heading levels in document order, which must start at 1 and never skip a level going down.
     function headingLevels(container: HTMLElement): number[] {
       return Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).map((heading) => Number(heading.tagName[1]));
@@ -4552,9 +3584,6 @@ describe("App", () => {
         expect(level - (levels[index - 1] ?? 0)).toBeLessThanOrEqual(1);
       });
     }
-
-    const todayStrip = (container: HTMLElement) =>
-      Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Today")?.parentElement ?? null;
 
     it("names the view in its one h1, focuses it on a view change, and keeps the landmarks", async () => {
       const view = await renderApp();
@@ -4585,43 +3614,6 @@ describe("App", () => {
       expect(h1Texts(container)).toEqual(["Greetings & Basics"]);
       expect(document.activeElement).toBe(container.querySelector("main h1"));
       expectNoSkippedLevels(container);
-      await close(view);
-    });
-
-    it("shows cards due, today's goal and Review as the next action when cards are due", async () => {
-      for (const index of [0, 1]) {
-        await putCard(
-          createCard({ front: `f${index}`, back: "b", source: { lessonId: "l", sentenceId: `s${index}`, word: "" } }, new Date()),
-        );
-      }
-      const view = await renderApp();
-      const { container } = view;
-      await waitForCondition(() => todayStrip(container)?.textContent?.includes("2 cards due") ?? false);
-      const strip = todayStrip(container)!;
-      expect(strip.textContent).toContain("2 cards due · Goal 0/10");
-      expect(buttonsNamed(strip, "Start lesson")).toHaveLength(0);
-      expect(container.querySelector('[role="group"][aria-label^="Daily goal"]')?.getAttribute("aria-label")).toBe(
-        "Daily goal: practice actions per day",
-      );
-
-      await click(strip, "Review 2 cards");
-      expect(h1Texts(container)).toEqual(["Review deck"]);
-      expect(document.activeElement).toBe(container.querySelector("h1"));
-      await close(view);
-    });
-
-    it("offers the first lesson not yet completed when no cards are due", async () => {
-      await progressStore.markLessonComplete("greetings-basics");
-      const view = await renderApp();
-      const { container } = view;
-      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-      const strip = todayStrip(container)!;
-      expect(strip.textContent).toContain("0 cards due · Goal 0/10");
-      expect(strip.textContent).toContain("Next: Daily Routine");
-
-      await click(strip, "Start lesson");
-      await waitForCondition(() => container.querySelector("main h1") !== null && h1Texts(container)[0] !== "Lesson library");
-      expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/lessons/daily-routine"))).toBe(true);
       await close(view);
     });
 
@@ -4774,13 +3766,9 @@ describe("App", () => {
     it("focuses the library heading on Back to lessons from an unknown lesson id", async () => {
       const view = await renderApp();
       await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        const path = new URL(url, "http://localhost").pathname;
-        return path === "/lessons/nope"
-          ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 })
-          : responseFor(path);
-      });
+      routeFetch((path) =>
+        path === "/lessons/nope" ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 }) : undefined,
+      );
       await act(async () => {
         window.location.hash = "#/lesson/nope";
       });
@@ -4797,25 +3785,12 @@ describe("App", () => {
       vi.spyOn(userLessonsStore, "listUserLessons").mockImplementation(
         () => new Promise((resolve) => (resolveUserLessons = resolve)),
       );
-      fetchMock.mockImplementation(async (input) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        const path = new URL(url, "http://localhost").pathname;
-        return path === "/lessons/nope"
-          ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 })
-          : responseFor(path);
-      });
-      vi.stubGlobal("fetch", fetchMock);
       window.history.replaceState(null, "", "#/lesson/nope");
-      const container = document.createElement("div");
-      document.body.appendChild(container);
-      const root = createRoot(container);
-      await act(async () => {
-        root.render(
-          <StrictMode>
-            <App />
-          </StrictMode>,
-        );
+      const view = await renderApp({
+        route: (path) =>
+          path === "/lessons/nope" ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 }) : undefined,
       });
+      const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Lesson unavailable");
       await click(container, "Back to lessons");
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
@@ -4826,8 +3801,7 @@ describe("App", () => {
       });
       await waitForCondition(() => document.activeElement?.tagName === "H1");
       expect(document.activeElement?.textContent).toBe("Lesson library");
-      await act(async () => root.unmount());
-      container.remove();
+      await close(view);
     });
 
     it("falls back to the library with replaceState for a malformed route or an unknown user lesson", async () => {
@@ -4892,16 +3866,6 @@ describe("App", () => {
       });
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       expect(document.activeElement).toBe(container.querySelector("main h1"));
-      await close(view);
-    });
-
-    it("shows no due count in the Today strip while the deck is loading", async () => {
-      vi.spyOn(vocabStore, "getAllCards").mockReturnValue(new Promise(() => undefined));
-      const view = await renderApp();
-      await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
-      const strip = todayStrip(view.container)!;
-      expect(strip.textContent).toContain("Goal 0/10");
-      expect(strip.textContent).not.toContain("due");
       await close(view);
     });
 
@@ -5000,19 +3964,5 @@ describe("App", () => {
       await close(view);
     });
 
-    it("makes Enter's action, Sign in, the primary button and keeps Sign up on the keyboard", async () => {
-      const view = await renderApp();
-      const form = view.container.querySelector<HTMLInputElement>('input[aria-label="Email"]')?.form;
-      const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
-      const signUp = form ? buttonsNamed(form, "Sign up")[0] : undefined;
-      expect(form?.querySelectorAll('button[type="submit"]')).toHaveLength(1);
-      expect(submit?.textContent).toBe("Sign in");
-      expect(submit?.getAttribute("data-variant")).toBe("primary");
-      expect(form?.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
-      expect(signUp?.type).toBe("button");
-      expect(signUp?.disabled).toBe(false);
-      expect(signUp?.tabIndex).toBe(0);
-      await close(view);
-    });
   });
 });

@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -21,33 +14,31 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
-import { ApiError } from "./api/client";
-import { NotFoundError, type Lesson, type Level } from "./api/lessons";
+import type { Lesson } from "./api/lessons";
+import { AccountArea } from "./components/AccountArea";
+import { BackupControls } from "./components/BackupControls";
+import { Alert, ErrorMessage, Status, ViewHeading } from "./components/feedback";
+import { sharedStyles } from "./components/styles";
 import { createSyncScheduler, type SyncScheduler, type SyncStatus } from "./lib/syncScheduler";
 import { setSyncTrigger } from "./lib/syncEvents";
-import { useAuth, type AuthState } from "./hooks/auth";
-import { useLesson, useLessons } from "./hooks/lessons";
+import { useAuth } from "./hooks/auth";
+import { useLesson, useUserLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
+import { DAILY_GOALS, useDailyGoal, type DailyGoal } from "./hooks/useDailyGoal";
 import { useVocabDeck } from "./hooks/vocab";
-import { blankFor, blankMatches, diffWords, splitWords, type WordDiff } from "./lib/dictation";
-import { capNewCards, cardId, cardWord, isCardWord, NEW_CARDS_PER_DAY, Rating, State, type Grade, type NewCard, type VocabCard } from "./lib/vocab";
-import { speak, stopSpeaking } from "./lib/speech";
+import { splitWords } from "./lib/dictation";
+import { capNewCards, cardId, cardWord, isCardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "./lib/vocab";
+import { speak, speechSupported, stopSpeaking } from "./lib/speech";
 import { abortActiveRecognition, recognitionSupported, recognizeOnce } from "./lib/recognition";
 import { lookupWord, type Definition } from "./lib/dictionary";
-import { stopActiveRecording, useRecorder } from "./hooks/useRecorder";
+import { readRoute, routeHash, type Route } from "./lib/route";
+import { recordingSupported, stopActiveRecording, useRecorder } from "./hooks/useRecorder";
 import { useYouTubePlayer } from "./hooks/useYouTubePlayer";
-import { backupFileName, exportData, importData } from "./lib/backup";
-import { exportBackupData, replaceAll } from "./lib/backupStore";
-import { cardsCsv, cardsCsvFileName } from "./lib/csv";
-import { getAllCards } from "./lib/vocabStore";
-import {
-  createUserLesson,
-  deleteUserLesson,
-  listUserLessons,
-  putUserLesson,
-  USER_LEVELS,
-  USER_WPMS,
-} from "./lib/userLessons";
+import { SentenceBlank, SentenceDictation, WordDiffResult, type PracticeMode } from "./lesson/SentenceQuiz";
+import { ImportTextForm } from "./library/ImportTextForm";
+import { LessonList } from "./library/LessonList";
+import { UserLessonList } from "./library/UserLessonList";
+import { ReviewDeck } from "./review/ReviewDeck";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
@@ -68,27 +59,6 @@ const appStyles = stylex.create({
   header: {
     marginBottom: "2rem",
   },
-  lessonButton: {
-    width: "100%",
-    justifyContent: "space-between",
-    textAlign: "start",
-    // The row grows to its two-line content; badges wrap below the title when space runs out.
-    height: "auto",
-    paddingBlock: "0.5rem",
-    whiteSpace: "normal",
-  },
-  lessonRowContent: {
-    flexWrap: "wrap",
-  },
-  sentence: {
-    padding: "1rem",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
-  },
-  error: {
-    color: "var(--color-error)",
-  },
   sentenceWord: {
     paddingInline: "0.125rem",
   },
@@ -99,83 +69,18 @@ const appStyles = stylex.create({
     width: "100%",
     aspectRatio: "16 / 9",
   },
-  wordCorrect: {
-    color: "var(--color-success)",
-  },
-  shadowingControls: {
-    flexWrap: "wrap",
-  },
   modeToggle: {
     alignSelf: "start",
-  },
-  viewToggle: {
-    alignSelf: "start",
-  },
-  backupFileInput: {
-    display: "none",
-  },
-  reviewCard: {
-    padding: "1.5rem",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
-  },
-  answer: {
-    padding: "1rem",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-body)",
-  },
-  dictationInput: {
-    width: "100%",
-    minHeight: "2.25rem",
-    padding: "0.5rem 0.75rem",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
-    color: "var(--color-text-primary)",
-    font: "inherit",
-  },
-  importTextArea: {
-    width: "100%",
-    minHeight: "8rem",
-    padding: "0.5rem 0.75rem",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
-    color: "var(--color-text-primary)",
-    font: "inherit",
-  },
-  accountControls: {
-    flexWrap: "wrap",
   },
   tapTarget: {
     display: "inline-flex",
     alignItems: "center",
     minHeight: "1.5rem",
   },
-  accountInput: {
-    width: "14rem",
-    maxWidth: "100%",
-    minHeight: "2.25rem",
-    padding: "0.5rem 0.75rem",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
-    color: "var(--color-text-primary)",
-    font: "inherit",
-  },
 });
 
 const SPEEDS = ["0.5", "0.75", "1"] as const;
 
-const DAILY_GOALS = ["5", "10", "20"] as const;
-type DailyGoal = (typeof DAILY_GOALS)[number];
-const DAILY_GOAL_KEY = "road-to-english.dailyGoal";
-
-function readDailyGoal(): DailyGoal {
-  const stored = localStorage.getItem(DAILY_GOAL_KEY);
-  return DAILY_GOALS.find((goal) => goal === stored) ?? "10";
-}
 
 const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";
 
@@ -207,7 +112,6 @@ function playReference(
   });
 }
 
-type PracticeMode = "recording" | "check" | "dictation" | "blank";
 
 // Every mounted recording player, across all sentences, so starting any medium can pause them.
 const recordingAudios = new Set<HTMLAudioElement>();
@@ -250,14 +154,9 @@ function SentenceShadowing({
     | { status: "heard"; transcript: string }
     | { status: "failed"; message: string }
   >({ status: "idle" });
-  const speechSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
+  const canSpeak = speechSupported();
   const listening = check.status === "listening";
-  const recordingSupported =
-    typeof MediaRecorder !== "undefined" &&
-    typeof navigator !== "undefined" &&
-    Boolean(navigator.mediaDevices?.getUserMedia) &&
-    typeof URL.createObjectURL === "function";
+  const canRecord = recordingSupported();
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -343,11 +242,11 @@ function SentenceShadowing({
 
   return (
     <VStack gap={1}>
-      <HStack gap={1} xstyle={appStyles.shadowingControls}>
+      <HStack gap={1} xstyle={sharedStyles.shadowingControls}>
         <Button
           label="Listen"
           variant="secondary"
-          isDisabled={!speechSupported || listening}
+          isDisabled={!canSpeak || listening}
           onClick={() => {
             stopMedia();
             setSpeechFailed(false);
@@ -359,7 +258,7 @@ function SentenceShadowing({
         <ToggleButton
           label="Loop"
           isPressed={looping}
-          isDisabled={!speechSupported || listening}
+          isDisabled={!canSpeak || listening}
           onPressedChange={(pressed) => {
             stopMedia();
             if (pressed) {
@@ -371,7 +270,7 @@ function SentenceShadowing({
         <Button
           label={recorder.state === "recording" ? "Stop" : "Record"}
           variant="secondary"
-          isDisabled={!recordingSupported || recorder.state === "requesting"}
+          isDisabled={!canRecord || recorder.state === "requesting"}
           isLoading={recorder.state === "requesting"}
           // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
           tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
@@ -387,7 +286,7 @@ function SentenceShadowing({
         <Button
           label="Compare"
           variant="secondary"
-          isDisabled={!speechSupported || listening || !recorder.url}
+          isDisabled={!canSpeak || listening || !recorder.url}
           onClick={() => {
             stopMedia();
             setPlayBlocked(false);
@@ -412,12 +311,12 @@ function SentenceShadowing({
           />
         )}
       </HStack>
-      {!speechSupported && (
+      {!canSpeak && (
         <Text as="p" type="supporting">
           Listen disabled: speech synthesis is not supported in this browser.
         </Text>
       )}
-      {!recordingSupported && (
+      {!canRecord && (
         <Text as="p" type="supporting">
           Recording disabled: microphone recording is not supported in this browser.
         </Text>
@@ -437,7 +336,7 @@ function SentenceShadowing({
           </Text>
         )}
         {recorder.error && (
-          <Text as="p" color="primary" xstyle={appStyles.error}>
+          <Text as="p" color="primary" xstyle={sharedStyles.error}>
             {recorder.error}
           </Text>
         )}
@@ -450,7 +349,7 @@ function SentenceShadowing({
           <WordDiffResult text={text} answer={check.transcript} verb="said" />
         )}
         {check.status === "failed" && (
-          <Text as="p" color="primary" xstyle={appStyles.error}>
+          <Text as="p" color="primary" xstyle={sharedStyles.error}>
             {check.message}
           </Text>
         )}
@@ -462,279 +361,6 @@ function SentenceShadowing({
   );
 }
 
-// A polite region mounted before its content, so screen readers announce each result once.
-function Status({ children }: { children: ReactNode }) {
-  return (
-    <VStack gap={1} role="status">
-      {children}
-    </VStack>
-  );
-}
-
-function wordLabel(entry: WordDiff, verb: "typed" | "said"): string {
-  switch (entry.kind) {
-    case "correct":
-      return entry.word;
-    case "missed":
-      return `${entry.word} (missed)`;
-    case "replaced":
-      return `${entry.word} (you ${verb} "${entry.typed}")`;
-    case "extra":
-      return `${entry.typed} (extra)`;
-  }
-}
-
-function WordDiffResult({
-  text,
-  answer,
-  verb,
-  notes,
-}: {
-  text: string;
-  answer: string;
-  verb: "typed" | "said";
-  notes?: string;
-}) {
-  const diff = diffWords(answer, text);
-  return (
-    <VStack gap={1}>
-      <Text as="p">Reference: {text}</Text>
-      <Text as="p">
-        You {verb}: {answer}
-      </Text>
-      <Text as="p">
-        {diff.map((entry, index) => (
-          <Text
-            key={index}
-            as="span"
-            color="primary"
-            xstyle={entry.kind === "correct" ? appStyles.wordCorrect : appStyles.error}
-          >
-            {index > 0 && " "}
-            {wordLabel(entry, verb)}
-          </Text>
-        ))}
-      </Text>
-      {notes && <Text as="p" type="supporting">{notes}</Text>}
-      <Text as="p" weight="semibold">
-        {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
-      </Text>
-    </VStack>
-  );
-}
-
-function SentenceDictation({
-  id,
-  text,
-  notes,
-  targetWpm,
-  speed,
-  practice,
-  stopMedia,
-}: {
-  id: string;
-  text: string;
-  notes?: string;
-  targetWpm: number;
-  speed: number;
-  practice: (mode: PracticeMode) => void;
-  stopMedia: () => void;
-}) {
-  const [typed, setTyped] = useState("");
-  const [checked, setChecked] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const speechSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
-
-  const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setChecked(typed);
-    if (typed.trim()) {
-      practice("dictation");
-    }
-  };
-
-  // Try again removes itself, so focus goes back to the answer field.
-  const tryAgain = () => {
-    setTyped("");
-    setChecked(null);
-    inputRef.current?.focus();
-  };
-
-  return (
-    <VStack gap={1}>
-      <Button
-        label="Play"
-        variant="secondary"
-        isDisabled={!speechSupported}
-        onClick={() => {
-          stopMedia();
-          speak(text, targetWpm, speed);
-        }}
-      />
-      {!speechSupported && (
-        <Text as="p" type="supporting">
-          Play disabled: speech synthesis is not supported in this browser.
-        </Text>
-      )}
-      <form onSubmit={checkAnswer}>
-        <VStack gap={1}>
-          <label htmlFor={`dictation-${id}`}>
-            <Text as="span" type="supporting">
-              What did you hear?
-            </Text>
-          </label>
-          <input
-            ref={inputRef}
-            id={`dictation-${id}`}
-            className={stylex.props(appStyles.dictationInput).className}
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-          />
-          <Button label="Check" variant="primary" type="submit" />
-        </VStack>
-      </form>
-      <Status>
-        {checked !== null && (
-          <WordDiffResult text={text} answer={checked} verb="typed" notes={notes} />
-        )}
-      </Status>
-      {checked !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
-    </VStack>
-  );
-}
-
-function SentenceBlank({
-  id,
-  text,
-  targetWpm,
-  speed,
-  practice,
-  stopMedia,
-}: {
-  id: string;
-  text: string;
-  targetWpm: number;
-  speed: number;
-  practice: (mode: PracticeMode) => void;
-  stopMedia: () => void;
-}) {
-  const [typed, setTyped] = useState("");
-  const [correct, setCorrect] = useState<boolean | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { parts, index, answer } = blankFor(text);
-  const speechSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
-
-  if (index === -1) {
-    return <Text as="p">{text}</Text>;
-  }
-
-  const checkAnswer = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setCorrect(blankMatches(typed, answer));
-    if (typed.trim()) {
-      practice("blank");
-    }
-  };
-
-  const tryAgain = () => {
-    setTyped("");
-    setCorrect(null);
-    inputRef.current?.focus();
-  };
-
-  return (
-    <VStack gap={1}>
-      <Text as="p">
-        {parts.map((part, i) => (i === index ? "____" : part)).join("")}
-      </Text>
-      <Button
-        label="Play"
-        variant="secondary"
-        isDisabled={!speechSupported}
-        onClick={() => {
-          stopMedia();
-          speak(text, targetWpm, speed);
-        }}
-      />
-      {!speechSupported && (
-        <Text as="p" type="supporting">
-          Play disabled: speech synthesis is not supported in this browser.
-        </Text>
-      )}
-      <form onSubmit={checkAnswer}>
-        <VStack gap={1}>
-          <label htmlFor={`blank-${id}`}>
-            <Text as="span" type="supporting">
-              Which word fills the blank?
-            </Text>
-          </label>
-          <input
-            ref={inputRef}
-            id={`blank-${id}`}
-            className={stylex.props(appStyles.dictationInput).className}
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-          />
-          <Button label="Check" variant="primary" type="submit" />
-        </VStack>
-      </form>
-      <Status>
-        {correct !== null && (
-          <Text as="p" weight="semibold">
-            {correct ? "Correct" : `Not quite — the word was ${parts[index]}`}
-          </Text>
-        )}
-      </Status>
-      {correct !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
-    </VStack>
-  );
-}
-
-const APP_TITLE = "Road to English";
-
-// The page's one h1 names the current view and the document title, and takes focus when the user changes view.
-function ViewHeading({ children, takeFocus }: { children: string; takeFocus: () => boolean }) {
-  useEffect(() => {
-    document.title = `${children} · ${APP_TITLE}`;
-    return () => {
-      document.title = APP_TITLE;
-    };
-  }, [children]);
-
-  return (
-    <Heading
-      level={1}
-      tabIndex={-1}
-      ref={(heading) => {
-        if (heading && takeFocus()) {
-          heading.focus();
-        }
-      }}
-    >
-      {children}
-    </Heading>
-  );
-}
-
-function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
-  const message = error instanceof NotFoundError ? "not found" : error.message;
-
-  return (
-    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-      Unable to load {subject}: {message}
-    </Text>
-  );
-}
 
 const syncMessages: Record<Exclude<SyncStatus, "signedOut">, string | null> = {
   synced: null,
@@ -742,460 +368,6 @@ const syncMessages: Record<Exclude<SyncStatus, "signedOut">, string | null> = {
   ownerMismatch: "This device's data belongs to another account, so sync is off. Sign in with that account to sync.",
 };
 
-const passwordPolicyMessage =
-  "Password must be at least 8 characters (and at most 72 bytes).";
-
-function AccountError({ error, isSignUp }: { error: Error; isSignUp: boolean }) {
-  let message = "Can't reach the server. You can keep practising on this device.";
-  if (error instanceof ApiError) {
-    message = "Unable to complete account request. Please try again.";
-    if (error.status === 409) {
-      message = "This email is already registered.";
-    } else if (error.status === 401) {
-      message = "Invalid email or password.";
-    } else if (error.status === 429) {
-      message = "Too many attempts. Try again in a few minutes.";
-    } else if (error.status === 400 && isSignUp) {
-      message = `Check your email address and password. ${passwordPolicyMessage}`;
-    }
-  }
-
-  return (
-    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-      {message}
-    </Text>
-  );
-}
-
-function AccountArea({ auth }: { auth: AuthState }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [lastAction, setLastAction] = useState<"signIn" | "signUp" | null>(null);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const form = useRef<HTMLFormElement>(null);
-  // Signing in or out swaps the form and the signed-in row, so focus moves to the control that replaced it.
-  const moveFocus = useRef<"signedIn" | "signedOut" | null>(null);
-  const takeFocus = (target: "signedIn" | "signedOut") => (element: HTMLElement | null) => {
-    if (element && moveFocus.current === target) {
-      moveFocus.current = null;
-      element.focus();
-    }
-  };
-
-  const submit = async (action: AuthState["signIn"], isSignUp: boolean) => {
-    setLastAction(isSignUp ? "signUp" : "signIn");
-    setLocalError(null);
-    if (isSignUp && (Array.from(password).length < 8 || new TextEncoder().encode(password).byteLength > 72)) {
-      setLocalError(passwordPolicyMessage);
-      return;
-    }
-    moveFocus.current = "signedIn";
-    try {
-      await action(email, password);
-      setPassword("");
-    } catch {
-      moveFocus.current = null;
-      // The hook exposes the error for the inline account message.
-    }
-  };
-
-  if (auth.user) {
-    return (
-      <VStack gap={1}>
-        <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
-          <Text type="supporting">{auth.user.email}</Text>
-          <Button
-            ref={takeFocus("signedIn")}
-            label="Sign out"
-            variant="secondary"
-            onClick={() => {
-              moveFocus.current = "signedOut";
-              auth.signOut().catch(() => {
-                moveFocus.current = null;
-              });
-            }}
-          />
-        </HStack>
-        {auth.error && <AccountError error={auth.error} isSignUp={false} />}
-      </VStack>
-    );
-  }
-
-  return (
-    <VStack gap={1}>
-      <form ref={form} onSubmit={(event) => {
-        event.preventDefault();
-        void submit(auth.signIn, false);
-      }}>
-        <HStack gap={1} align="center" xstyle={appStyles.accountControls}>
-          <input
-            ref={takeFocus("signedOut")}
-            aria-label="Email"
-            className={stylex.props(appStyles.accountInput).className}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Email"
-            required
-          />
-          <input
-            aria-label="Password"
-            className={stylex.props(appStyles.accountInput).className}
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
-            required
-          />
-          {/* Enter submits the form, so its default action, Sign in, is the primary button. */}
-          <Button label="Sign in" variant="primary" type="submit" />
-          <Button
-            label="Sign up"
-            variant="secondary"
-            type="button"
-            onClick={() => {
-              if (form.current?.reportValidity()) {
-                void submit(auth.signUp, true);
-              }
-            }}
-          />
-        </HStack>
-      </form>
-      {auth.expired && (
-        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-          You were signed out. Sign in again to sync.
-        </Text>
-      )}
-      {localError && (
-        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-          {localError}
-        </Text>
-      )}
-      {auth.error && <AccountError error={auth.error} isSignUp={lastAction === "signUp"} />}
-    </VStack>
-  );
-}
-
-function LessonRow({
-  title,
-  level,
-  sentenceCount,
-  targetWpm,
-  completed,
-  onSelect,
-  takeFocus,
-}: {
-  title: string;
-  level: Level;
-  sentenceCount: number;
-  targetWpm: number;
-  completed: boolean;
-  onSelect: () => void;
-  takeFocus: () => boolean;
-}) {
-  return (
-    <Button
-      ref={(button) => {
-        if (button && takeFocus()) {
-          button.focus();
-        }
-      }}
-      label={title}
-      variant="secondary"
-      xstyle={appStyles.lessonButton}
-      onClick={onSelect}
-    >
-      <HStack justify="between" align="center" width="100%" xstyle={appStyles.lessonRowContent}>
-        <VStack gap={0.5} align="start">
-          <Text weight="semibold">{title}</Text>
-          <Text type="supporting">
-            {level} · {sentenceCount} sentences
-          </Text>
-        </VStack>
-        <HStack gap={1} align="center">
-          <Badge label={`${targetWpm} WPM`} variant="info" />
-          {completed && <Badge label="Completed" variant="success" />}
-        </HStack>
-      </HStack>
-    </Button>
-  );
-}
-
-function TodayStrip({
-  due,
-  actionsToday,
-  dailyGoal,
-  nextLesson,
-  onReview,
-  onStart,
-}: {
-  due: number | null;
-  actionsToday: number;
-  dailyGoal: DailyGoal;
-  nextLesson: { title: string } | undefined;
-  onReview: () => void;
-  onStart: () => void;
-}) {
-  const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
-  return (
-    <Card padding={2} xstyle={appStyles.sentence}>
-      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
-        <Heading level={2}>Today</Heading>
-        <Text type="supporting">
-          {due !== null && `${cards(due)} due · `}Goal {actionsToday}/{dailyGoal}
-        </Text>
-        {due ? (
-          <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
-        ) : (
-          nextLesson && (
-            <>
-              <Text type="supporting">Next: {nextLesson.title}</Text>
-              <Button label="Start lesson" variant="primary" onClick={onStart} />
-            </>
-          )
-        )}
-      </HStack>
-    </Card>
-  );
-}
-
-function LessonList({
-  onSelect,
-  completedLessons,
-  takeFocus,
-  focusHeading,
-  onSettled,
-  today,
-}: {
-  onSelect: (id: string) => void;
-  completedLessons: Set<string>;
-  takeFocus: (id: string) => boolean;
-  focusHeading: () => void;
-  onSettled: (settled: boolean) => void;
-  today: Omit<Parameters<typeof TodayStrip>[0], "nextLesson" | "onStart">;
-}) {
-  const { data, loading, error, retry } = useLessons();
-  // Rows take the return focus as they mount, so this runs after any row could have taken it.
-  useEffect(() => {
-    onSettled(!loading);
-    return () => onSettled(false);
-  }, [loading]);
-  // The first library lesson not yet completed; the strip reads the list this component already loads.
-  const nextLesson = data?.find((lesson) => !completedLessons.has(lesson.id));
-
-  let content: ReactNode;
-  if (loading) {
-    content = <Text as="p">Loading lessons...</Text>;
-  } else if (error) {
-    content = (
-      <VStack gap={1}>
-        <ErrorMessage error={error} subject="lessons" />
-        <Text as="p" type="supporting">
-          Your own lessons below still work offline.
-        </Text>
-        <Button
-          label="Retry"
-          variant="secondary"
-          xstyle={appStyles.viewToggle}
-          onClick={() => {
-            // Retry unmounts into the loading line, so focus moves to the view's h1 in the same render.
-            focusHeading();
-            retry();
-          }}
-        />
-      </VStack>
-    );
-  } else if (!data || data.length === 0) {
-    content = <Text as="p">No lessons available.</Text>;
-  } else {
-    content = (
-      <VStack as="ul" gap={2} padding={0}>
-        {data.map((lesson) => (
-          <li key={lesson.id}>
-            <LessonRow
-              title={lesson.title}
-              level={lesson.level}
-              sentenceCount={lesson.sentenceCount}
-              targetWpm={lesson.targetWpm}
-              completed={completedLessons.has(lesson.id)}
-              onSelect={() => onSelect(lesson.id)}
-              takeFocus={() => takeFocus(lesson.id)}
-            />
-          </li>
-        ))}
-      </VStack>
-    );
-  }
-
-  return (
-    <VStack gap={4}>
-      <TodayStrip {...today} nextLesson={nextLesson} onStart={() => nextLesson && onSelect(nextLesson.id)} />
-      {content}
-    </VStack>
-  );
-}
-
-function UserLessonList({
-  lessons,
-  onSelect,
-  onDelete,
-  deleteFailedId,
-  completedLessons,
-  takeFocus,
-}: {
-  lessons: Lesson[] | Error | null;
-  onSelect: (lesson: Lesson) => void;
-  onDelete: (lesson: Lesson) => void;
-  deleteFailedId: string | null;
-  completedLessons: Set<string>;
-  takeFocus: (id: string) => boolean;
-}) {
-  if (lessons === null) {
-    return <Text as="p">Loading your lessons...</Text>;
-  }
-
-  if (lessons instanceof Error) {
-    return <ErrorMessage error={lessons} subject="your lessons" />;
-  }
-
-  if (lessons.length === 0) {
-    return <Text as="p">No lessons of your own yet.</Text>;
-  }
-
-  return (
-    <VStack as="ul" gap={2} padding={0}>
-      {lessons.map((lesson) => (
-        <li key={lesson.id}>
-          <HStack gap={1} align="center">
-            <LessonRow
-              title={lesson.title}
-              level={lesson.level}
-              sentenceCount={lesson.sentences.length}
-              targetWpm={lesson.targetWpm}
-              completed={completedLessons.has(lesson.id)}
-              onSelect={() => onSelect(lesson)}
-              takeFocus={() => takeFocus(lesson.id)}
-            />
-            <Button
-              label="Delete"
-              aria-label={`Delete ${lesson.title}`}
-              variant="ghost"
-              onClick={() => onDelete(lesson)}
-            />
-          </HStack>
-          {deleteFailedId === lesson.id && (
-            <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-              Couldn't delete. Try again.
-            </Text>
-          )}
-        </li>
-      ))}
-    </VStack>
-  );
-}
-
-function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<void> }) {
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
-  const [level, setLevel] = useState<Level>("B1");
-  const [targetWpm, setTargetWpm] = useState<(typeof USER_WPMS)[number]>("110");
-  const [error, setError] = useState<string | null>(null);
-  const isCreatingRef = useRef(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (isCreatingRef.current) {
-      return;
-    }
-
-    isCreatingRef.current = true;
-    try {
-      await onCreate(createUserLesson({ title, text, level, targetWpm: Number(targetWpm), videoUrl: videoUrl.trim() }));
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Unable to create lesson.");
-    } finally {
-      isCreatingRef.current = false;
-    }
-  };
-
-  return (
-    <form onSubmit={(event) => void submit(event)}>
-      <VStack gap={1}>
-        <Heading level={2}>Import text</Heading>
-        <Text as="p" type="supporting">
-          Your lessons stay on this device; export a backup to move them.
-        </Text>
-        <label htmlFor="import-title">
-          <Text as="span" type="supporting">Title</Text>
-        </label>
-        <input
-          id="import-title"
-          className={stylex.props(appStyles.dictationInput).className}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <label htmlFor="import-video">
-          <Text as="span" type="supporting">YouTube URL</Text>
-        </label>
-        <input
-          id="import-video"
-          type="url"
-          className={stylex.props(appStyles.dictationInput).className}
-          value={videoUrl}
-          onChange={(event) => setVideoUrl(event.target.value)}
-        />
-        <label htmlFor="import-text">
-          <Text as="span" type="supporting">Text</Text>
-        </label>
-        <textarea
-          id="import-text"
-          className={stylex.props(appStyles.importTextArea).className}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
-        <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
-          <ToggleButtonGroup
-            label="Level"
-            value={level}
-            onChange={(nextLevel) => {
-              if (nextLevel) {
-                setLevel(nextLevel as Level);
-              }
-            }}
-          >
-            {USER_LEVELS.map((value) => (
-              <ToggleButton key={value} value={value} label={value} />
-            ))}
-          </ToggleButtonGroup>
-          <ToggleButtonGroup
-            label="Target WPM"
-            value={targetWpm}
-            xstyle={appStyles.shadowingControls}
-            onChange={(nextWpm) => {
-              if (nextWpm) {
-                setTargetWpm(nextWpm as (typeof USER_WPMS)[number]);
-              }
-            }}
-          >
-            {USER_WPMS.map((value) => (
-              <ToggleButton key={value} value={value} label={`${value} WPM`} />
-            ))}
-          </ToggleButtonGroup>
-        </HStack>
-        <Button label="Create" variant="primary" type="submit" />
-        {error && (
-          <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-            {error}
-          </Text>
-        )}
-        <Text as="p" type="supporting">
-          Paste the transcript from YouTube's Show transcript panel (timestamps included).
-        </Text>
-      </VStack>
-    </form>
-  );
-}
 
 function SaveToReview({
   card,
@@ -1274,35 +446,11 @@ function SaveToReview({
         tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
         onClick={() => void toggle()}
       />
-      {failed && (
-        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-          Couldn't save. Try again.
-        </Text>
-      )}
+      {failed && <Alert>Couldn't save. Try again.</Alert>}
     </>
   );
 }
 
-function sentenceCard(
-  lessonId: string,
-  sentence: { id: string; text: string; notes?: string },
-): NewCard {
-  return {
-    front: sentence.text,
-    back: sentence.notes ?? "",
-    source: { lessonId, sentenceId: sentence.id, word: "" },
-  };
-}
-
-function downloadText(text: string, type: string, fileName: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  link.remove();
-  URL.revokeObjectURL?.(url);
-}
 
 // Splits on letter/digit runs (apostrophes kept, so "What's" is one word;
 // hyphens inside join a compound, so "T-shirt" is one word) and renders each
@@ -1364,8 +512,6 @@ function WordPanel({
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
   hear: () => void;
 }) {
-  const speechSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
   // Lookups keep an inner apostrophe ("don't") but drop quote marks and keep hyphens ("t-shirt"); the card id uses cardWord().
   const word = text.toLowerCase().replace(/’/g, "'").replace(/^'+|'+$/g, "");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
@@ -1382,12 +528,12 @@ function WordPanel({
 
   return (
     <VStack gap={1}>
-      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+      <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
         <Text weight="semibold">{text}</Text>
         <Button
           label="Hear word"
           variant="secondary"
-          isDisabled={!speechSupported}
+          isDisabled={!speechSupported()}
           onClick={hear}
         />
         <SaveToReview
@@ -1432,181 +578,6 @@ function WordPanel({
   );
 }
 
-// Word cards store `${sentence} — ${vi}` (see LessonDetail). Only library lessons have Vietnamese:
-// user lessons keep vi empty, and library text has no " — ", so the split is unambiguous.
-function CardBack({ card }: { card: VocabCard }) {
-  const split = card.back.lastIndexOf(" — ");
-  if (card.source.word === "" || card.source.lessonId.startsWith("user-") || split === -1) {
-    return card.back;
-  }
-  return (
-    <>
-      {card.back.slice(0, split + 3)}
-      <span lang="vi">{card.back.slice(split + 3)}</span>
-    </>
-  );
-}
-
-function ReviewDeck({
-  due,
-  hiddenNew,
-  nextDueInMinutes,
-  hasCards,
-  loading,
-  loadFailed,
-  review,
-  recordPractice,
-  onGoToLibrary,
-}: {
-  due: VocabCard[];
-  hiddenNew: number;
-  nextDueInMinutes: number | null;
-  hasCards: boolean;
-  loading: boolean;
-  loadFailed: boolean;
-  review: (card: VocabCard, rating: Grade) => Promise<boolean>;
-  recordPractice: (options: { newCard: boolean }) => Promise<void>;
-  onGoToLibrary: () => void;
-}) {
-  // The card and rating turn the answer was revealed for: a rating changes updatedAt, so the next card,
-  // or the same card back after Again, renders hidden from its first frame.
-  const [revealedFor, setRevealedFor] = useState<string | null>(null);
-  const [isRating, setIsRating] = useState(false);
-  const [rateError, setRateError] = useState<string | null>(null);
-  const isRatingRef = useRef(false);
-  // Show answer and rating remove the focused button, so focus moves to what replaced it.
-  const [focusTarget, setFocusTarget] = useState<"answer" | "prompt" | null>(null);
-  const answerRef = useRef<HTMLElement>(null);
-  const promptRef = useRef<HTMLElement>(null);
-  const card = due[0];
-  const cardTurn = card ? `${card.id}@${card.updatedAt}` : null;
-  const showAnswer = cardTurn !== null && revealedFor === cardTurn;
-
-  useEffect(() => {
-    if (focusTarget === null) {
-      return;
-    }
-    (focusTarget === "answer" ? answerRef : promptRef).current?.focus();
-    setFocusTarget(null);
-  }, [focusTarget]);
-
-  if (loading) {
-    return <Text as="p">Loading review deck...</Text>;
-  }
-
-  if (loadFailed) {
-    return (
-      <VStack gap={2}>
-        <Text as="p" ref={promptRef} tabIndex={-1}>
-          Your review deck couldn't be loaded.
-        </Text>
-        <Button label="Go to library" variant="secondary" xstyle={appStyles.viewToggle} onClick={onGoToLibrary} />
-      </VStack>
-    );
-  }
-
-  const rateErrorLine = rateError !== null && (
-    <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-      {rateError}
-    </Text>
-  );
-
-  if (!card) {
-    return (
-      <VStack gap={2}>
-        {rateErrorLine}
-        <Text as="p" ref={promptRef} tabIndex={-1}>
-          {!hasCards
-            ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
-            : hiddenNew > 0
-              ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
-              : nextDueInMinutes !== null
-                ? `All caught up. Next card in ${nextDueInMinutes} min.`
-                : "All caught up. Come back later for your next review."}
-        </Text>
-        <Button label="Go to library" variant="secondary" xstyle={appStyles.viewToggle} onClick={onGoToLibrary} />
-      </VStack>
-    );
-  }
-
-  const rate = async (rating: Grade) => {
-    if (isRatingRef.current) {
-      return;
-    }
-
-    isRatingRef.current = true;
-    setIsRating(true);
-    // Read before rating: the review moves the card out of New.
-    const newCard = card.fsrs.state === State.New;
-    setRateError(null);
-    try {
-      if (await review(card, rating)) {
-        // Resolves even when the write fails; the header storage line reports it.
-        await recordPractice({ newCard });
-      } else {
-        setRateError("This card changed on another device. Showing the latest.");
-      }
-    } catch {
-      setRateError("Couldn't save. Try again.");
-    } finally {
-      isRatingRef.current = false;
-      setIsRating(false);
-      // The disabled rating buttons drop focus, so it moves to the card, whether or not the rating saved.
-      setFocusTarget("prompt");
-    }
-  };
-
-  return (
-    <VStack gap={3}>
-      <Card padding={3} xstyle={appStyles.reviewCard}>
-        <VStack gap={2}>
-          <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>{card.front}</Text>
-          {showAnswer && (
-            <Text as="p" xstyle={appStyles.answer} ref={answerRef} tabIndex={-1}><CardBack card={card} /></Text>
-          )}
-          {!showAnswer ? (
-            <Button
-              label="Show answer"
-              variant="primary"
-              onClick={() => {
-                setRevealedFor(cardTurn);
-                setFocusTarget("answer");
-              }}
-            />
-          ) : (
-            <HStack gap={1}>
-              <Button
-                label="Again"
-                variant="secondary"
-                isDisabled={isRating}
-                onClick={() => void rate(Rating.Again)}
-              />
-              <Button
-                label="Hard"
-                variant="secondary"
-                isDisabled={isRating}
-                onClick={() => void rate(Rating.Hard)}
-              />
-              <Button
-                label="Good"
-                variant="primary"
-                isDisabled={isRating}
-                onClick={() => void rate(Rating.Good)}
-              />
-              <Button
-                label="Easy"
-                variant="secondary"
-                isDisabled={isRating}
-                onClick={() => void rate(Rating.Easy)}
-              />
-            </HStack>
-          )}
-          {rateErrorLine}
-        </VStack>
-      </Card>
-    </VStack>
-  );
-}
 
 type LessonMode = "shadow" | "dictation" | "blank";
 
@@ -1679,7 +650,7 @@ function LessonDetail({
   const stopMedia = ({ keepVideo = false, keepAudio }: { keepVideo?: boolean; keepAudio?: HTMLAudioElement } = {}) => {
     setLoopingSentenceId(null);
     setSpokenWord(null);
-    if ("speechSynthesis" in window) {
+    if (speechSupported()) {
       stopSpeaking();
     }
     abortActiveRecognition();
@@ -1715,7 +686,7 @@ function LessonDetail({
 
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      if (speechSupported()) {
         stopSpeaking();
       }
     };
@@ -1744,7 +715,7 @@ function LessonDetail({
               </Text>
             )}
             {video.status === "failed" && (
-              <Text as="p" color="primary" xstyle={appStyles.error}>
+              <Text as="p" color="primary" xstyle={sharedStyles.error}>
                 The video couldn't load. You can keep practising with Listen.
               </Text>
             )}
@@ -1765,11 +736,7 @@ function LessonDetail({
           markLessonComplete(data.id).catch(() => setCompleteFailed(true));
         }}
       />
-      {completeFailed && (
-        <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-          Couldn't save. Try again.
-        </Text>
-      )}
+      {completeFailed && <Alert>Couldn't save. Try again.</Alert>}
       <ToggleButtonGroup
         label="Lesson mode"
         value={mode}
@@ -1785,7 +752,7 @@ function LessonDetail({
         <ToggleButton value="dictation" label="Dictation" />
         <ToggleButton value="blank" label="Fill the blank" />
       </ToggleButtonGroup>
-      <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+      <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
         <ToggleButtonGroup
           label="Playback speed"
           value={speed}
@@ -1835,7 +802,7 @@ function LessonDetail({
         </Text>
       )}
       {mode === "shadow" && disclosureOpen && (
-        <Card padding={3} xstyle={appStyles.sentence}>
+        <Card padding={3} xstyle={sharedStyles.sentence}>
           <VStack gap={1}>
             <Text as="p">
               Pronunciation check uses your browser's speech recognition. In Chrome, your
@@ -1869,7 +836,7 @@ function LessonDetail({
       <VStack as="ol" gap={2} padding={0}>
         {data.sentences.map((sentence) => (
           <li key={sentence.id}>
-            <Card padding={3} xstyle={appStyles.sentence}>
+            <Card padding={3} xstyle={sharedStyles.sentence}>
               {sentence.cue && (
                 <Button
                   label="Play clip"
@@ -1919,7 +886,7 @@ function LessonDetail({
                       text={selectedWord.text}
                       card={{
                         front: selectedWord.text,
-                        back: sentence.vi ? `${sentence.text} — ${sentence.vi}` : sentence.text,
+                        back: wordCardBack(sentence.text, sentence.vi),
                         source: {
                           lessonId: data.id,
                           sentenceId: sentence.id,
@@ -1999,73 +966,21 @@ function LessonDetail({
   );
 }
 
-// The hash route is the one source of truth for the view and the open lesson. Hash URLs need no
-// server fallback, so any static host serves them.
-type Route =
-  | { view: "library" }
-  | { view: "review" }
-  | { view: "lesson"; id: string }
-  | { view: "my"; id: string };
-
-function routeHash(route: Route): string {
-  switch (route.view) {
-    case "library":
-      return "#/";
-    case "review":
-      return "#/review";
-    default:
-      return `#/${route.view}/${encodeURIComponent(route.id)}`;
-  }
-}
-
-function parseRoute(hash: string): Route | null {
-  if (hash === "" || hash === "#" || hash === "#/") {
-    return { view: "library" };
-  }
-  if (hash === "#/review") {
-    return { view: "review" };
-  }
-  const match = /^#\/(lesson|my)\/([^/]+)$/.exec(hash);
-  if (!match) {
-    return null;
-  }
-  try {
-    return { view: match[1] as "lesson" | "my", id: decodeURIComponent(match[2]) };
-  } catch {
-    return null;
-  }
-}
-
-// A malformed hash falls back to the library and replaces its history entry.
-function readRoute(): Route {
-  const route = parseRoute(window.location.hash);
-  if (route) {
-    return route;
-  }
-  window.history.replaceState(null, "", routeHash({ view: "library" }));
-  return { view: "library" };
-}
 
 export function App() {
   const [route, setRoute] = useState(readRoute);
   const shownRoute = useRef(route);
-  const [userLessons, setUserLessons] = useState<Lesson[] | Error | null>(null);
+  const { lessons: userLessons, reload: reloadUserLessons, create: createUserLesson, remove: removeUserLesson } = useUserLessons();
   const [deleteFailedId, setDeleteFailedId] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
-  const importInput = useRef<HTMLInputElement>(null);
   const deck = useVocabDeck();
   const progress = useProgress();
   const reviewDeck = capNewCards(deck.due, progress.newCardsToday);
   const storageError =
     deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
-  const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
-  const goalMet = progress.actionsToday >= Number(dailyGoal);
-  // Only a practice action or a goal change can announce the goal, so loading a met goal stays quiet.
-  const goalArmed = useRef(false);
-  const goalMetBefore = useRef(goalMet);
-  const [goalAnnounced, setGoalAnnounced] = useState(false);
+  const { dailyGoal, goalMet, goalAnnounced, armGoal, chooseGoal } = useDailyGoal(progress.actionsToday);
   const recordPractice = (options: { newCard: boolean }) => {
-    goalArmed.current = true;
+    armGoal();
     return progress.recordPractice(options);
   };
   const auth = useAuth();
@@ -2123,16 +1038,6 @@ export function App() {
     headingFocus.current = true;
     setHeadingFocusRequest((request) => request + 1);
   };
-
-  // Each count or goal change consumes the arm, so a later reload (sync, import) cannot announce on its own.
-  useEffect(() => {
-    const armed = goalArmed.current;
-    goalArmed.current = false;
-    if (goalMet !== goalMetBefore.current) {
-      goalMetBefore.current = goalMet;
-      setGoalAnnounced(goalMet && armed);
-    }
-  }, [progress.actionsToday, dailyGoal, goalMet]);
 
   const takeHeadingFocus = () => {
     const take = headingFocus.current;
@@ -2222,30 +1127,8 @@ export function App() {
     };
   }, [auth.user, expire, deck.reload, progress.reload]);
 
-  const loadUserLessons = () =>
-    listUserLessons().catch((loadError: unknown) =>
-      loadError instanceof Error ? loadError : new Error("Unable to load your lessons"),
-    );
-
-  const reloadUserLessons = async () => {
-    setUserLessons(await loadUserLessons());
-  };
-
-  useEffect(() => {
-    let active = true;
-    void loadUserLessons().then((lessons) => {
-      if (active) {
-        setUserLessons(lessons);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const createLesson = async (lesson: Lesson) => {
-    await putUserLesson(lesson);
-    await reloadUserLessons();
+    await createUserLesson(lesson);
     navigate({ view: "my", id: lesson.id });
   };
 
@@ -2255,59 +1138,20 @@ export function App() {
     }
     setDeleteFailedId(null);
     try {
-      await deleteUserLesson(lesson.id);
+      await removeUserLesson(lesson.id);
     } catch {
       setDeleteFailedId(lesson.id);
       return;
     }
-    await reloadUserLessons();
     // The deleted row took the focused Delete with it.
     userLessonsHeading.current?.focus();
   };
 
-  const exportBackup = async () => {
-    setBackupError(null);
-    try {
-      downloadText(exportData(await exportBackupData(), new Date()), "application/json", backupFileName(new Date()));
-    } catch (error) {
-      setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
-    }
-  };
-
-  const exportCsv = async () => {
-    setBackupError(null);
-    try {
-      downloadText(cardsCsv(await getAllCards()), "text/csv;charset=utf-8", cardsCsvFileName(new Date()));
-    } catch (error) {
-      setBackupError(error instanceof Error ? error.message : "Unable to export CSV.");
-    }
-  };
-
-  const importBackup = async (event: ChangeEvent<HTMLInputElement>) => {
-    setBackupError(null);
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-    if (!file) {
-      return;
-    }
-
-    try {
-      const data = importData(await file.text());
-      const replaceNotice = "Importing this backup will replace all local data on this device.";
-      const confirmText = auth.user
-        ? `${replaceNotice} Your next sync merges it with your account, so cards and progress already in your account stay. Continue?`
-        : `${replaceNotice} Continue?`;
-      if (!window.confirm(confirmText)) {
-        return;
-      }
-      await replaceAll(data);
-      await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
-      // The open lesson may be gone or replaced, so the view goes to the library.
-      if (lessonId(shownRoute.current) !== null) {
-        navigate({ view: "library" });
-      }
-    } catch (error) {
-      setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
+  const reloadAfterImport = async () => {
+    await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
+    // The open lesson may be gone or replaced, so the view goes to the library.
+    if (lessonId(shownRoute.current) !== null) {
+      navigate({ view: "library" });
     }
   };
 
@@ -2346,7 +1190,7 @@ export function App() {
         <div className={stylex.props(appStyles.content).className}>
           <VStack gap={4}>
             <VStack as="header" gap={1} xstyle={appStyles.header}>
-              <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
+              <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
                 <Badge
                   label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
                   variant="info"
@@ -2366,9 +1210,7 @@ export function App() {
                   value={dailyGoal}
                   onChange={(nextGoal) => {
                     if (nextGoal) {
-                      goalArmed.current = true;
-                      localStorage.setItem(DAILY_GOAL_KEY, nextGoal);
-                      setDailyGoal(nextGoal as DailyGoal);
+                      chooseGoal(nextGoal as DailyGoal);
                     }
                   }}
                 >
@@ -2381,23 +1223,7 @@ export function App() {
               <Status>
                 {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
               </Status>
-              <HStack gap={1} align="center" xstyle={appStyles.shadowingControls}>
-                <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
-                <Button label="Export CSV" variant="secondary" onClick={() => void exportCsv()} />
-                <Button
-                  label="Import"
-                  variant="secondary"
-                  onClick={() => importInput.current?.click()}
-                />
-                <input
-                  ref={importInput}
-                  className={stylex.props(appStyles.backupFileInput).className}
-                  type="file"
-                  accept="application/json"
-                  aria-label="Import backup file"
-                  onChange={(event) => void importBackup(event)}
-                />
-              </HStack>
+              <BackupControls signedIn={auth.user !== null} setError={setBackupError} onImported={reloadAfterImport} />
               {storageKept !== null && (
                 <Text type="supporting">
                   {storageKept
@@ -2406,25 +1232,21 @@ export function App() {
                 </Text>
               )}
               {storageError && (
-                <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
+                <Alert>
                   Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
-                </Text>
+                </Alert>
               )}
-              {backupError && (
-                <Text as="p" role="alert" color="primary" xstyle={appStyles.error}>
-                  Backup error: {backupError}
-                </Text>
-              )}
+              {backupError && <Alert>Backup error: {backupError}</Alert>}
               <Status>
                 {syncMessage && (
-                  <Text as="p" color="primary" xstyle={appStyles.error}>
+                  <Text as="p" color="primary" xstyle={sharedStyles.error}>
                     {syncMessage}
                   </Text>
                 )}
               </Status>
               <AccountArea auth={auth} />
             </VStack>
-            <nav aria-label="Views" className={stylex.props(appStyles.viewToggle).className}>
+            <nav aria-label="Views" className={stylex.props(sharedStyles.viewToggle).className}>
               <ToggleButtonGroup
                 label="App view"
                 value={view === "review" ? "review" : "library"}

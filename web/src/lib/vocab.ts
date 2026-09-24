@@ -30,11 +30,11 @@ export interface VocabCard {
 
 export type NewCard = Omit<VocabCard, "id" | "fsrs" | "updatedAt" | "deletedAt">;
 
-// Text the api accepts: any string without U+0000.
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Text the api accepts: any string without U+0000.
 export function isText(value: unknown): value is string {
   return typeof value === "string" && !value.includes("\u0000");
 }
@@ -51,6 +51,36 @@ export function cardWord(part: string): string {
 
 export function cardId({ lessonId, sentenceId, word }: CardSource): string {
   return word === "" ? `${lessonId}:${sentenceId}` : `${lessonId}:${sentenceId}:${word}`;
+}
+
+// A sentence card: the sentence text on the front, its notes on the back.
+export function sentenceCard(
+  lessonId: string,
+  sentence: { id: string; text: string; notes?: string },
+): NewCard {
+  return {
+    front: sentence.text,
+    back: sentence.notes ?? "",
+    source: { lessonId, sentenceId: sentence.id, word: "" },
+  };
+}
+
+const CARD_BACK_SEPARATOR = " — ";
+
+// A word card's back: its sentence, then the Vietnamese when the lesson has it.
+export function wordCardBack(sentence: string, vi: string): string {
+  return vi ? `${sentence}${CARD_BACK_SEPARATOR}${vi}` : sentence;
+}
+
+// The Vietnamese part of a word card's back written by wordCardBack, or null when it has none.
+// Only library lessons have Vietnamese: user lessons keep vi empty, and library text has no
+// separator, so the split is unambiguous.
+export function splitCardBack(card: VocabCard): { sentence: string; vi: string } | null {
+  const split = card.back.lastIndexOf(CARD_BACK_SEPARATOR);
+  if (card.source.word === "" || card.source.lessonId.startsWith("user-") || split === -1) {
+    return null;
+  }
+  return { sentence: card.back.slice(0, split), vi: card.back.slice(split + CARD_BACK_SEPARATOR.length) };
 }
 
 const scheduler = fsrs(generatorParameters({ enable_fuzz: false }));

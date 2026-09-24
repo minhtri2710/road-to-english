@@ -3,6 +3,11 @@ const WPM_AT_RATE_ONE = 180;
 
 let current: SpeechSynthesisUtterance | null = null;
 
+// Read at render: tests remove the speech globals mid-test.
+export function speechSupported(): boolean {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
+}
+
 // onEnd, onError and onWord run only if this utterance is still current, so a cancelled or
 // superseded utterance's late events (including its "interrupted"/"canceled" error) stay silent.
 export function speak(

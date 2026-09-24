@@ -19,6 +19,16 @@ function stopStream(stream: MediaStream | null): void {
 // The one recording in progress (or awaiting microphone permission) across all recorders.
 let activeStop: (() => void) | null = null;
 
+// Read at render: tests remove the recording globals mid-test.
+export function recordingSupported(): boolean {
+  return (
+    typeof MediaRecorder !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    typeof URL.createObjectURL === "function"
+  );
+}
+
 export function stopActiveRecording(): void {
   activeStop?.();
 }

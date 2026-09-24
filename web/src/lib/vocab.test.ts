@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { mergeCard } from "./mergeCard";
 import { card as newCard } from "../test/fixtures";
-import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
+import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, splitCardBack, State, wordCardBack } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -193,5 +193,22 @@ describe("card words", () => {
     ["It’s", "its"],
   ])("derives %j as %j", (part, word) => {
     expect(cardWord(part)).toBe(word);
+  });
+});
+
+describe("word card backs", () => {
+  const wordCard = (lessonId: string, back: string) =>
+    createCard({ front: "tea", back, source: { lessonId, sentenceId: "s1", word: "tea" } }, now);
+
+  it("splits the Vietnamese back out of what wordCardBack wrote", () => {
+    const back = wordCardBack("I like tea.", "Tôi thích trà.");
+    expect(splitCardBack(wordCard("greetings-basics", back))).toEqual({ sentence: "I like tea.", vi: "Tôi thích trà." });
+  });
+
+  it("finds no Vietnamese without it, on a user lesson, or on a sentence card", () => {
+    expect(wordCardBack("I like tea.", "")).toBe("I like tea.");
+    expect(splitCardBack(wordCard("greetings-basics", "I like tea."))).toBeNull();
+    expect(splitCardBack(wordCard("user-1", wordCardBack("I like tea.", "x")))).toBeNull();
+    expect(splitCardBack(createCard({ ...input, back: wordCardBack("a", "b") }, now))).toBeNull();
   });
 });
