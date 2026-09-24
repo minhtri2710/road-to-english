@@ -1,8 +1,8 @@
-import { act, createElement } from "react";
+import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { click } from "../test/app";
+import { click, harnessAct } from "../test/app";
 import { ErrorBoundary } from "./feedback";
 
 describe("ErrorBoundary", () => {
@@ -18,7 +18,7 @@ describe("ErrorBoundary", () => {
     };
     const container = document.createElement("div");
     const root = createRoot(container);
-    await act(async () => {
+    await harnessAct(async () => {
       root.render(createElement(ErrorBoundary, null, createElement(Broken)));
     });
 
@@ -27,7 +27,7 @@ describe("ErrorBoundary", () => {
     expect(consoleError).toHaveBeenCalled();
     await click(container, "Reload");
     expect(reload).toHaveBeenCalledOnce();
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
   });

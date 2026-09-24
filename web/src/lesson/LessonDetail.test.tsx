@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getPracticeDays } from "../lib/progressStore";
@@ -9,14 +8,19 @@ import {
   blockStorage,
   buttonsNamed,
   click,
+  clickButtonWith,
+  clickElement,
   close,
   fetchMock,
   h1Texts,
+  harnessAct,
+  harnessActSync,
   hasText,
   openLesson,
   renderApp,
   resetApp,
   setInputValue,
+  submitInput,
   waitForActions,
   waitForCondition,
 } from "../test/app";
@@ -35,20 +39,13 @@ describe("LessonDetail", () => {
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
     const { container } = await openLesson();
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Dictation");
 
     const input = container.querySelector<HTMLInputElement>(
       `#dictation-${greetingsLesson.sentences[0].id}`,
     );
     if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, greetingsLesson.sentences[0].text);
-      input.form?.requestSubmit();
-    });
+    await submitInput(input, greetingsLesson.sentences[0].text);
     await waitForActions(1);
 
     expect(await getPracticeDays()).toHaveLength(1);
@@ -67,46 +64,30 @@ describe("LessonDetail", () => {
     vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
     const { container } = await openLesson();
     const [first, second] = greetingsLesson.sentences;
-    const button = (label: string) =>
-      Array.from(container.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.includes(label),
-      );
-    const submit = async (input: HTMLInputElement, value: string) => {
-      await act(async () => {
-        setInputValue(input, value);
-        input.form?.requestSubmit();
-      });
-    };
 
-    await act(async () => {
-      button("Fill the blank")?.click();
-    });
+    await clickButtonWith(container, "Fill the blank");
     // The gap is aria-hidden; a visually hidden "blank" is read in its place.
     expect(container.textContent).toContain("Good ____blank, how are you today?");
     expect(container.textContent).not.toContain("morning");
     expect(container.querySelector(`label[for="blank-${first.id}"]`)).not.toBeNull();
     expect(await actionsToday()).toBe(0);
 
-    await act(async () => {
-      button("Play")?.click();
-    });
+    await clickButtonWith(container, "Play");
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: first.text }));
 
     const input = container.querySelector<HTMLInputElement>(`#blank-${first.id}`);
     if (!input) throw new Error("blank input not found");
-    await submit(input, " MORNING! ");
+    await submitInput(input, " MORNING! ");
     expect(container.textContent).toContain("Correct");
     await waitForActions(1);
 
-    await act(async () => {
-      button("Try again")?.click();
-    });
+    await clickButtonWith(container, "Try again");
     expect(input.value).toBe("");
     expect(container.textContent).not.toContain("Correct");
 
     const secondInput = container.querySelector<HTMLInputElement>(`#blank-${second.id}`);
     if (!secondInput) throw new Error("second blank input not found");
-    await submit(secondInput, "meet");
+    await submitInput(secondInput, "meet");
     expect(container.textContent).toContain("Not quite — the word was nice");
     await waitForActions(2);
   });
@@ -121,17 +102,13 @@ describe("LessonDetail", () => {
     const announced = () =>
       Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
     expect(announced()).not.toContain("Lesson marked complete.");
-    await act(async () => {
+    await harnessAct(async () => {
       completeButton.click();
     });
     await waitForCondition(() => container.textContent?.includes("Completed") ?? false);
     await waitForCondition(() => announced().includes("Lesson marked complete."));
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Back to lessons"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Back to lessons");
     await waitForCondition(() => {
       const lessonButton = Array.from(container.querySelectorAll("button")).find(
         (button) => button.textContent?.includes("Greetings & Basics"),
@@ -144,14 +121,10 @@ describe("LessonDetail", () => {
   it("stops reference speech on a lesson mode change", async () => {
     const speech = installSpeechFakes();
     const view = await openLesson();
-    await act(async () => {
-      buttonsNamed(view.container, "Listen")[0]?.click();
-    });
+    await click(view.container, "Listen");
     expect(speech.spoken).toHaveLength(1);
     speech.cancel.mockClear();
-    await act(async () => {
-      buttonsNamed(view.container, "Dictation")[0]?.click();
-    });
+    await click(view.container, "Dictation");
     expect(speech.cancel).toHaveBeenCalled();
   });
 
@@ -161,7 +134,7 @@ describe("LessonDetail", () => {
 
     const transcript = buttonsNamed(container, "Transcript")[0]!;
     expect(transcript.getAttribute("aria-pressed")).toBe("true");
-    await act(async () => {
+    await harnessAct(async () => {
       transcript.click();
     });
     expect(buttonsNamed(container, "Transcript")[0]).toBe(transcript);
@@ -171,7 +144,7 @@ describe("LessonDetail", () => {
     }
     expect(container.textContent).not.toContain("casual sign-off");
 
-    await act(async () => {
+    await harnessAct(async () => {
       transcript.click();
     });
     expect(transcript.getAttribute("aria-pressed")).toBe("true");
@@ -191,7 +164,7 @@ describe("LessonDetail", () => {
     const vietnamese = buttonsNamed(container, "Vietnamese")[0]!;
     expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
 
-    await act(async () => {
+    await harnessAct(async () => {
       vietnamese.click();
     });
     expect(vietnamese.getAttribute("aria-pressed")).toBe("true");
@@ -199,15 +172,13 @@ describe("LessonDetail", () => {
       expect(container.textContent).toContain(sentence.vi);
     }
 
-    await act(async () => {
-      buttonsNamed(container, "Transcript")[0]?.click();
-    });
+    await click(container, "Transcript");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.text);
       expect(container.textContent).toContain(sentence.vi);
     }
 
-    await act(async () => {
+    await harnessAct(async () => {
       vietnamese.click();
     });
     expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
@@ -215,9 +186,7 @@ describe("LessonDetail", () => {
       expect(container.textContent).not.toContain(sentence.vi);
     }
 
-    await act(async () => {
-      buttonsNamed(container, "Transcript")[0]?.click();
-    });
+    await click(container, "Transcript");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.text);
       expect(container.textContent).not.toContain(sentence.vi);
@@ -311,14 +280,14 @@ describe("LessonDetail", () => {
       const textArea = container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !videoInput || !textArea) throw new Error("import form not found");
       expect(container.querySelector('label[for="import-video"]')?.textContent).toBe("YouTube URL");
-      await act(async () => {
+      await harnessAct(async () => {
         setInputValue(titleInput, "Tea video");
         setInputValue(videoInput, videoUrl);
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, text);
         textArea.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
+      await harnessAct(async () => {
+        titleInput.form!.requestSubmit();
       });
     }
 
@@ -329,7 +298,7 @@ describe("LessonDetail", () => {
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
       await waitForCondition(() => FakePlayer.instances.length === 1);
       const player = FakePlayer.instances[0]!;
-      await act(async () => {
+      await harnessAct(async () => {
         player.options.events.onReady();
       });
       return { view, player };
@@ -362,7 +331,7 @@ describe("LessonDetail", () => {
       expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
       expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
 
-      await act(async () => {
+      await harnessAct(async () => {
         player?.options.events.onReady();
       });
       expect(buttonsNamed(view.container, "Play clip").some((button) => button.disabled)).toBe(false);
@@ -397,12 +366,8 @@ describe("LessonDetail", () => {
     it("plays a clip at the chosen speed and pauses when the time passes the cue end", async () => {
       const { view, player } = await openVideoLesson();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "0.75x")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[1]?.click();
-      });
+      await click(view.container, "0.75x");
+      await click(view.container, "Play clip", 1);
       expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 2, true], ["playVideo"]]);
 
       player.time = 64.9;
@@ -415,9 +380,7 @@ describe("LessonDetail", () => {
       expect(player.calls.filter(([name]) => name === "pauseVideo")).toHaveLength(1);
 
       player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[2]?.click();
-      });
+      await click(view.container, "Play clip", 2);
       expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 65, true], ["playVideo"]]);
       expect(vi.getTimerCount()).toBe(0);
     });
@@ -425,12 +388,8 @@ describe("LessonDetail", () => {
     it("cancels the older clip's poll when a newer clip starts", async () => {
       const { view, player } = await openVideoLesson();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[1]?.click();
-      });
+      await click(view.container, "Play clip");
+      await click(view.container, "Play clip", 1);
       expect(vi.getTimerCount()).toBe(1);
 
       player.time = 3;
@@ -441,12 +400,8 @@ describe("LessonDetail", () => {
     it("destroys the player and cancels the poll on unmount", async () => {
       const { view, player } = await openVideoLesson();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Back to lessons")[0]?.click();
-      });
+      await click(view.container, "Play clip");
+      await click(view.container, "Back to lessons");
 
       expect(player.calls.filter(([name]) => name === "destroy")).toHaveLength(1);
       expect(view.container.contains(player.element)).toBe(false);
@@ -459,14 +414,10 @@ describe("LessonDetail", () => {
     it("offers Play clip in the dictation and fill-the-blank modes", async () => {
       const { view, player } = await openVideoLesson();
       for (const mode of ["Dictation", "Fill the blank"]) {
-        await act(async () => {
-          buttonsNamed(view.container, mode)[0]?.click();
-        });
+        await click(view.container, mode);
         expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
         player.calls = [];
-        await act(async () => {
-          buttonsNamed(view.container, "Play clip")[0]?.click();
-        });
+        await click(view.container, "Play clip");
         expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
       }
       expect(FakePlayer.instances).toHaveLength(1);
@@ -477,13 +428,13 @@ describe("LessonDetail", () => {
       const titleInput = view.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = view.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");
-      await act(async () => {
+      await harnessAct(async () => {
         setInputValue(titleInput, "Tea talk");
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, "I like tea.");
         textArea.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
+      await harnessAct(async () => {
+        titleInput.form!.requestSubmit();
       });
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
@@ -521,14 +472,10 @@ describe("LessonDetail", () => {
     it("pauses the playing clip and clears its poll when a pronunciation check starts", async () => {
       const { view, player } = await openVideoLessonWithCheck();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
+      await click(view.container, "Play clip");
       expect(player.calls).toContainEqual(["playVideo"]);
       player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
+      await click(view.container, "Check pronunciation");
       expect(player.calls).toEqual([["pauseVideo"]]);
       expect(ClipRecognition.instances).toHaveLength(1);
       player.time = 10;
@@ -538,15 +485,11 @@ describe("LessonDetail", () => {
 
     it("aborts a listening check silently when Play clip starts", async () => {
       const { view, player } = await openVideoLessonWithCheck();
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
+      await click(view.container, "Check pronunciation");
       const recognition = ClipRecognition.instances.at(-1)!;
       expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
       player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
+      await click(view.container, "Play clip");
       expect(recognition.abort).toHaveBeenCalledOnce();
       expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
@@ -573,9 +516,7 @@ describe("LessonDetail", () => {
       expect(append.mock.calls.map(([node]) => (node as HTMLScriptElement).src)).toEqual([iframeApi]);
       expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
       expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
-      await act(async () => {
-        buttonsNamed(view.container, "Dictation")[0]?.click();
-      });
+      await click(view.container, "Dictation");
       expect(view.container.querySelector("#dictation-s1")).not.toBeNull();
     });
 
@@ -587,7 +528,7 @@ describe("LessonDetail", () => {
       const player = FakePlayer.instances[0]!;
       expect(player.options).toMatchObject({ width: "100%", height: "100%" });
       expect(view.container.textContent).toContain("Loading video…");
-      await act(async () => {
+      await harnessAct(async () => {
         player.options.events.onReady();
       });
       expect(view.container.textContent).not.toContain("Loading video…");
@@ -603,19 +544,19 @@ describe("LessonDetail", () => {
       const player = FakePlayer.instances[0]!;
       const failed = "The video couldn't load. You can keep practising with Listen.";
 
-      await act(async () => {
+      await harnessAct(async () => {
         vi.advanceTimersByTime(14_000);
       });
       expect(view.container.textContent).toContain("Loading video…");
       expect(view.container.textContent).not.toContain(failed);
-      await act(async () => {
+      await harnessAct(async () => {
         vi.advanceTimersByTime(1_100);
       });
       expect(view.container.textContent).toContain(failed);
       expect(view.container.textContent).not.toContain("Loading video…");
       expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(false);
 
-      await act(async () => {
+      await harnessAct(async () => {
         player.options.events.onReady();
       });
       expect(view.container.textContent).not.toContain(failed);
@@ -625,33 +566,29 @@ describe("LessonDetail", () => {
     it("stops speech and the loop when the video starts playing, and Listen pauses the video", async () => {
       const speech = installSpeechFakes();
       const { view, player } = await openVideoLesson();
-      await act(async () => {
-        buttonsNamed(view.container, "Loop")[0]?.click();
-      });
+      await click(view.container, "Loop");
       expect(player.calls).toContainEqual(["pauseVideo"]);
-      await act(async () => {
+      await harnessAct(async () => {
         speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
       });
       expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(1);
       speech.cancel.mockClear();
 
       // The player's own controls start playback: YT.PlayerState.PLAYING.
-      await act(async () => {
+      await harnessAct(async () => {
         player.options.events.onStateChange({ data: 1 });
       });
       expect(speech.cancel).toHaveBeenCalled();
       expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(0);
       const spoken = speech.spoken.length;
-      await act(async () => {
+      await harnessAct(async () => {
         speech.finish();
       });
       expect(speech.spoken).toHaveLength(spoken);
 
       player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Listen")[1]?.click();
-      });
+      await click(view.container, "Listen", 1);
       expect(player.calls).toEqual([["pauseVideo"]]);
     });
   });
@@ -723,7 +660,8 @@ describe("LessonDetail", () => {
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
       await close(view);
 
-      const remounted = await openShadow();
+      // The URL still routes to the lesson, so the remount opens it directly.
+      const remounted = await renderApp();
       expect(buttonsNamed(remounted.container, "Check pronunciation")).toHaveLength(3);
     });
 
@@ -738,13 +676,13 @@ describe("LessonDetail", () => {
       expect(recognition.processLocally).toBe(true);
       expect(buttonsNamed(view.container, "Listening…")[0]?.getAttribute("aria-disabled")).toBe("true");
 
-      await act(async () => {
+      await harnessAct(async () => {
         recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
         recognition.onend?.();
       });
       expect(view.container.textContent).toContain("Correct: 6 of 6 words");
       await waitForActions(1);
-      await act(async () => {
+      await harnessAct(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       expect(await actionsToday()).toBe(1);
@@ -757,7 +695,7 @@ describe("LessonDetail", () => {
       const view = await openShadow();
       await enable(view.container);
       const recognition = await checkFirstSentence(view.container);
-      await act(async () => {
+      await harnessAct(async () => {
         recognition.onresult?.({ results: [[{ transcript: "good morning how are you tomorrow" }]] });
       });
       expect(view.container.textContent).toContain('today (you said "tomorrow")');
@@ -768,7 +706,7 @@ describe("LessonDetail", () => {
       const view = await openShadow();
       await enable(view.container);
       const recognition = await checkFirstSentence(view.container);
-      await act(async () => {
+      await harnessAct(async () => {
         recognition.onerror?.({ error: "language-not-supported" });
         recognition.onend?.();
       });
@@ -806,9 +744,7 @@ describe("LessonDetail", () => {
       const view = await openShadow();
       await enable(view.container);
       const first = await checkFirstSentence(view.container);
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
+      await click(view.container, "Check pronunciation");
       expect(first.abort).toHaveBeenCalled();
       expect(FakeRecognition.instances).toHaveLength(2);
       expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
@@ -867,10 +803,12 @@ describe("LessonDetail", () => {
       // The recognition settles before the toggle, but its handler runs only after
       // the toggle's cleanup has dropped this recognition.
       settle(recognition);
-      act(() => {
-        buttonsNamed(view.container, "Pronunciation check")[0]?.click();
+      const toggle = buttonsNamed(view.container, "Pronunciation check")[0];
+      if (!toggle) throw new Error("Pronunciation check button not found");
+      harnessActSync(() => {
+        toggle.click();
       });
-      await act(async () => {
+      await harnessAct(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       expect(view.container.textContent).not.toContain("Reference:");
@@ -887,10 +825,7 @@ describe("LessonDetail", () => {
         `#dictation-${greetingsLesson.sentences[0].id}`,
       );
       if (!input) throw new Error("dictation input not found");
-      await act(async () => {
-        setInputValue(input, "Good morning, how are you tomorrow?");
-        input.form?.requestSubmit();
-      });
+      await submitInput(input, "Good morning, how are you tomorrow?");
       expect(view.container.textContent).toContain("Not quite: 5 of 6 words matched");
       expect(view.container.textContent).toContain('today (you typed "tomorrow")');
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
@@ -953,7 +888,7 @@ describe("LessonDetail", () => {
       Array.from(container.querySelectorAll('[aria-current="true"]')).map((element) => element.textContent);
 
     const settle = () =>
-      act(async () => {
+      harnessAct(async () => {
         for (let attempt = 0; attempt < 5; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
@@ -1036,7 +971,7 @@ describe("LessonDetail", () => {
       await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
       await click(container, "Stop");
       await click(container, "Compare");
-      await act(async () => {
+      await harnessAct(async () => {
         speech.finish();
         speech.spoken.at(-1)?.onend?.();
       });
@@ -1060,7 +995,7 @@ describe("LessonDetail", () => {
       speech.cancel.mockClear();
       pause.mockClear();
 
-      await act(async () => {
+      await harnessAct(async () => {
         container.querySelector("audio")?.dispatchEvent(new Event("play"));
       });
       expect(buttonsNamed(container, "Loop")[1]?.getAttribute("aria-pressed")).toBe("false");
@@ -1076,12 +1011,12 @@ describe("LessonDetail", () => {
       const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
 
       await click(container, "Loop");
-      await act(async () => {
+      await harnessAct(async () => {
         speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
       });
       expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
       const spoken = speech.spoken.length;
-      await act(async () => {
+      await harnessAct(async () => {
         speech.finish();
         speech.spoken.at(-1)?.onend?.();
       });
@@ -1089,11 +1024,11 @@ describe("LessonDetail", () => {
 
       await click(container, "Listen");
       expect(container.textContent).not.toContain(message);
-      await act(async () => {
+      await harnessAct(async () => {
         speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
       });
       expect(spokenWords(container)).toEqual(["Good"]);
-      await act(async () => {
+      await harnessAct(async () => {
         speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
         speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
       });
@@ -1104,7 +1039,7 @@ describe("LessonDetail", () => {
       await click(container, "Listen", 1);
       const superseded = speech.spoken.at(-1);
       await click(container, "Listen", 2);
-      await act(async () => {
+      await harnessAct(async () => {
         superseded?.onerror?.({ error: "interrupted" });
       });
       expect(container.textContent?.split(message).length).toBe(2);
@@ -1115,7 +1050,7 @@ describe("LessonDetail", () => {
       await click(container, "Stop");
       await click(container, "Compare");
       expect(play).not.toHaveBeenCalled();
-      await act(async () => {
+      await harnessAct(async () => {
         speech.spoken.at(-1)?.onerror?.({ error: "audio-busy" });
       });
       expect(play).toHaveBeenCalledOnce();
@@ -1126,7 +1061,7 @@ describe("LessonDetail", () => {
       const { container, speech } = view;
       const highlight = async () => {
         await click(container, "Listen");
-        await act(async () => {
+        await harnessAct(async () => {
           speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
         });
         expect(spokenWords(container)).toEqual(["Good"]);
@@ -1161,16 +1096,13 @@ describe("LessonDetail", () => {
       const submit = async (selector: string, value: string) => {
         const input = container.querySelector<HTMLInputElement>(selector);
         if (!input) throw new Error(`${selector} not found`);
-        await act(async () => {
-          setInputValue(input, value);
-          input.form?.requestSubmit();
-        });
+        await submitInput(input, value);
         await settle();
       };
       const goal = async (count: number) => expect(await actionsToday()).toBe(count);
 
       await click(container, "Check pronunciation");
-      await act(async () => {
+      await harnessAct(async () => {
         Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "  " }]] });
       });
       await settle();
@@ -1178,7 +1110,7 @@ describe("LessonDetail", () => {
       await click(container, "Try again");
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await click(container, "Check pronunciation");
-        await act(async () => {
+        await harnessAct(async () => {
           Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
         });
         await settle();
@@ -1329,11 +1261,11 @@ describe("LessonDetail", () => {
     const view = await openLesson();
     const autoHide = () => view.container.querySelector<HTMLInputElement>('input[role="switch"]')!;
     expect(autoHide().checked).toBe(false);
-    await act(async () => {
+    await harnessAct(async () => {
       autoHide().click();
     });
     expect(autoHide().checked).toBe(true);
-    await act(async () => {
+    await harnessAct(async () => {
       autoHide().click();
     });
     expect(autoHide().checked).toBe(false);
@@ -1358,7 +1290,7 @@ describe("LessonDetail", () => {
       const toggle = buttonsNamed(view.container, "Text")[2];
       expect(toggle.getAttribute("aria-pressed")).toBe("true");
       toggle.focus();
-      await act(async () => {
+      await harnessAct(async () => {
         toggle.click();
       });
 
@@ -1374,7 +1306,7 @@ describe("LessonDetail", () => {
       expect(buttonsNamed(hidden, "Record")).toHaveLength(1);
       expect(card(view.container, 0).textContent).toContain("morning");
 
-      await act(async () => {
+      await harnessAct(async () => {
         toggle.click();
       });
       expect(toggle.getAttribute("aria-pressed")).toBe("true");
@@ -1413,13 +1345,11 @@ describe("LessonDetail", () => {
       const view = await openLesson();
       const input = autoHideSwitch(view.container);
       expect(input?.checked).toBe(false);
-      await act(async () => {
-        input?.click();
-      });
+      await clickElement(input, "auto-hide switch");
       expect(localStorage.getItem(AUTO_HIDE_KEY)).toBe("on");
 
       await click(view.container, "Check pronunciation");
-      await act(async () => {
+      await harnessAct(async () => {
         instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
         instances.at(-1)?.onend?.();
       });
@@ -1431,18 +1361,17 @@ describe("LessonDetail", () => {
       await click(card(view.container, 0), "Text");
       await click(view.container, "Try again");
       await click(view.container, "Check pronunciation");
-      await act(async () => {
+      await harnessAct(async () => {
         instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
       });
       expect(buttonsNamed(card(view.container, 0), "Text")[0]?.getAttribute("aria-pressed")).toBe("true");
       await close(view);
 
-      const again = await openLesson();
+      // The URL still routes to the lesson, so the remount opens it directly.
+      const again = await renderApp();
       expect(autoHideSwitch(again.container)?.checked).toBe(true);
       expect(buttonsNamed(again.container, "Text").map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
-      await act(async () => {
-        autoHideSwitch(again.container)?.click();
-      });
+      await clickElement(autoHideSwitch(again.container), "auto-hide switch");
       expect(localStorage.getItem(AUTO_HIDE_KEY)).toBeNull();
     });
   });

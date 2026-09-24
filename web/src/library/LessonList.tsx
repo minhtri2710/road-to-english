@@ -90,9 +90,10 @@ export function LessonRow({
   onSelect: () => void;
   takeFocus: () => boolean;
 }) {
-  // The name stays the title; the meta line and badges describe the row.
+  // The name stays the title; the meta line and each badge describe the row, so the badges read as separate words.
   const metaId = useId();
-  const badgesId = useId();
+  const wpmId = useId();
+  const completedId = useId();
   return (
     <Button
       ref={(button) => {
@@ -101,7 +102,7 @@ export function LessonRow({
         }
       }}
       label={title}
-      aria-describedby={`${metaId} ${badgesId}`}
+      aria-describedby={completed ? `${metaId} ${wpmId} ${completedId}` : `${metaId} ${wpmId}`}
       variant="secondary"
       xstyle={styles.lessonButton}
       onClick={onSelect}
@@ -113,9 +114,9 @@ export function LessonRow({
             {level} · {sentenceCount} sentences
           </Text>
         </VStack>
-        <HStack gap={1} align="center" id={badgesId}>
-          <Badge label={`${targetWpm} WPM`} variant="info" />
-          {completed && <Badge label="Completed" variant="success" />}
+        <HStack gap={1} align="center">
+          <Badge label={`${targetWpm} WPM`} variant="info" id={wpmId} />
+          {completed && <Badge label="Completed" variant="success" id={completedId} />}
         </HStack>
       </HStack>
     </Button>

@@ -72,7 +72,7 @@ const realSetTimeout = globalThis.setTimeout;
 let currentTest = 0;
 let actInFlight: Promise<unknown> = Promise.resolve();
 
-async function harnessAct(callback: () => void | Promise<void>, test = currentTest): Promise<void> {
+export async function harnessAct(callback: () => void | Promise<void>, test = currentTest): Promise<void> {
   if (test !== currentTest) {
     throw new Error("The test that called this helper has ended");
   }
@@ -83,6 +83,14 @@ async function harnessAct(callback: () => void | Promise<void>, test = currentTe
   );
   actInFlight = scope.catch(() => undefined);
   await scope;
+}
+
+// A synchronous act, for a test that must commit an update before already-queued promise callbacks run.
+export function harnessActSync(callback: () => void, test = currentTest): void {
+  if (test !== currentTest) {
+    throw new Error("The test that called this helper has ended");
+  }
+  void act(callback);
 }
 
 // One macrotask on the real clock, so fake timers cannot hold a helper act open.
@@ -120,22 +128,31 @@ export async function renderApp({ route, lesson }: { route?: FetchRoute; lesson?
 // Renders the App and opens the Greetings & Basics row, served as `lesson`.
 export async function openLesson(lesson: Lesson = greetingsLesson): Promise<AppView> {
   const view = await renderApp({ lesson });
-  await harnessAct(() => {
-    const button = Array.from(view.container.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent?.includes("Greetings & Basics"),
-    );
-    button?.click();
-  });
+  await clickButtonWith(view.container, "Greetings & Basics");
   return view;
 }
 
 // Opens the Greetings & Basics row once the library lists it.
 export async function reopenGreetings(container: HTMLElement): Promise<void> {
-  const row = () =>
-    Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Greetings & Basics"));
-  await waitForCondition(() => row() !== undefined);
+  await waitForCondition(() => buttonWith(container, "Greetings & Basics") !== undefined);
+  await clickButtonWith(container, "Greetings & Basics");
+}
+
+// The first button whose text includes this text, such as a library row that also shows its level and length.
+function buttonWith(container: HTMLElement, text: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes(text));
+}
+
+// Clicks the first button whose text includes this text; a missing button fails the test.
+export async function clickButtonWith(container: HTMLElement, text: string): Promise<void> {
+  await clickElement(buttonWith(container, text), `${text} button`);
+}
+
+// Clicks this element; a missing one fails the test.
+export async function clickElement(element: HTMLElement | null | undefined, what: string): Promise<void> {
+  if (!element) throw new Error(`${what} not found`);
   await harnessAct(() => {
-    row()?.click();
+    element.click();
   });
 }
 
@@ -226,6 +243,16 @@ export function setInputValue(input: HTMLInputElement, value: string): void {
   )?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// Types value into input and submits its form; an input outside a form fails the test.
+export async function submitInput(input: HTMLInputElement, value: string): Promise<void> {
+  const form = input.form;
+  if (!form) throw new Error("input has no form");
+  await harnessAct(() => {
+    setInputValue(input, value);
+    form.requestSubmit();
+  });
 }
 
 export function restoreProperty(

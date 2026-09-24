@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { readPref, writePref } from "../lib/prefs";
 
@@ -12,41 +12,34 @@ function readDailyGoal(): DailyGoal {
 }
 
 // The stored daily goal, whether today's practice meets it, and whether to announce that it was met.
-// armGoal marks the next count change as the user's practice action; disarmGoal withdraws one arm after a failed save,
-// so a failure cannot silence the announcement owed to an overlapping save that succeeded.
+// Only the learner's own action announces: a practice save whose committed count reaches the goal, or choosing a goal
+// today's practice already meets. A reload (page load, sync, import) that meets the goal stays quiet.
 export function useDailyGoal(actionsToday: number) {
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = actionsToday >= Number(dailyGoal);
-  // Only a practice action or a goal change can announce the goal, so loading a met goal stays quiet.
-  // Arms not yet withdrawn by a failed save.
-  const goalArms = useRef(0);
-  const goalMetBefore = useRef(goalMet);
   const [goalAnnounced, setGoalAnnounced] = useState(false);
 
-  // Each count or goal change consumes the arm, so a later reload (sync, import) cannot announce on its own.
   useEffect(() => {
-    const armed = goalArms.current > 0;
-    goalArms.current = 0;
-    if (goalMet !== goalMetBefore.current) {
-      goalMetBefore.current = goalMet;
-      setGoalAnnounced(goalMet && armed);
+    if (!goalMet) {
+      setGoalAnnounced(false);
     }
-  }, [actionsToday, dailyGoal, goalMet]);
+  }, [goalMet]);
 
-  const armGoal = () => {
-    goalArms.current += 1;
-  };
-
-  // The count change of an overlapping successful save may already have consumed every arm.
-  const disarmGoal = () => {
-    goalArms.current = Math.max(0, goalArms.current - 1);
+  // Saves commit one at a time, so exactly one committed count equals the goal, however saves overlap or fail.
+  // The goal is read from the store, not this render, so a goal chosen while the save was in flight counts.
+  const practiceCommitted = (actions: number) => {
+    if (actions === Number(readDailyGoal())) {
+      setGoalAnnounced(true);
+    }
   };
 
   const chooseGoal = (goal: DailyGoal) => {
-    goalArms.current += 1;
     writePref(DAILY_GOAL_KEY, goal);
     setDailyGoal(goal);
+    if (!goalMet && actionsToday >= Number(goal)) {
+      setGoalAnnounced(true);
+    }
   };
 
-  return { dailyGoal, goalMet, goalAnnounced, armGoal, disarmGoal, chooseGoal };
+  return { dailyGoal, goalMet, goalAnnounced, practiceCommitted, chooseGoal };
 }

@@ -1,7 +1,7 @@
-import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { harnessAct } from "../test/app";
 import { useDailyGoal } from "./useDailyGoal";
 
 describe("useDailyGoal", () => {
@@ -14,7 +14,7 @@ describe("useDailyGoal", () => {
   }
 
   const render = async (actionsToday: number) => {
-    await act(async () => {
+    await harnessAct(async () => {
       root.render(<Probe actionsToday={actionsToday} />);
     });
   };
@@ -26,31 +26,23 @@ describe("useDailyGoal", () => {
   });
 
   afterEach(async () => {
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     localStorage.removeItem("road-to-english.dailyGoal");
   });
 
-  it("announces a goal met by a save that overlapped a failed one", async () => {
-    goal.armGoal();
-    goal.armGoal();
-    goal.disarmGoal();
-    await render(5);
+  it("announces the goal when a practice save's committed count reaches it", async () => {
+    await harnessAct(() => goal.practiceCommitted(5));
     expect(goal.goalAnnounced).toBe(true);
   });
 
-  it("keeps the announcement when the failure settles after the successful save", async () => {
-    goal.armGoal();
-    goal.armGoal();
-    await render(5);
-    goal.disarmGoal();
-    expect(goal.goalAnnounced).toBe(true);
+  it("does not announce a committed count past the goal, which an earlier save reached", async () => {
+    await harnessAct(() => goal.practiceCommitted(6));
+    expect(goal.goalAnnounced).toBe(false);
   });
 
-  it("does not announce a goal a reload meets after a single failed save", async () => {
-    goal.armGoal();
-    goal.disarmGoal();
+  it("does not announce a goal a reload meets", async () => {
     await render(5);
     expect(goal.goalAnnounced).toBe(false);
   });

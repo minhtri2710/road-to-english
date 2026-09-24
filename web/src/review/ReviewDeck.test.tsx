@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { todayKey } from "../lib/progress";
@@ -10,6 +9,7 @@ import { getAllCards, putCard } from "../lib/vocabStore";
 import {
   buttonsNamed,
   click,
+  harnessAct,
   hasText,
   renderApp,
   resetApp,
@@ -36,13 +36,13 @@ const prompt = (container: HTMLElement) => container.querySelector<HTMLElement>(
 
 // Dispatches a keydown on the focused element, as a key press inside the card would.
 async function press(key: string, init: KeyboardEventInit = {}, target: Element | null = document.activeElement) {
-  await act(async () => {
+  await harnessAct(async () => {
     target?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
   });
 }
 
 async function focusPrompt(container: HTMLElement) {
-  await act(async () => {
+  await harnessAct(async () => {
     prompt(container).focus();
   });
 }
@@ -140,7 +140,7 @@ describe("ReviewDeck", () => {
     await click(container, "Show answer");
     expect(againInterval()).toBe("10 min");
     expect(vi.getTimerCount()).toBe(idle + 1);
-    await act(async () => {
+    await harnessAct(async () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(againInterval()).toBe("9 min");
@@ -198,7 +198,7 @@ describe("ReviewDeck", () => {
     const saveReview = vi.spyOn(vocabStore, "saveReview");
 
     const listen = buttonsNamed(container, "Listen")[0]!;
-    await act(async () => {
+    await harnessAct(async () => {
       listen.focus();
     });
     await press("r");
@@ -209,7 +209,7 @@ describe("ReviewDeck", () => {
 
     await click(container, "Show answer");
     const good = buttonsNamed(container, "Good")[0]!;
-    await act(async () => {
+    await harnessAct(async () => {
       good.focus();
     });
     await press("1");
@@ -236,7 +236,7 @@ describe("ReviewDeck", () => {
     expect(kbdKeys(buttonsNamed(container, "Again")[0])).toEqual([]);
     expect(kbdKeys(buttonsNamed(container, "Easy")[0])).toEqual([]);
 
-    await act(async () => {
+    await harnessAct(async () => {
       gate.resolve();
     });
     await waitForCondition(settledOn(container, "two"));
@@ -287,7 +287,7 @@ describe("ReviewDeck", () => {
     await click(container, "Show answer");
     await rate(container, "Again");
     await waitForCondition(settledOn(container, "Reviewed 1 card: 1 Again. All caught up. Next card in 1 min."));
-    await act(async () => {
+    await harnessAct(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
     await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);

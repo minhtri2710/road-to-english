@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
@@ -6,9 +5,13 @@ import {
   actionsToday,
   buttonsNamed,
   click,
+  clickButtonWith,
+  clickElement,
+  harnessAct,
   openLesson,
   resetApp,
   setInputValue,
+  submitInput,
 } from "../test/app";
 import { installSpeechFakes, removeBrowserGlobals } from "../test/browser";
 import { greetingsLesson } from "../test/fixtures";
@@ -19,10 +22,7 @@ const hearButton = (container: HTMLElement, word: string) =>
 async function submitDictation(container: HTMLElement, sentenceId: string, value: string) {
   const input = container.querySelector<HTMLInputElement>(`#dictation-${sentenceId}`);
   if (!input) throw new Error("dictation input not found");
-  await act(async () => {
-    setInputValue(input, value);
-    input.form?.requestSubmit();
-  });
+  await submitInput(input, value);
   return input;
 }
 
@@ -35,11 +35,7 @@ describe("SentenceQuiz", () => {
     const { container } = await openLesson();
     const sentence = greetingsLesson.sentences[0];
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Dictation");
 
     expect(container.textContent).not.toContain(sentence.text);
     expect(container.textContent).not.toContain("casual sign-off");
@@ -51,22 +47,18 @@ describe("SentenceQuiz", () => {
     expect(input?.hasAttribute("aria-label")).toBe(false);
     expect(container.querySelector(`label[for="dictation-${sentence.id}"]`)?.textContent).toBe("What did you hear?");
 
-    await act(async () => {
+    await harnessAct(async () => {
       if (!input) throw new Error("dictation input not found");
       setInputValue(input, sentence.text);
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-      input.form?.requestSubmit();
+      input.form!.requestSubmit();
     });
 
     expect(container.textContent).toContain(`Reference: ${sentence.text}`);
     expect(container.textContent).toContain("Correct");
     expect(container.textContent).not.toMatch(/\((missed|extra|you typed)/);
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Try again"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Try again");
     expect(container.textContent).not.toContain(sentence.text);
     expect(input?.value).toBe("");
   });
@@ -76,20 +68,13 @@ describe("SentenceQuiz", () => {
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
     const { container } = await openLesson();
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Dictation");
 
     const input = container.querySelector<HTMLInputElement>(
       `#dictation-${greetingsLesson.sentences[0].id}`,
     );
     if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, "Good, how are you tomorrow?");
-      input.form?.requestSubmit();
-    });
+    await submitInput(input, "Good, how are you tomorrow?");
 
     expect(container.textContent).toContain(
       'Good morning (missed) how are you today (you typed "tomorrow")',
@@ -110,17 +95,9 @@ describe("SentenceQuiz", () => {
     vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
     const { container } = await openLesson();
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Dictation");
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Play"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Play");
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({
       text: greetingsLesson.sentences[0].text,
       rate: greetingsLesson.targetWpm / 180,
@@ -131,28 +108,18 @@ describe("SentenceQuiz", () => {
       `#dictation-${greetingsLesson.sentences[0].id}`,
     );
     if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, "wrong answer");
-      input.form?.requestSubmit();
-    });
+    await submitInput(input, "wrong answer");
     expect(container.textContent).toContain("Not quite");
     expect(container.textContent).toContain(
       `Reference: ${greetingsLesson.sentences[0].text}`,
     );
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Try again"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Try again");
     const retryInput = container.querySelector<HTMLInputElement>(
       `#dictation-${greetingsLesson.sentences[1].id}`,
     );
     if (!retryInput) throw new Error("second dictation input not found");
-    await act(async () => {
-      setInputValue(retryInput, greetingsLesson.sentences[1].text);
-      retryInput.form?.requestSubmit();
-    });
+    await submitInput(retryInput, greetingsLesson.sentences[1].text);
     expect(container.textContent).toContain("Correct");
   });
 
@@ -182,9 +149,7 @@ describe("SentenceQuiz", () => {
     expect(hearButton(container, "good")).toBeNull();
     expect(container.textContent).toContain('today (you typed "tomorrow")');
     speech.cancel.mockClear();
-    await act(async () => {
-      hearButton(container, "today")?.click();
-    });
+    await clickElement(hearButton(container, "today"), "today hear button");
     expect(speech.cancel).toHaveBeenCalled();
     expect(speech.spoken.at(-1)).toMatchObject({ text: "today", rate: greetingsLesson.targetWpm / 180 });
   });
@@ -214,7 +179,7 @@ describe("SentenceQuiz", () => {
     expect(toggle.textContent).toBe("Hide hint");
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(document.getElementById(toggle.getAttribute("aria-controls")!)?.textContent).toBe(`Hint: ${hint}`);
-    await act(async () => {
+    await harnessAct(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(await actionsToday()).toBe(0);
@@ -296,8 +261,8 @@ describe("SentenceQuiz", () => {
       expect(container.textContent).not.toContain("Correct");
       expect(await actionsToday()).toBe(0);
 
-      await act(async () => {
-        input?.form?.requestSubmit();
+      await harnessAct(async () => {
+        input!.form!.requestSubmit();
       });
       expect(container.textContent).toContain("Correct");
     });

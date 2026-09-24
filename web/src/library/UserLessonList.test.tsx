@@ -1,7 +1,6 @@
-import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { click, hasText, renderApp, resetApp, waitForCondition } from "../test/app";
+import { click, harnessAct, hasText, renderApp, resetApp, waitForCondition } from "../test/app";
 
 describe("UserLessonList", () => {
   afterEach(resetApp);
@@ -15,6 +14,6 @@ describe("UserLessonList", () => {
 
     await click(container, "Create a lesson");
     expect(document.activeElement).toBe(container.querySelector("#import-title"));
-    await act(async () => undefined);
+    await harnessAct(async () => undefined);
   });
 });

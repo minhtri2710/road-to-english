@@ -42,16 +42,18 @@ export function useProgress() {
     void refresh();
   }, [refresh]);
 
-  // Practice is recorded in the background; a failed write surfaces as `error` and resolves false, not a rejection.
-  const recordPractice = useCallback(async (options: { newCard: boolean }) => {
+  // Practice is recorded in the background; it resolves to the day's committed action count, or null after a failed
+  // write, which surfaces as `error` rather than a rejection.
+  const recordPractice = useCallback(async (options: { newCard: boolean }): Promise<number | null> => {
+    let committed: DailyCount;
     try {
-      await savePractice(todayKey(new Date()), options);
+      committed = await savePractice(todayKey(new Date()), options);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError : new Error("Unable to save progress"));
-      return false;
+      return null;
     }
     await refresh();
-    return true;
+    return committed.actions;
   }, [refresh]);
 
   const markLessonComplete = useCallback(

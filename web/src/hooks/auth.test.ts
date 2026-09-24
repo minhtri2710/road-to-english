@@ -1,9 +1,10 @@
-import { act, createElement, StrictMode } from "react";
+import { createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMe, signIn, type AuthUser } from "../api/auth";
 import { useAuth, type AuthState } from "./auth";
+import { harnessAct } from "../test/app";
 import { deferred } from "../test/fixtures";
 
 vi.mock("../api/auth", () => ({
@@ -25,20 +26,20 @@ function Probe() {
 }
 
 async function mount() {
-  await act(async () => {
+  await harnessAct(async () => {
     root.render(createElement(Probe));
   });
 }
 
 async function mountStrict() {
-  await act(async () => {
+  await harnessAct(async () => {
     root.render(createElement(StrictMode, null, createElement(Probe)));
   });
 }
 
 async function signInNow() {
   vi.mocked(signIn).mockResolvedValueOnce(user);
-  await act(async () => {
+  await harnessAct(async () => {
     await state.signIn(user.email, "correct password");
   });
 }
@@ -50,8 +51,8 @@ describe("useAuth", () => {
     root = createRoot(container);
   });
 
-  afterEach(() => {
-    act(() => root.unmount());
+  afterEach(async () => {
+    await harnessAct(() => root.unmount());
     container.remove();
     vi.resetAllMocks();
   });
@@ -63,11 +64,11 @@ describe("useAuth", () => {
 
     const rejected = new Error("Invalid email or password.");
     vi.mocked(signIn).mockRejectedValueOnce(rejected);
-    await act(async () => {
+    await harnessAct(async () => {
       await state.signIn(user.email, "wrong password").catch(() => undefined);
     });
     expect(state.error).toBe(rejected);
-    await act(async () => me.resolve(null));
+    await harnessAct(async () => me.resolve(null));
 
     expect(state.user).toBeNull();
     expect(state.error).toBe(rejected);
@@ -80,7 +81,7 @@ describe("useAuth", () => {
     expect(state.error).toBeInstanceOf(TypeError);
 
     vi.mocked(fetchMe).mockResolvedValue(user);
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("online"));
     });
 
@@ -94,7 +95,7 @@ describe("useAuth", () => {
     await mount();
 
     await signInNow();
-    await act(async () => me.resolve(null));
+    await harnessAct(async () => me.resolve(null));
 
     expect(state.user).toEqual(user);
     expect(state.error).toBeNull();
@@ -108,13 +109,13 @@ describe("useAuth", () => {
 
     const retry = deferred<AuthUser | null>();
     vi.mocked(fetchMe).mockReturnValueOnce(retry.promise);
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("online"));
     });
     expect(fetchMe).toHaveBeenCalledTimes(2);
 
     await signInNow();
-    await act(async () => retry.resolve(null));
+    await harnessAct(async () => retry.resolve(null));
 
     expect(state.user).toEqual(user);
     expect(state.error).toBeNull();
@@ -126,14 +127,14 @@ describe("useAuth", () => {
     await mount();
 
     await signInNow();
-    await act(async () => me.reject(new TypeError("Failed to fetch")));
+    await harnessAct(async () => me.reject(new TypeError("Failed to fetch")));
 
     expect(state.user).toEqual(user);
     expect(state.error).toBeNull();
     expect(state.loading).toBe(false);
 
     // The late rejection must not arm the online retry either.
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("online"));
     });
     expect(fetchMe).toHaveBeenCalledTimes(1);
@@ -143,12 +144,12 @@ describe("useAuth", () => {
     vi.mocked(fetchMe).mockResolvedValue(null);
     await mount();
     vi.mocked(signIn).mockRejectedValueOnce(new Error("rejected"));
-    await act(async () => {
+    await harnessAct(async () => {
       await state.signIn(user.email, "wrong password").catch(() => undefined);
     });
     expect(state.error?.message).toBe("rejected");
 
-    await act(async () => {
+    await harnessAct(async () => {
       state.clearError();
     });
     expect(state.error).toBeNull();

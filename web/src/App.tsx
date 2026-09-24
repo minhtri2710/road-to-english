@@ -85,11 +85,11 @@ function AppViews() {
   const reviewDeck = capNewCards(deck.due, progress.newCardsToday);
   const storageError =
     deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
-  const { dailyGoal, goalMet, goalAnnounced, armGoal, disarmGoal, chooseGoal } = useDailyGoal(progress.actionsToday);
+  const { dailyGoal, goalMet, goalAnnounced, practiceCommitted, chooseGoal } = useDailyGoal(progress.actionsToday);
   const recordPractice = async (options: { newCard: boolean }) => {
-    armGoal();
-    if (!(await progress.recordPractice(options))) {
-      disarmGoal();
+    const actions = await progress.recordPractice(options);
+    if (actions !== null) {
+      practiceCommitted(actions);
     }
   };
   const { levelFilter, chooseLevelFilter } = useLevelFilter();

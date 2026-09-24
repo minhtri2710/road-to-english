@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as progressStore from "../lib/progressStore";
@@ -14,6 +13,7 @@ import {
   close,
   fetchMock,
   h1Texts,
+  harnessAct,
   hasText,
   renderApp,
   resetApp,
@@ -28,7 +28,7 @@ describe("LessonList", () => {
     await resetApp();
   });
 
-  const todayStrip = (container: HTMLElement) =>
+  const todayCard = (container: HTMLElement) =>
     Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Today")?.parentElement?.parentElement ?? null;
 
   it("names each lesson row by its title and describes it by level, sentence count, WPM and completion", async () => {
@@ -43,7 +43,7 @@ describe("LessonList", () => {
         .map((id) => document.getElementById(id)?.textContent)
         .join(" ");
     };
-    expect(described("Greetings & Basics")).toBe("A2 · 3 sentences 90 WPMCompleted");
+    expect(described("Greetings & Basics")).toBe("A2 · 3 sentences 90 WPM Completed");
     expect(described("Daily Routine")).toBe("B1 · 3 sentences 110 WPM");
   });
 
@@ -96,7 +96,7 @@ describe("LessonList", () => {
     fail = false;
     await click(container, "Retry");
     expect(container.textContent).toContain("Loading lessons...");
-    await act(async () => {
+    await harnessAct(async () => {
       release();
     });
     await waitForCondition(hasText(container, "Greetings & Basics"));
@@ -125,12 +125,12 @@ describe("LessonList", () => {
     }
     const view = await renderApp();
     const { container } = view;
-    await waitForCondition(() => todayStrip(container)?.textContent?.includes("2 cards due") ?? false);
-    const strip = todayStrip(container)!;
-    expect(strip.textContent).toContain("2 cards due");
-    expect(buttonsNamed(strip, "Start lesson")).toHaveLength(0);
+    await waitForCondition(() => todayCard(container)?.textContent?.includes("2 cards due") ?? false);
+    const card = todayCard(container)!;
+    expect(card.textContent).toContain("2 cards due");
+    expect(buttonsNamed(card, "Start lesson")).toHaveLength(0);
 
-    await click(strip, "Review 2 cards");
+    await click(card, "Review 2 cards");
     expect(h1Texts(container)).toEqual(["Review deck"]);
     expect(document.activeElement).toBe(container.querySelector("h1"));
   });
@@ -140,54 +140,54 @@ describe("LessonList", () => {
     const view = await renderApp();
     const { container } = view;
     await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-    const strip = todayStrip(container)!;
-    expect(strip.textContent).toContain("0 cards due · Next: Daily Routine");
+    const card = todayCard(container)!;
+    expect(card.textContent).toContain("0 cards due · Next: Daily Routine");
 
-    await click(strip, "Start lesson");
+    await click(card, "Start lesson");
     await waitForCondition(() => container.querySelector("main h1") !== null && h1Texts(container)[0] !== "Lesson library");
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/lessons/daily-routine"))).toBe(true);
   });
 
-  it("shows no due count in the Today strip while the deck is loading", async () => {
+  it("shows no due count in the Today card while the deck is loading", async () => {
     vi.spyOn(vocabStore, "getAllCards").mockReturnValue(new Promise(() => undefined));
     const view = await renderApp();
     await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
-    const strip = todayStrip(view.container)!;
-    expect(strip.textContent).toContain("0 of 10 practice actions today");
-    expect(strip.textContent).not.toContain("due");
+    const card = todayCard(view.container)!;
+    expect(card.textContent).toContain("0 of 10 practice actions today");
+    expect(card.textContent).not.toContain("due");
   });
 
-  const progressBar = (strip: HTMLElement) => strip.querySelector<HTMLElement>('[role="progressbar"]')!;
-  const dayMarks = (strip: HTMLElement) => Array.from(strip.querySelectorAll<HTMLElement>('[aria-label="This week"] li'));
+  const progressBar = (card: HTMLElement) => card.querySelector<HTMLElement>('[role="progressbar"]')!;
+  const dayMarks = (card: HTMLElement) => Array.from(card.querySelectorAll<HTMLElement>('[aria-label="This week"] li'));
 
   it("shows the daily goal, the goal picker, a fresh streak, the week, freezes and XP in the Today card", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 0, 8, 12));
     const { container } = await renderApp();
     await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-    const strip = todayStrip(container)!;
+    const card = todayCard(container)!;
 
-    const bar = progressBar(strip);
-    expect(strip.textContent).toContain("0 of 10 practice actions today");
+    const bar = progressBar(card);
+    expect(card.textContent).toContain("0 of 10 practice actions today");
     expect(bar.getAttribute("aria-valuenow")).toBe("0");
     expect(bar.getAttribute("aria-valuemax")).toBe("10");
-    expect(strip.textContent).not.toContain("Daily goal met");
-    const picker = strip.querySelector<HTMLElement>('[role="group"][aria-label="Daily goal"]')!;
+    expect(card.textContent).not.toContain("Daily goal met");
+    const picker = card.querySelector<HTMLElement>('[role="group"][aria-label="Daily goal"]')!;
     expect(["5 Light", "10 Regular", "20 Intense"].map((name) => buttonsNamed(picker, name).length)).toEqual([1, 1, 1]);
 
-    expect(strip.textContent).toContain("Start a new streak today");
-    expect(strip.textContent).not.toMatch(/lost|broke|missed/i);
-    const marks = dayMarks(strip);
+    expect(card.textContent).toContain("Start a new streak today");
+    expect(card.textContent).not.toMatch(/lost|broke|missed/i);
+    const marks = dayMarks(card);
     expect(marks.map((mark) => mark.textContent)).toEqual(
       ["Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu"].map((label) => expect.stringContaining(label)),
     );
     expect(marks.every((mark) => mark.textContent?.includes("not practised"))).toBe(true);
     expect(marks.map((mark) => mark.getAttribute("aria-current"))).toEqual([null, null, null, null, null, null, "date"]);
 
-    expect(strip.textContent).toContain("Freezes 0 of 2");
-    expect(strip.textContent).toContain("0 XP");
+    expect(card.textContent).toContain("Freezes 0 of 2");
+    expect(card.textContent).toContain("0 XP");
     // The order the card reads in: action row, goal, picker, streak, XP.
-    const text = strip.textContent!;
+    const text = card.textContent!;
     const order = ["Today", "practice actions today", "5 Light", "Start a new streak today", "Freezes", "0 XP"].map((part) =>
       text.indexOf(part),
     );
@@ -205,33 +205,24 @@ describe("LessonList", () => {
       await progressStore.recordPractice(todayKey(new Date(2026, 0, 8)), { newCard: false });
     }
     const { container } = await renderApp();
-    await waitForCondition(() => todayStrip(container)?.textContent?.includes("8-day streak") ?? false);
-    const strip = todayStrip(container)!;
+    await waitForCondition(() => todayCard(container)?.textContent?.includes("8-day streak") ?? false);
+    const card = todayCard(container)!;
 
-    expect(strip.textContent).toContain("5 of 5 practice actions today");
-    expect(strip.textContent).toContain("Daily goal met");
-    expect(progressBar(strip).getAttribute("aria-valuenow")).toBe("5");
-    expect(dayMarks(strip).every((mark) => mark.textContent?.includes("practised") && !mark.textContent.includes("not practised"))).toBe(
+    expect(card.textContent).toContain("5 of 5 practice actions today");
+    expect(card.textContent).toContain("Daily goal met");
+    expect(progressBar(card).getAttribute("aria-valuenow")).toBe("5");
+    expect(dayMarks(card).every((mark) => mark.textContent?.includes("practised") && !mark.textContent.includes("not practised"))).toBe(
       true,
     );
-    expect(strip.textContent).toContain("120 XP");
+    expect(card.textContent).toContain("120 XP");
 
-    const freezes = Array.from(strip.querySelectorAll<HTMLElement>("[tabindex='0']")).find(
+    const freezes = Array.from(card.querySelectorAll<HTMLElement>("[tabindex='0']")).find(
       (el) => el.textContent === "Freezes 1 of 2",
     )!;
     const tip = document.getElementById(freezes.getAttribute("aria-describedby")!.split(" ")[0]!);
     expect(tip?.textContent).toBe(
       "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to 2.",
     );
-  });
-
-  it("switches the goal from the Today card and keeps the stored values", async () => {
-    const { container } = await renderApp();
-    await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-    const strip = todayStrip(container)!;
-    await click(strip, "20 Intense");
-    expect(strip.textContent).toContain("0 of 20 practice actions today");
-    expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("20");
   });
 
   const radio = (container: HTMLElement, name: string) =>
@@ -241,7 +232,7 @@ describe("LessonList", () => {
   const choose = async (container: HTMLElement, name: string) => {
     const item = radio(container, name)!;
     item.focus();
-    await act(async () => {
+    await harnessAct(async () => {
       item.click();
     });
   };
@@ -298,20 +289,20 @@ describe("LessonList", () => {
       localStorage.setItem("road-to-english.levelFilter", "B1");
       const { container } = await renderApp();
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-      expect(todayStrip(container)!.textContent).toContain("Next: Daily Routine");
+      expect(todayCard(container)!.textContent).toContain("Next: Daily Routine");
       expect(container.textContent).not.toContain("Greetings & Basics");
     });
   });
 
   describe("Continue", () => {
     const openAndLeave = async (container: HTMLElement, title: string) => {
-      await act(async () => {
+      await harnessAct(async () => {
         Array.from(container.querySelectorAll("li button")).find((row) => row.textContent?.startsWith(title))
           ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
       await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 1);
       await click(container, "Back to lessons");
-      await waitForCondition(() => todayStrip(container) !== null);
+      await waitForCondition(() => todayCard(container) !== null);
     };
 
     it("continues the last opened library lesson and remembers it across a reload", async () => {
@@ -319,14 +310,14 @@ describe("LessonList", () => {
       await waitForCondition(hasText(first.container, "Daily Routine"));
       await openAndLeave(first.container, "Daily Routine");
       await waitForCondition(() => buttonsNamed(first.container, "Continue").length === 1);
-      expect(todayStrip(first.container)!.textContent).toContain("Continue: Daily Routine");
+      expect(todayCard(first.container)!.textContent).toContain("Continue: Daily Routine");
       expect(buttonsNamed(first.container, "Start lesson")).toHaveLength(0);
       expect(localStorage.getItem("road-to-english.lastLesson")).toBe("#/lesson/daily-routine");
       await first.unmount();
 
       const { container } = await renderApp();
       await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
-      await click(todayStrip(container)!, "Continue");
+      await click(todayCard(container)!, "Continue");
       await waitForCondition(() => window.location.hash === "#/lesson/daily-routine");
     });
 
@@ -337,12 +328,12 @@ describe("LessonList", () => {
       await waitForCondition(hasText(container, userLesson.title));
       await openAndLeave(container, userLesson.title);
       await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
-      expect(todayStrip(container)!.textContent).toContain(`Continue: ${userLesson.title}`);
+      expect(todayCard(container)!.textContent).toContain(`Continue: ${userLesson.title}`);
 
       await click(container, "Delete");
       await waitForCondition(hasText(container, "No lessons of your own yet"));
       expect(buttonsNamed(container, "Continue")).toHaveLength(0);
-      expect(todayStrip(container)!.textContent).toContain("Next: Greetings & Basics");
+      expect(todayCard(container)!.textContent).toContain("Next: Greetings & Basics");
     });
 
     it("shows Next instead of Continue for a completed lesson, and Review while cards are due", async () => {
@@ -351,7 +342,7 @@ describe("LessonList", () => {
       const { container } = await renderApp();
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
       expect(buttonsNamed(container, "Continue")).toHaveLength(0);
-      expect(todayStrip(container)!.textContent).toContain("Next: Greetings & Basics");
+      expect(todayCard(container)!.textContent).toContain("Next: Greetings & Basics");
     });
 
     it("keeps Review ahead of Continue while cards are due", async () => {
@@ -372,22 +363,22 @@ describe("LessonList", () => {
       expect(radio(container, "All")?.getAttribute("aria-checked")).toBe("true");
 
       await click(container, "Skip");
-      await waitForCondition(() => todayStrip(container) !== null);
-      expect(todayStrip(container)!.textContent).toContain("0 of 10 practice actions today");
-      await click(todayStrip(container)!, "20 Intense");
-      expect(todayStrip(container)!.textContent).toContain("0 of 20 practice actions today");
+      await waitForCondition(() => todayCard(container) !== null);
+      expect(todayCard(container)!.textContent).toContain("0 of 10 practice actions today");
+      await click(todayCard(container)!, "20 Intense");
+      expect(todayCard(container)!.textContent).toContain("0 of 20 practice actions today");
       await choose(container, "B1");
       expect(container.textContent).not.toContain("Greetings & Basics");
       expect(radio(container, "B1")?.getAttribute("aria-checked")).toBe("true");
 
-      await act(async () => {
+      await harnessAct(async () => {
         Array.from(container.querySelectorAll("li button")).find((row) => row.textContent?.startsWith("Daily Routine"))
           ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
       await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 1);
       await click(container, "Back to lessons");
       await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
-      expect(todayStrip(container)!.textContent).toContain("Continue: Daily Routine");
+      expect(todayCard(container)!.textContent).toContain("Continue: Daily Routine");
     });
 
     it("keeps a choice for the session when reads work but writes fail", async () => {
@@ -421,7 +412,7 @@ describe("LessonList", () => {
         const { container } = await renderApp();
         await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
         expect(buttonsNamed(container, "Continue")).toHaveLength(0);
-        expect(todayStrip(container)!.textContent).toContain("Next: Greetings & Basics");
+        expect(todayCard(container)!.textContent).toContain("Next: Greetings & Basics");
       });
     }
   });
@@ -483,18 +474,18 @@ describe("LessonList", () => {
 
     it("filters the list as soon as a level is chosen and keeps it across a remount", async () => {
       const first = await firstRun();
-      await act(async () => {
+      await harnessAct(async () => {
         welcomeRadio(first.container, "B1")!.click();
       });
       expect(first.container.textContent).not.toContain("Greetings & Basics");
       expect(first.container.textContent).toContain("Daily Routine");
       expect(radio(first.container, "B1")?.getAttribute("aria-checked")).toBe("true");
       expect(localStorage.getItem("road-to-english.levelFilter")).toBe("B1");
-      await act(async () => {
+      await harnessAct(async () => {
         welcomeRadio(first.container, "Not sure")!.click();
       });
       expect(localStorage.getItem("road-to-english.levelFilter")).toBe("All");
-      await act(async () => {
+      await harnessAct(async () => {
         welcomeRadio(first.container, "B1")!.click();
       });
       await first.unmount();
@@ -525,14 +516,14 @@ describe("LessonList", () => {
       await click(region, "Done");
       expect(welcome(first.container)).toBeNull();
       expect(document.activeElement).toBe(heading(first.container, "Today"));
-      expect(todayStrip(first.container)!.textContent).toContain("0 of 20 practice actions today");
+      expect(todayCard(first.container)!.textContent).toContain("0 of 20 practice actions today");
       expect(localStorage.getItem(WELCOMED)).toBe("done");
       await first.unmount();
 
       const second = await renderApp();
       await waitForCondition(hasText(second.container, "Greetings & Basics"));
       expect(welcome(second.container)).toBeNull();
-      expect(todayStrip(second.container)!.textContent).toContain("0 of 20 practice actions today");
+      expect(todayCard(second.container)!.textContent).toContain("0 of 20 practice actions today");
     });
 
     for (const step of [1, 2]) {

@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as backupStore from "../lib/backupStore";
@@ -9,8 +8,9 @@ import { getPracticeDays, recordPractice } from "../lib/progressStore";
 import { createCard } from "../lib/vocab";
 import { getAllCards, putCard } from "../lib/vocabStore";
 import {
-  buttonsNamed,
   click,
+  clickButtonWith,
+  harnessAct,
   hasText,
   renderApp,
   resetApp,
@@ -31,7 +31,7 @@ describe("BackupControls", () => {
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     if (!input) throw new Error("backup file input not found");
     const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
-    await act(async () => {
+    await harnessAct(async () => {
       Object.defineProperty(input, "files", {
         configurable: true,
         value: [new File([text], "backup.json", { type: "application/json" })],
@@ -64,9 +64,7 @@ describe("BackupControls", () => {
     });
     const { container } = await renderApp();
 
-    await act(async () => {
-      buttonsNamed(container, "Export CSV")[0]?.click();
-    });
+    await click(container, "Export CSV");
     await waitForCondition(() => downloads.length > 0);
 
     expect(blobs).toHaveLength(1);
@@ -111,7 +109,7 @@ describe("BackupControls", () => {
     );
     if (!input) throw new Error("backup file input not found");
 
-    await act(async () => {
+    await harnessAct(async () => {
       Object.defineProperty(input, "files", {
         configurable: true,
         value: [new File([text], "backup.json", { type: "application/json" })],
@@ -121,11 +119,7 @@ describe("BackupControls", () => {
     await waitForCondition(() => container.textContent?.includes("1-day streak") ?? false);
 
     expect(container.textContent).toContain("1-day streak");
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Review"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Review");
     await waitForCondition(() => container.textContent?.includes("imported card") ?? false);
     expect(container.textContent).toContain("imported card");
     expect(container.textContent).not.toContain("old card");

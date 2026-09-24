@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +6,7 @@ import {
   callsTo,
   click,
   close,
+  harnessAct,
   hasText,
   inputLabelled,
   openAccountForm,
@@ -64,13 +64,13 @@ describe("AccountArea", () => {
       .join(" ");
 
   async function chooseMode(container: HTMLElement, name: "Sign in" | "Create account") {
-    await act(async () => {
+    await harnessAct(async () => {
       modeButton(container, name).click();
     });
   }
 
   async function fill(container: HTMLElement, emailValue: string, passwordValue: string) {
-    await act(async () => {
+    await harnessAct(async () => {
       setInputValue(inputLabelled(container, "Email"), emailValue);
       setInputValue(inputLabelled(container, "Password"), passwordValue);
     });
@@ -78,14 +78,14 @@ describe("AccountArea", () => {
 
   // Submits the way Enter in a field does.
   async function pressEnter(container: HTMLElement) {
-    await act(async () => {
-      inputLabelled(container, "Password").form?.requestSubmit();
+    await harnessAct(async () => {
+      inputLabelled(container, "Password").form!.requestSubmit();
     });
   }
 
   async function submit(container: HTMLElement, emailValue: string, passwordValue: string) {
     await fill(container, emailValue, passwordValue);
-    await act(async () => {
+    await harnessAct(async () => {
       submitButton(container).click();
     });
   }
@@ -174,12 +174,12 @@ describe("AccountArea", () => {
     await chooseMode(container, "Create account");
     await submit(container, "learner@example.com", "short");
     expect(inputLabelled(container, "Password").getAttribute("aria-invalid")).toBe("true");
-    await act(async () => {
+    await harnessAct(async () => {
       showPassword(container).click();
     });
 
     const signIn = modeButton(container, "Sign in");
-    await act(async () => {
+    await harnessAct(async () => {
       signIn.focus();
       signIn.click();
     });
@@ -200,7 +200,7 @@ describe("AccountArea", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(password.type).toBe("password");
 
-    await act(async () => {
+    await harnessAct(async () => {
       toggle.focus();
       toggle.click();
     });
@@ -208,7 +208,7 @@ describe("AccountArea", () => {
     expect(password.type).toBe("text");
     expect(document.activeElement).toBe(toggle);
 
-    await act(async () => {
+    await harnessAct(async () => {
       toggle.click();
     });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -223,7 +223,7 @@ describe("AccountArea", () => {
         return signedOut(path);
       },
     });
-    await act(async () => {
+    await harnessAct(async () => {
       showPassword(container).click();
     });
     await submit(container, "learner@example.com", "password");
@@ -359,7 +359,7 @@ describe("AccountArea", () => {
         : signedOut(path);
 
     async function tick(seconds: number) {
-      await act(async () => {
+      await harnessAct(async () => {
         vi.advanceTimersByTime(seconds * 1000);
       });
     }
@@ -386,7 +386,7 @@ describe("AccountArea", () => {
       const { container } = await renderOpen({ route: limited(30) });
       await fill(container, "learner@example.com", "password");
       const submit = submitButton(container);
-      await act(async () => {
+      await harnessAct(async () => {
         submit.focus();
         submit.click();
       });
@@ -394,7 +394,7 @@ describe("AccountArea", () => {
       expect(document.activeElement).toBe(submit);
       const attempts = callsTo("/login");
 
-      await act(async () => {
+      await harnessAct(async () => {
         submit.click();
       });
       await tick(1);
@@ -402,7 +402,7 @@ describe("AccountArea", () => {
       expect(document.activeElement).toBe(submit);
 
       const close = buttonsNamed(container, "Close")[0]!;
-      await act(async () => {
+      await harnessAct(async () => {
         close.focus();
         close.click();
       });
@@ -476,7 +476,7 @@ describe("AccountArea", () => {
       return button;
     };
     async function pressEscape(container: HTMLElement) {
-      await act(async () => {
+      await harnessAct(async () => {
         inputLabelled(container, "Email").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       });
     }
@@ -488,7 +488,7 @@ describe("AccountArea", () => {
       expect(disclosure.getAttribute("aria-controls")).toBeTruthy();
       expect(container.querySelector('input[type="email"]')).toBeNull();
 
-      await act(async () => {
+      await harnessAct(async () => {
         disclosure.click();
       });
       expect(disclosure.getAttribute("aria-expanded")).toBe("true");
@@ -506,7 +506,7 @@ describe("AccountArea", () => {
       expect(document.activeElement).toBe(accountDisclosure(container));
 
       await openAccountForm(container);
-      await act(async () => {
+      await harnessAct(async () => {
         closeButton(container).click();
       });
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("false");
@@ -520,7 +520,7 @@ describe("AccountArea", () => {
       await pressEscape(container);
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("true");
       expect(isDisabled(closeButton(container))).toBe(true);
-      await act(async () => {
+      await harnessAct(async () => {
         closeButton(container).click();
         accountDisclosure(container).click();
       });
@@ -549,7 +549,7 @@ describe("AccountArea", () => {
       await pressEscape(container);
       expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("true");
 
-      await act(async () => {
+      await harnessAct(async () => {
         vi.advanceTimersByTime(2000);
       });
       expect(isDisabled(closeButton(container))).toBe(false);

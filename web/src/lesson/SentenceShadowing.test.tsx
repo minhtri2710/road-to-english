@@ -1,9 +1,12 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buttonsNamed,
+  click,
+  clickElement,
+  harnessAct,
   openLesson,
+  renderApp,
   resetApp,
 } from "../test/app";
 import {
@@ -35,11 +38,7 @@ describe("SentenceShadowing", () => {
     const highWpmLesson = { ...greetingsLesson, targetWpm: 1000 };
     const { container, root } = await openLesson(highWpmLesson);
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Listen")
-        ?.click();
-    });
+    await click(container, "Listen");
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({
       text: highWpmLesson.sentences[0].text,
       rate: 2,
@@ -47,18 +46,15 @@ describe("SentenceShadowing", () => {
     }));
     expect(cancel).toHaveBeenCalled();
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     container.remove();
 
     const lowWpmLesson = { ...greetingsLesson, targetWpm: 1 };
-    const low = await openLesson(lowWpmLesson);
-    await act(async () => {
-      Array.from(low.container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Listen")
-        ?.click();
-    });
+    // The URL still routes to the lesson, so the remount opens it directly.
+    const low = await renderApp({ lesson: lowWpmLesson });
+    await click(low.container, "Listen");
     expect(speak).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.4 }));
   });
 
@@ -94,28 +90,20 @@ describe("SentenceShadowing", () => {
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
 
     const { container, root } = await openLesson();
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Record")
-        ?.click();
-    });
+    await click(container, "Record");
     expect(container.textContent).toContain("Stop");
     const announced = () =>
       Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
     expect(announced()).toContain("Recording.");
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Stop")
-        ?.click();
-    });
+    await click(container, "Stop");
     expect(announced()).toContain("Recording stopped.");
     expect(announced()).not.toContain("Recording.");
     expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
     expect(container.querySelector("audio")?.getAttribute("aria-label")).toBe("Your recording");
     expect(trackStop).toHaveBeenCalled();
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     expect(cancel).toHaveBeenCalled();
@@ -132,11 +120,7 @@ describe("SentenceShadowing", () => {
     vi.stubGlobal("MediaRecorder", class {});
 
     const { container } = await openLesson();
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Record")
-        ?.click();
-    });
+    await click(container, "Record");
     expect(container.textContent).toContain(
       "Unable to access the microphone. Please allow microphone access to record.",
     );
@@ -160,12 +144,8 @@ describe("SentenceShadowing", () => {
   it("scales the clamped shadowing rate by the chosen speed", async () => {
     const speech = installSpeechFakes();
     const rateAt = async (container: HTMLElement, speed: string) => {
-      await act(async () => {
-        buttonsNamed(container, speed)[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Listen")[0]?.click();
-      });
+      await click(container, speed);
+      await click(container, "Listen");
       return speech.spoken.at(-1)?.rate;
     };
 
@@ -173,28 +153,29 @@ describe("SentenceShadowing", () => {
     expect(await rateAt(a2.container, "1x")).toBe(0.5);
     expect(await rateAt(a2.container, "0.75x")).toBe(0.375);
     expect(await rateAt(a2.container, "0.5x")).toBe(0.25);
-    await act(async () => {
+    await harnessAct(async () => {
       a2.root.unmount();
     });
     a2.container.remove();
 
-    const a1 = await openLesson({ ...greetingsLesson, targetWpm: 80 });
+    // The URL still routes to the lesson, so the remount opens it directly.
+    const a1 = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 80 } });
     expect(await rateAt(a1.container, "1x")).toBeCloseTo(80 / 180);
     expect(await rateAt(a1.container, "0.5x")).toBeCloseTo(40 / 180);
-    await act(async () => {
+    await harnessAct(async () => {
       a1.root.unmount();
     });
     a1.container.remove();
 
-    const low = await openLesson({ ...greetingsLesson, targetWpm: 1 });
+    const low = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 1 } });
     expect(await rateAt(low.container, "1x")).toBe(0.4);
     expect(await rateAt(low.container, "0.5x")).toBe(0.2);
-    await act(async () => {
+    await harnessAct(async () => {
       low.root.unmount();
     });
     low.container.remove();
 
-    const high = await openLesson({ ...greetingsLesson, targetWpm: 1000 });
+    const high = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 1000 } });
     expect(await rateAt(high.container, "1x")).toBe(2);
     expect(await rateAt(high.container, "0.5x")).toBe(1);
   });
@@ -207,13 +188,11 @@ describe("SentenceShadowing", () => {
         (element) => element.textContent,
       );
     const boundary = (charIndex: number) =>
-      act(async () => {
+      harnessAct(async () => {
         speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex });
       });
 
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
+    await click(container, "Listen");
     expect(spokenWords()).toEqual([]);
     await boundary(0);
     expect(spokenWords()).toEqual(["Good"]);
@@ -223,29 +202,23 @@ describe("SentenceShadowing", () => {
     expect(spokenWords()).toEqual(["how"]);
     await boundary(7);
     expect(spokenWords()).toEqual(["morning"]);
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(spokenWords()).toEqual([]);
 
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
-    await act(async () => {
+    await click(container, "Listen");
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(spokenWords()).toEqual([]);
 
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
+    await click(container, "Listen");
     const first = speech.spoken.at(-1);
     await boundary(0);
-    await act(async () => {
-      buttonsNamed(container, "Listen")[1]?.click();
-    });
+    await click(container, "Listen", 1);
     expect(spokenWords()).toEqual([]);
-    await act(async () => {
+    await harnessAct(async () => {
       first?.onboundary?.({ name: "word", charIndex: 5 });
     });
     expect(spokenWords()).toEqual([]);
@@ -258,38 +231,30 @@ describe("SentenceShadowing", () => {
     const { container, root } = await openLesson();
     const first = greetingsLesson.sentences[0].text;
 
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
+    await click(container, "Loop");
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first]);
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first, first, first]);
 
     speech.cancel.mockClear();
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
+    await click(container, "Loop");
     expect(speech.cancel).toHaveBeenCalled();
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-    await act(async () => {
+    await harnessAct(async () => {
       speech.spoken.at(-1)?.onend?.();
     });
     expect(speech.spoken).toHaveLength(3);
 
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Listen")[1]?.click();
-    });
+    await click(container, "Loop");
+    await click(container, "Listen", 1);
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(speech.spoken.map((utterance) => utterance.text).slice(3)).toEqual([
@@ -297,12 +262,10 @@ describe("SentenceShadowing", () => {
       greetingsLesson.sentences[1].text,
     ]);
 
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
+    await click(container, "Loop");
     const lastLooped = speech.spoken.at(-1);
     speech.cancel.mockClear();
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     expect(speech.cancel).toHaveBeenCalled();
@@ -341,21 +304,15 @@ describe("SentenceShadowing", () => {
     const { container } = await openLesson();
     expect(buttonsNamed(container, "Compare")[0]?.disabled).toBe(true);
 
-    await act(async () => {
-      buttonsNamed(container, "Record")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Stop")[0]?.click();
-    });
+    await click(container, "Record");
+    await click(container, "Stop");
     const compare = buttonsNamed(container, "Compare")[0];
     expect(compare?.disabled).toBe(false);
 
-    await act(async () => {
-      compare?.click();
-    });
+    await clickElement(compare, "Compare button");
     expect(speech.spoken.at(-1)?.text).toBe(greetingsLesson.sentences[0].text);
     expect(play).not.toHaveBeenCalled();
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(play).toHaveBeenCalledTimes(1);
@@ -363,17 +320,13 @@ describe("SentenceShadowing", () => {
     expect(container.textContent).not.toContain("Press play to hear your recording.");
 
     play.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
-    await act(async () => {
-      compare?.click();
-    });
-    await act(async () => {
+    await clickElement(compare, "Compare button");
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(container.textContent).toContain("Press play to hear your recording.");
 
-    await act(async () => {
-      compare?.click();
-    });
+    await clickElement(compare, "Compare button");
     expect(container.textContent).not.toContain("Press play to hear your recording.");
   });
 });

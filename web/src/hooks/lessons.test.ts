@@ -1,8 +1,9 @@
-import { act, createElement, StrictMode } from "react";
+import { createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLesson, useLessons } from "./lessons";
+import { harnessAct } from "../test/app";
 import { greetingsLesson, lessonSummaries } from "../test/fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -54,7 +55,7 @@ describe("lesson hooks", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.render(
         createElement(StrictMode, null, createElement(HookProbe)),
       );
@@ -63,7 +64,7 @@ describe("lesson hooks", () => {
     expect(container.textContent).toContain("Greetings & Basics");
     expect(container.textContent).toContain("Good morning, how are you today?");
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     container.remove();
@@ -79,7 +80,7 @@ describe("lesson hooks", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.render(
         createElement(
           StrictMode,
@@ -90,7 +91,7 @@ describe("lesson hooks", () => {
     });
 
     expect(first).toEqual({ "greetings-basics": true });
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
   });

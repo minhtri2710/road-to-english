@@ -1,11 +1,12 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   accountDisclosure,
   callsTo,
   click,
+  clickElement,
   close,
+  harnessAct,
   hasText,
   inputLabelled,
   openAccountForm,
@@ -38,11 +39,14 @@ describe("useSync", () => {
       },
     });
     await openAccountForm(container);
-    await act(async () => {
+    await harnessAct(async () => {
       setInputValue(inputLabelled(container, "Email"), "learner@example.com");
       setInputValue(inputLabelled(container, "Password"), "password");
-      inputLabelled(container, "Email").form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
     });
+    await clickElement(
+      inputLabelled(container, "Email").form?.querySelector<HTMLButtonElement>('button[type="submit"]'),
+      "Sign in submit button",
+    );
     await waitForCondition(() => callsTo("/sync") === 1);
     expect(callsTo("/sync")).toBe(1);
   });
@@ -81,7 +85,7 @@ describe("useSync", () => {
 
     offline = false;
     const before = callsTo("/sync");
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("online"));
     });
     await waitForCondition(() => !(container.textContent?.includes(syncFailed) ?? true));
@@ -99,15 +103,15 @@ describe("useSync", () => {
     expect(syncLine(container)?.closest('[role="status"], [role="alert"], [aria-live]')).toBeNull();
     expect(liveRegions(container)).not.toContain("Synced");
 
-    await act(async () => {
+    await harnessAct(async () => {
       vi.advanceTimersByTime(59_999);
     });
     expect(syncLine(container)?.textContent).toBe("Synced just now");
-    await act(async () => {
+    await harnessAct(async () => {
       vi.advanceTimersByTime(1);
     });
     expect(syncLine(container)?.textContent).toBe("Synced 1 min ago");
-    await act(async () => {
+    await harnessAct(async () => {
       vi.advanceTimersByTime(59 * 60_000);
     });
     expect(syncLine(container)?.textContent).toBe("Synced 1 h ago");
@@ -119,12 +123,12 @@ describe("useSync", () => {
     const view = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
     await waitForCondition(() => syncLine(view.container) !== undefined);
     expect(vi.getTimerCount()).toBe(1);
-    await act(async () => {
+    await harnessAct(async () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(syncLine(view.container)?.textContent).toBe("Synced 1 min ago");
 
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitForCondition(() => syncLine(view.container)?.textContent === "Synced just now");
@@ -151,7 +155,7 @@ describe("useSync", () => {
     const { container } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
     await waitForCondition(() => callsTo("/sync") === 1);
 
-    await act(async () => {
+    await harnessAct(async () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitForCondition(() => callsTo("/sync") === 2);

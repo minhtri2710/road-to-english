@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { exportData } from "./lib/backup";
@@ -13,12 +12,16 @@ import * as userLessonsStore from "./lib/userLessons";
 import * as vocabStore from "./lib/vocabStore";
 import { listUserLessons, putUserLesson } from "./lib/userLessons";
 import {
+  actionsToday,
   buttonsNamed,
   callsTo,
   click,
+  clickButtonWith,
+  clickElement,
   close,
   fetchMock,
   h1Texts,
+  harnessAct,
   hasText,
   openLesson,
   pathOf,
@@ -29,11 +32,13 @@ import {
   restoreProperty,
   routeFetch,
   setInputValue,
+  submitInput,
   userResponse,
+  waitForActions,
   waitForCondition,
 } from "./test/app";
 import { installSpeechFakes } from "./test/browser";
-import { greetingsLesson, userLesson } from "./test/fixtures";
+import { deferred, greetingsLesson, userLesson } from "./test/fixtures";
 
 describe("App", () => {
   afterEach(resetApp);
@@ -45,12 +50,7 @@ describe("App", () => {
     expect(container.textContent).toContain("Daily Routine");
     expect(container.textContent).toContain("3 sentences");
 
-    await act(async () => {
-      const button = Array.from(container.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.includes("Greetings & Basics"),
-      );
-      button?.click();
-    });
+    await clickButtonWith(container, "Greetings & Basics");
 
     expect(container.textContent).toContain("Good morning, how are you today?");
     expect(container.textContent).toContain("It is nice to meet you.");
@@ -64,13 +64,8 @@ describe("App", () => {
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
     const { container } = await openLesson();
-    const saveButtons = Array.from(container.querySelectorAll("button")).filter(
-      (button) => button.textContent === "Save to review",
-    );
 
-    await act(async () => {
-      saveButtons[0]?.click();
-    });
+    await click(container, "Save to review");
     await waitForCondition(
       () =>
         Array.from(container.querySelectorAll("button")).filter(
@@ -78,12 +73,7 @@ describe("App", () => {
         ).length === 1,
     );
 
-    const secondSave = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Save to review",
-    );
-    await act(async () => {
-      secondSave?.click();
-    });
+    await click(container, "Save to review");
     await waitForCondition(
       () =>
         Array.from(container.querySelectorAll("button")).filter(
@@ -91,21 +81,15 @@ describe("App", () => {
         ).length === 2,
     );
 
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Review"))
-        ?.click();
-    });
+    await clickButtonWith(container, "Review");
     await waitForCondition(() => container.textContent?.includes("Show answer") ?? false);
 
-    await act(async () => {
-      buttonsNamed(container, "Show answer")[0]?.click();
-    });
+    await click(container, "Show answer");
     await waitForCondition(() => buttonsNamed(container, "Good").length === 1);
 
     const good = buttonsNamed(container, "Good")[0];
     if (!good) throw new Error("Good rating button not found");
-    await act(async () => {
+    await harnessAct(async () => {
       good.click();
       good.click();
     });
@@ -126,7 +110,7 @@ describe("App", () => {
       const save = buttonsNamed(container, "Save to review")[0];
       if (!save) throw new Error("Save to review button not found");
       save.focus();
-      await act(async () => {
+      await harnessAct(async () => {
         save.click();
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === index + 1);
@@ -134,36 +118,24 @@ describe("App", () => {
       expect(save.getAttribute("aria-label")).toBe("Saved, remove from review deck");
     }
 
-    await act(async () => {
-      buttonsNamed(container, "Back to lessons")[0]?.click();
-    });
+    await click(container, "Back to lessons");
     await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 0);
     expect(document.activeElement?.tagName).toBe("BUTTON");
     expect(document.activeElement?.textContent).toContain("Greetings & Basics");
 
-    await act(async () => {
-      buttonsNamed(container, "Review")[0]?.click();
-    });
+    await click(container, "Review");
     await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
-    await act(async () => {
-      buttonsNamed(container, "Show answer")[0]?.click();
-    });
+    await click(container, "Show answer");
     // Sentence cards without notes have an empty back, so identify the answer by position.
     expect(document.activeElement?.tagName).toBe("P");
     expect(document.activeElement?.previousElementSibling?.textContent).toBe(greetingsLesson.sentences[0].text);
 
-    await act(async () => {
-      buttonsNamed(container, "Good")[0]?.click();
-    });
+    await click(container, "Good");
     await waitForCondition(() => document.activeElement?.textContent === greetingsLesson.sentences[1].text);
     expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
 
-    await act(async () => {
-      buttonsNamed(container, "Show answer")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Good")[0]?.click();
-    });
+    await click(container, "Show answer");
+    await click(container, "Good");
     await waitForCondition(() => document.activeElement?.textContent?.includes("All caught up") ?? false);
   });
 
@@ -197,9 +169,7 @@ describe("App", () => {
       );
       await putCard({ ...card, fsrs: { ...card.fsrs, due: new Date(Date.now() + 60_000) } });
       const view = await openLesson();
-      await act(async () => {
-        buttonsNamed(view.container, "Review")[0]?.click();
-      });
+      await click(view.container, "Review");
       const dueBadge = () => view.container.textContent?.match(/(\d+) due/)?.[1];
       await waitForCondition(() => dueBadge() === "0");
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -214,14 +184,14 @@ describe("App", () => {
 
     it("shows a card that became due when the tab becomes visible, not when it is hidden", async () => {
       const { dueBadge } = await renderWithFutureCard();
-      await act(async () => {
+      await harnessAct(async () => {
         setVisibility("hidden");
       });
-      await act(async () => {
+      await harnessAct(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       expect(dueBadge()).toBe("0");
-      await act(async () => {
+      await harnessAct(async () => {
         setVisibility("visible");
       });
       await waitForCondition(() => dueBadge() === "1");
@@ -229,7 +199,7 @@ describe("App", () => {
 
     it("shows a card that became due when the window regains focus", async () => {
       const { dueBadge } = await renderWithFutureCard();
-      await act(async () => {
+      await harnessAct(async () => {
         window.dispatchEvent(new Event("focus"));
       });
       await waitForCondition(() => dueBadge() === "1");
@@ -249,7 +219,7 @@ describe("App", () => {
     async function press(container: HTMLElement, name: string) {
       const button = buttonsNamed(container, name)[0];
       if (!button) throw new Error(`${name} button not found`);
-      await act(async () => {
+      await harnessAct(async () => {
         button.click();
       });
     }
@@ -259,7 +229,7 @@ describe("App", () => {
       await press(view.container, "Review");
       await waitForCondition(() => buttonsNamed(view.container, "Show answer").length === 1);
       const unmount = async () => {
-        await act(async () => {
+        await harnessAct(async () => {
           view.root.unmount();
         });
         view.container.remove();
@@ -292,13 +262,13 @@ describe("App", () => {
       await putCard(reviewed);
       const { container } = await openLesson();
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-      await act(async () => {
+      await harnessAct(async () => {
         buttonsNamed(container, "Saved")[0]!.click();
       });
       await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
       expect((await getAllCards())[0]?.deletedAt).not.toBeNull();
 
-      await act(async () => {
+      await harnessAct(async () => {
         buttonsNamed(container, "Save to review")[0]!.click();
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -368,7 +338,7 @@ describe("App", () => {
       await press(container, "Again");
       await waitForCondition(() => container.textContent?.includes("All caught up. Next card in 1 min.") ?? false);
       const added = addedText(container);
-      await act(async () => {
+      await harnessAct(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
@@ -388,11 +358,11 @@ describe("App", () => {
       // The wall clock steps back 1 s, so the timer fires while the card is still 1 s from due.
       // ponytail: 1 s, not 1 ms: shouldAdvanceTime moves the clock by real elapsed ms, which would make 1 ms reach due.
       vi.setSystemTime(Date.now() - 1_000);
-      await act(async () => {
+      await harnessAct(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
       expect(buttonsNamed(container, "Show answer")).toHaveLength(0);
-      await act(async () => {
+      await harnessAct(async () => {
         await vi.advanceTimersByTimeAsync(1_000);
       });
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
@@ -419,15 +389,11 @@ describe("App", () => {
     }
 
     async function openReview(container: HTMLElement) {
-      await act(async () => {
-        buttonsNamed(container, "Review")[0]?.click();
-      });
+      await click(container, "Review");
     }
 
     async function openLibrary(container: HTMLElement) {
-      await act(async () => {
-        buttonsNamed(container, "Library")[0]?.click();
-      });
+      await click(container, "Library");
     }
 
     afterEach(() => {
@@ -443,12 +409,8 @@ describe("App", () => {
       await openReview(container);
       await waitForCondition(hasText(container, "20 due"));
 
-      await act(async () => {
-        buttonsNamed(container, "Show answer")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Good")[0]?.click();
-      });
+      await click(container, "Show answer");
+      await click(container, "Good");
       await waitForCondition(hasText(container, "19 due"));
 
       const cards = await getAllCards();
@@ -486,9 +448,7 @@ describe("App", () => {
       const { container, unmount } = await renderApp();
       await waitForCondition(hasText(container, "2 of 10 practice actions today"));
 
-      await act(async () => {
-        buttonsNamed(container, "5 Light")[0]?.click();
-      });
+      await click(container, "5 Light");
 
       expect(container.textContent).toContain("2 of 5 practice actions today");
       expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("5");
@@ -507,25 +467,9 @@ describe("App", () => {
 
       vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
       // Changing the goal re-renders without reloading the counts.
-      await act(async () => {
-        buttonsNamed(container, "5 Light")[0]?.click();
-      });
+      await click(container, "5 Light");
 
       expect(container.textContent).toContain("0 of 5 practice actions today");
-    });
-
-    it("shows XP and held freezes from seeded practice", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(start);
-      for (let offset = 6; offset >= 0; offset -= 1) {
-        await recordPractice(todayKey(new Date(2026, 0, 5 - offset)), { newCard: false });
-      }
-      await recordPractice(todayKey(start), { newCard: false });
-      const { container } = await renderApp();
-      await waitForCondition(hasText(container, "80 XP"));
-
-      expect(container.textContent).toContain("7-day streak");
-      expect(container.textContent).toContain("Freezes 1 of 2");
     });
 
     it("reads a missing or invalid stored goal as 10", async () => {
@@ -533,6 +477,198 @@ describe("App", () => {
       const { container } = await renderApp();
 
       expect(container.textContent).toContain("0 of 10 practice actions today");
+    });
+
+    it("does not announce a daily goal that was already met when the page loads", async () => {
+      for (let index = 0; index < 12; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const view = await renderApp();
+      const { container } = view;
+      await waitForCondition(hasText(container, "12 of 10 practice actions today"));
+      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
+    });
+
+    it("announces the daily goal only when it becomes met, not on each practice action", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 3; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      const goal = container.querySelector('header [role="status"]:not([aria-live])')!;
+      await click(container, "Dictation");
+      const submit = async (id: string) => {
+        const input = container.querySelector<HTMLInputElement>(`#dictation-${id}`)!;
+        await submitInput(input, "Good morning");
+      };
+      await submit("greetings-basics-1");
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
+      expect(goal.textContent).toBe("");
+      await reopenGreetings(container);
+      await waitForCondition(() => buttonsNamed(container, "Dictation").length === 1);
+      await click(container, "Dictation");
+      await submit("greetings-basics-1");
+      await waitForCondition(() => goal.textContent === "Daily goal met.");
+    });
+
+    it("does not announce the daily goal when a reload after practice meets it", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 3; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      vi.stubGlobal("confirm", () => true);
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      await click(container, "Dictation");
+      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
+      await submitInput(input, "Good morning");
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
+      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await harnessAct(async () => {
+        Object.defineProperty(file, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        file.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
+    });
+
+    it("does not announce the daily goal when a later reload meets it after a failed practice save", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 4; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      vi.stubGlobal("confirm", () => true);
+      const { container } = await openLesson();
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      await click(container, "Dictation");
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
+      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
+      await submitInput(input, "Good morning");
+      await waitForCondition(hasText(container, "disk full. Reload to try again."));
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
+      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await harnessAct(async () => {
+        Object.defineProperty(file, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        file.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
+    });
+
+    const goalStatus = (container: HTMLElement) => container.querySelector('header [role="status"]:not([aria-live])')!;
+
+    // Opens Dictation in Greetings & Basics with the goal at 5 and `seeded` actions already today.
+    async function openDictationAt(seeded: number) {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < seeded; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const view = await openLesson();
+      await waitForCondition(() => h1Texts(view.container)[0] === "Greetings & Basics");
+      await click(view.container, "Dictation");
+      const dictation = (sentence: number) =>
+        view.container.querySelector<HTMLInputElement>(`#dictation-greetings-basics-${sentence}`)!;
+      return { ...view, dictation };
+    }
+
+    it("announces the goal once when the second of two overlapping practice saves reaches it", async () => {
+      const { container, dictation } = await openDictationAt(3);
+      const save = progressStore.recordPractice;
+      const secondSave = deferred<void>();
+      let saves = 0;
+      vi.spyOn(progressStore, "recordPractice").mockImplementation(async (...args) => {
+        saves += 1;
+        if (saves === 2) await secondSave.promise;
+        return save(...args);
+      });
+      await submitInput(dictation(1), "Good morning");
+      await submitInput(dictation(2), "Nice to meet you");
+      // The first save commits and its count lands before the second save commits.
+      await waitForActions(4);
+      await harnessAct(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(goalStatus(container).textContent).toBe("");
+
+      secondSave.resolve();
+      await waitForActions(5);
+      await waitForCondition(() => goalStatus(container).textContent === "Daily goal met.");
+    });
+
+    it("announces the goal when a practice save reaches it while an overlapping one fails", async () => {
+      const { container, dictation } = await openDictationAt(4);
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
+      await submitInput(dictation(1), "Good morning");
+      await submitInput(dictation(2), "Nice to meet you");
+      await waitForActions(5);
+      await waitForCondition(() => goalStatus(container).textContent === "Daily goal met.");
+    });
+
+    it("does not announce the goal after a single failed practice save", async () => {
+      const { container, dictation } = await openDictationAt(4);
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
+      await submitInput(dictation(1), "Good morning");
+      await waitForCondition(hasText(container, "disk full. Reload to try again."));
+      await harnessAct(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(await actionsToday()).toBe(4);
+      expect(goalStatus(container).textContent).toBe("");
+    });
+
+    it("does not announce the goal when a sync reload meets it", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 4; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const sync = deferred<Response>();
+      const { container } = await renderApp({
+        route: (path) => {
+          if (path === "/me") return userResponse();
+          if (path === "/sync") return sync.promise;
+        },
+      });
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
+      // Another tab's practice lands in the store; the sync reload picks it up with no practice here.
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      sync.resolve(responseFor("/sync"));
+      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
+      await harnessAct(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(goalStatus(container).textContent).toBe("");
+    });
+
+    // Choosing a goal is the learner's own action, so choosing one today's practice already meets announces it.
+    it("announces the goal when a lower goal chosen is already met", async () => {
+      for (let index = 0; index < 7; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      const { container } = await renderApp();
+      await waitForCondition(hasText(container, "7 of 10 practice actions today"));
+      expect(goalStatus(container).textContent).toBe("");
+      await click(container, "5 Light");
+      expect(container.textContent).toContain("7 of 5 practice actions today");
+      expect(goalStatus(container).textContent).toBe("Daily goal met.");
     });
   });
 
@@ -551,13 +687,13 @@ describe("App", () => {
       if (!titleInput || !textArea) throw new Error("import form not found");
       expect(container.querySelector('label[for="import-title"]')).not.toBeNull();
       expect(container.querySelector('label[for="import-text"]')).not.toBeNull();
-      await act(async () => {
+      await harnessAct(async () => {
         setInputValue(titleInput, title);
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, text);
         textArea.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
+      await harnessAct(async () => {
+        titleInput.form!.requestSubmit();
       });
     }
 
@@ -573,10 +709,8 @@ describe("App", () => {
       expect(buttonsNamed(first.container.querySelector("form")!, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(buttonsNamed(first.container.querySelector("form")!, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
       expect(buttonsNamed(first.container, "110 WPM")[0]?.getAttribute("aria-pressed")).toBe("true");
-      await act(async () => {
-        buttonsNamed(first.container.querySelector("form")!, "B2")[0]?.click();
-        buttonsNamed(first.container, "130 WPM")[0]?.click();
-      });
+      await click(first.container.querySelector("form")!, "B2");
+      await click(first.container, "130 WPM");
 
       await createLesson(first.container, "  Tea talk ", pasted);
       await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
@@ -607,11 +741,7 @@ describe("App", () => {
       const second = await renderLibrary();
       await waitForCondition(() => second.container.textContent?.includes("Tea talk") ?? false);
       expect(second.container.textContent).toContain("B2 · 3 sentences");
-      await act(async () => {
-        Array.from(second.container.querySelectorAll("button"))
-          .find((button) => button.textContent?.includes("Tea talk"))
-          ?.click();
-      });
+      await clickButtonWith(second.container, "Tea talk");
       expect(second.container.textContent).toContain("We drink it every morning.");
       expect(lessonFetches()).toEqual([]);
     });
@@ -622,12 +752,8 @@ describe("App", () => {
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => buttonsNamed(view.container, "green").length === 1);
 
-      await act(async () => {
-        buttonsNamed(view.container, "green")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Save word")[0]?.click();
-      });
+      await click(view.container, "green");
+      await click(view.container, "Save word");
       await waitForCondition(() => buttonsNamed(view.container, "Saved").length === 1);
       const [lesson] = await listUserLessons();
       const [card] = await getAllCards();
@@ -637,21 +763,15 @@ describe("App", () => {
         back: "I like green tea.",
       });
 
-      await act(async () => {
-        buttonsNamed(view.container, "Back to lessons")[0]?.click();
-      });
+      await click(view.container, "Back to lessons");
       const confirm = vi.fn(() => false);
       vi.stubGlobal("confirm", confirm);
-      await act(async () => {
-        buttonsNamed(view.container, "Delete")[0]?.click();
-      });
+      await click(view.container, "Delete");
       expect(confirm).toHaveBeenCalledTimes(1);
       expect(await listUserLessons()).toHaveLength(1);
 
       confirm.mockReturnValue(true);
-      await act(async () => {
-        buttonsNamed(view.container, "Delete")[0]?.click();
-      });
+      await click(view.container, "Delete");
       await waitForCondition(() => view.container.textContent?.includes("No lessons of your own yet") ?? false);
       expect(document.activeElement?.textContent).toBe("Your lessons");
       expect(await listUserLessons()).toEqual([]);
@@ -668,14 +788,14 @@ describe("App", () => {
       const titleInput = first.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = first.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");
-      await act(async () => {
+      await harnessAct(async () => {
         setInputValue(titleInput, "Tea talk");
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, pasted);
         textArea.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
-        titleInput.form?.requestSubmit();
+      await harnessAct(async () => {
+        titleInput.form!.requestSubmit();
+        titleInput.form!.requestSubmit();
       });
       await waitForCondition(() => first.container.textContent?.includes("Back to lessons") ?? false);
       await close(first);
@@ -713,32 +833,22 @@ describe("App", () => {
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
-      await act(async () => {
-        buttonsNamed(view.container, "Dictation")[0]?.click();
-      });
+      await click(view.container, "Dictation");
       expect(view.container.textContent).not.toContain("I like green tea.");
       const dictation = view.container.querySelector<HTMLInputElement>("#dictation-s1");
       if (!dictation) throw new Error("dictation input not found");
-      await act(async () => {
-        setInputValue(dictation, "i like green tea");
-        dictation.form?.requestSubmit();
-      });
+      await submitInput(dictation, "i like green tea");
       expect(view.container.textContent).toContain("Reference: I like green tea.");
       expect(view.container.textContent).toContain("Correct");
 
-      await act(async () => {
-        buttonsNamed(view.container, "Fill the blank")[0]?.click();
-      });
+      await click(view.container, "Fill the blank");
       const { parts, index } = blankFor("We drink it every morning.");
       expect(view.container.textContent).toContain(
         parts.map((part, i) => (i === index ? "____blank" : part)).join(""),
       );
       const blank = view.container.querySelector<HTMLInputElement>("#blank-s3");
       if (!blank) throw new Error("blank input not found");
-      await act(async () => {
-        setInputValue(blank, parts[index]!);
-        blank.form?.requestSubmit();
-      });
+      await submitInput(blank, parts[index]!);
       expect(view.container.textContent).toContain("Correct");
       expect(lessonFetches()).toEqual([]);
     });
@@ -749,11 +859,7 @@ describe("App", () => {
 
     async function openGreetings(container: HTMLElement) {
       await waitForCondition(() => buttonsNamed(container, "Greetings & Basics").length > 0 || hasText(container, "Greetings & Basics")());
-      await act(async () => {
-        Array.from(container.querySelectorAll("button"))
-          .find((button) => button.textContent?.includes("Greetings & Basics"))
-          ?.click();
-      });
+      await clickButtonWith(container, "Greetings & Basics");
       await waitForCondition(() => container.querySelector("h1")?.textContent === "Greetings & Basics");
     }
 
@@ -847,10 +953,7 @@ describe("App", () => {
       vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
       const input = container.querySelector<HTMLInputElement>(`#dictation-${greetingsLesson.sentences[0].id}`);
       if (!input) throw new Error("dictation input not found");
-      await act(async () => {
-        setInputValue(input, "Good morning");
-        input.form?.requestSubmit();
-      });
+      await submitInput(input, "Good morning");
       await waitForCondition(hasText(container, `${storageLine}: disk full. Reload to try again.`));
       await click(container, "Back to lessons");
       expect(container.textContent).toContain("0 of 10 practice actions today");
@@ -874,13 +977,9 @@ describe("App", () => {
       await waitForCondition(hasText(container, userLesson.title));
       vi.spyOn(userLessonsStore, "deleteUserLesson").mockRejectedValueOnce(new Error("quota"));
       const del = () => container.querySelector<HTMLButtonElement>(`button[aria-label="Delete ${userLesson.title}"]`);
-      await act(async () => {
-        del()?.click();
-      });
+      await clickElement(del(), "Delete button");
       await waitForCondition(hasText(container, "Couldn't delete. Try again."));
-      await act(async () => {
-        del()?.click();
-      });
+      await clickElement(del(), "Delete button");
       await waitForCondition(hasText(container, "No lessons of your own yet"));
       expect(container.textContent).not.toContain("Couldn't delete.");
     });
@@ -891,7 +990,7 @@ describe("App", () => {
       const title = container.querySelector<HTMLInputElement>("#import-title");
       const text = container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!title || !text) throw new Error("import form not found");
-      await act(async () => {
+      await harnessAct(async () => {
         setInputValue(title, "Mine");
         const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
         setter?.call(text, "I like tea. You like coffee.");
@@ -931,7 +1030,7 @@ describe("App", () => {
       await click(container, "Review");
       const libraryToggle = await click(container, "Library");
       libraryToggle.focus();
-      await act(async () => {
+      await harnessAct(async () => {
         release();
       });
       await waitForCondition(hasText(container, "Daily Routine"));
@@ -959,7 +1058,7 @@ describe("App", () => {
       expect(container.textContent).not.toContain("Failed to fetch");
 
       offline = false;
-      await act(async () => {
+      await harnessAct(async () => {
         window.dispatchEvent(new Event("online"));
       });
       await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
@@ -971,7 +1070,7 @@ describe("App", () => {
       await waitForCondition(() => container.textContent?.includes("Unable to complete account request. Please try again.") ?? false);
       const before = callsTo("/me");
 
-      await act(async () => {
+      await harnessAct(async () => {
         window.dispatchEvent(new Event("online"));
       });
       expect(callsTo("/me")).toBe(before);
@@ -1108,10 +1207,7 @@ describe("App", () => {
       const region = card.querySelector('[role="status"]:not([aria-live])');
       expect(region?.textContent).toBe("");
 
-      await act(async () => {
-        setInputValue(input, "Good morning");
-        input.form?.requestSubmit();
-      });
+      await submitInput(input, "Good morning");
       // The result region and Save to review's saved region; the result lands in the region mounted before it.
       expect(card.querySelectorAll('[role="status"]:not([aria-live])')).toHaveLength(2);
       expect(card.querySelector('[role="status"]:not([aria-live])')).toBe(region);
@@ -1173,7 +1269,7 @@ describe("App", () => {
       await waitForCondition(() => buttonsNamed(document.body, "Undo").length === undos + 1);
       const undo = buttonsNamed(document.body, "Undo").at(-1)!;
       undo.focus();
-      await act(async () => {
+      await harnessAct(async () => {
         undo.click();
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -1218,7 +1314,7 @@ describe("App", () => {
       routeFetch((path) =>
         path === "/lessons/nope" ? new Response(JSON.stringify({ error: "lesson not found" }), { status: 404 }) : undefined,
       );
-      await act(async () => {
+      await harnessAct(async () => {
         window.location.hash = "#/lesson/nope";
       });
       await waitForCondition(() => h1Texts(view.container)[0] === "Lesson unavailable");
@@ -1244,7 +1340,7 @@ describe("App", () => {
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
       expect(container.textContent).toContain("Loading your lessons...");
       expect(document.activeElement?.tagName).not.toBe("H1");
-      await act(async () => {
+      await harnessAct(async () => {
         resolveUserLessons([]);
       });
       await waitForCondition(() => document.activeElement?.tagName === "H1");
@@ -1282,7 +1378,7 @@ describe("App", () => {
       const { container } = view;
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
       expect(document.title).toBe("Lesson library · Road to English");
-      await act(async () => {
+      await harnessAct(async () => {
         Array.from(container.querySelectorAll("main li button"))
           .find((button) => button.textContent?.includes("Greetings & Basics"))
           ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1291,7 +1387,7 @@ describe("App", () => {
       expect(window.location.hash).toBe("#/lesson/greetings-basics");
 
       // Browser Back: the library, with focus on the row of the lesson just left.
-      await act(async () => {
+      await harnessAct(async () => {
         window.history.back();
       });
       await waitForCondition(() => h1Texts(container)[0] === "Lesson library");
@@ -1299,7 +1395,7 @@ describe("App", () => {
       expect(document.activeElement?.tagName).toBe("BUTTON");
 
       // Browser Forward: the lesson again, with focus on its h1.
-      await act(async () => {
+      await harnessAct(async () => {
         window.history.forward();
       });
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
@@ -1307,7 +1403,7 @@ describe("App", () => {
 
       await click(container, "Review");
       expect(window.location.hash).toBe("#/review");
-      await act(async () => {
+      await harnessAct(async () => {
         window.history.back();
       });
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
@@ -1340,119 +1436,12 @@ describe("App", () => {
       const undo = newUndo()!;
       const elsewhere = buttonsNamed(container, "Dictation")[0]!;
       undo.focus();
-      await act(async () => {
+      await harnessAct(async () => {
         undo.click();
         elsewhere.focus();
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       expect(document.activeElement).toBe(elsewhere);
-    });
-
-    it("does not announce a daily goal that was already met when the page loads", async () => {
-      for (let index = 0; index < 12; index += 1) {
-        await recordPractice(todayKey(new Date()), { newCard: false });
-      }
-      const view = await renderApp();
-      const { container } = view;
-      await waitForCondition(hasText(container, "12 of 10 practice actions today"));
-      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
-    });
-
-    it("announces the daily goal only when it becomes met, not on each practice action", async () => {
-      localStorage.setItem("road-to-english.dailyGoal", "5");
-      for (let index = 0; index < 3; index += 1) {
-        await recordPractice(todayKey(new Date()), { newCard: false });
-      }
-      const view = await openLesson();
-      const { container } = view;
-      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      const goal = container.querySelector('header [role="status"]:not([aria-live])')!;
-      await click(container, "Dictation");
-      const submit = async (id: string) => {
-        const input = container.querySelector<HTMLInputElement>(`#dictation-${id}`)!;
-        await act(async () => {
-          setInputValue(input, "Good morning");
-          input.form?.requestSubmit();
-        });
-      };
-      await submit("greetings-basics-1");
-      await click(container, "Back to lessons");
-      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
-      expect(goal.textContent).toBe("");
-      await reopenGreetings(container);
-      await waitForCondition(() => buttonsNamed(container, "Dictation").length === 1);
-      await click(container, "Dictation");
-      await submit("greetings-basics-1");
-      await waitForCondition(() => goal.textContent === "Daily goal met.");
-      localStorage.removeItem("road-to-english.dailyGoal");
-    });
-
-    it("does not announce the daily goal when a reload after practice meets it", async () => {
-      localStorage.setItem("road-to-english.dailyGoal", "5");
-      for (let index = 0; index < 3; index += 1) {
-        await recordPractice(todayKey(new Date()), { newCard: false });
-      }
-      vi.stubGlobal("confirm", () => true);
-      const view = await openLesson();
-      const { container } = view;
-      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      await click(container, "Dictation");
-      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
-      await act(async () => {
-        setInputValue(input, "Good morning");
-        input.form?.requestSubmit();
-      });
-      await click(container, "Back to lessons");
-      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
-      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
-      await recordPractice(todayKey(new Date()), { newCard: false });
-      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
-      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-      await act(async () => {
-        Object.defineProperty(file, "files", {
-          configurable: true,
-          value: [new File([text], "backup.json", { type: "application/json" })],
-        });
-        file.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
-      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
-      localStorage.removeItem("road-to-english.dailyGoal");
-    });
-
-    it("does not announce the daily goal when a later reload meets it after a failed practice save", async () => {
-      localStorage.setItem("road-to-english.dailyGoal", "5");
-      for (let index = 0; index < 4; index += 1) {
-        await recordPractice(todayKey(new Date()), { newCard: false });
-      }
-      vi.stubGlobal("confirm", () => true);
-      const { container } = await openLesson();
-      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      await click(container, "Dictation");
-      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
-      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
-      await act(async () => {
-        setInputValue(input, "Good morning");
-        input.form?.requestSubmit();
-      });
-      await waitForCondition(hasText(container, "disk full. Reload to try again."));
-      await click(container, "Back to lessons");
-      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
-      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
-      await recordPractice(todayKey(new Date()), { newCard: false });
-      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
-      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-      await act(async () => {
-        Object.defineProperty(file, "files", {
-          configurable: true,
-          value: [new File([text], "backup.json", { type: "application/json" })],
-        });
-        file.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
-      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
-      localStorage.removeItem("road-to-english.dailyGoal");
     });
   });
 });

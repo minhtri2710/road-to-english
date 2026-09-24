@@ -1,7 +1,6 @@
-import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { hasText, renderApp, resetApp, waitForCondition } from "../test/app";
+import { harnessAct, hasText, renderApp, resetApp, waitForCondition } from "../test/app";
 
 const HINT = "Paste the transcript from YouTube's Show transcript panel (timestamps included).";
 
@@ -30,12 +29,12 @@ describe("ImportTextForm", () => {
     const a2 = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"] [role="radio"]')).find(
       (item) => item.textContent === "A2",
     )!;
-    await act(async () => {
+    await harnessAct(async () => {
       a2.click();
     });
     expect(levelButton(container, "A2")?.getAttribute("aria-pressed")).toBe("true");
 
-    await act(async () => {
+    await harnessAct(async () => {
       levelButton(container, "B2")!.click();
     });
     expect(levelButton(container, "B2")?.getAttribute("aria-pressed")).toBe("true");

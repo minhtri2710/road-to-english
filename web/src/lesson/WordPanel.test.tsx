@@ -1,4 +1,3 @@
-import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createCard } from "../lib/vocab";
@@ -6,10 +5,13 @@ import { getAllCards, putCard } from "../lib/vocabStore";
 import * as vocabStore from "../lib/vocabStore";
 import {
   buttonsNamed,
+  click,
+  clickButtonWith,
   fetchMock,
+  harnessAct,
   openLesson,
-  reopenGreetings,
   renderApp,
+  reopenGreetings,
   resetApp,
   waitForCondition,
 } from "../test/app";
@@ -26,7 +28,7 @@ describe("WordPanel", () => {
     expect(word.getAttribute("aria-expanded")).toBe("false");
     expect(word.hasAttribute("aria-controls")).toBe(false);
 
-    await act(async () => {
+    await harnessAct(async () => {
       word.click();
     });
     expect(word.getAttribute("aria-expanded")).toBe("true");
@@ -38,13 +40,13 @@ describe("WordPanel", () => {
   it("announces a saved word, and keeps the removal toast with Undo until it is dismissed", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "morning")[0]!.click();
     });
     const announced = () =>
       Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
     expect(announced()).not.toContain("Saved to your review deck.");
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "Save word")[0]!.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -54,17 +56,17 @@ describe("WordPanel", () => {
     const earlier = new Set(buttonsNamed(document.body, "Undo"));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      await act(async () => {
+      await harnessAct(async () => {
         buttonsNamed(container, "Saved")[0]!.click();
       });
       await waitForCondition(() => buttonsNamed(document.body, "Undo").some((undo) => !earlier.has(undo)));
       expect(announced()).not.toContain("Saved to your review deck.");
-      await act(async () => {
+      await harnessAct(async () => {
         vi.advanceTimersByTime(60_000);
       });
       const undo = buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button))!;
       // jsdom runs no transitions: end the toast row's own, which removes the row if it is hiding.
-      await act(async () => {
+      await harnessAct(async () => {
         for (let node: HTMLElement | null = undo; node; node = node.parentElement) {
           node.dispatchEvent(Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "grid-template-rows" }));
         }
@@ -84,12 +86,12 @@ describe("WordPanel", () => {
     );
     if (!saveButton) throw new Error("Save to review button not found");
 
-    await act(async () => {
+    await harnessAct(async () => {
       saveButton.click();
       saveButton.click();
     });
     await waitForCondition(() => container.textContent?.includes("Saved") ?? false);
-    await act(async () => {
+    await harnessAct(async () => {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
@@ -103,26 +105,17 @@ describe("WordPanel", () => {
 
   it("persists saved cards across an app remount", async () => {
     const first = await openLesson();
-    const firstSave = Array.from(first.container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Save to review",
-    );
 
-    await act(async () => {
-      firstSave?.click();
-    });
+    await click(first.container, "Save to review");
     await waitForCondition(() => first.container.textContent?.includes("Saved") ?? false);
 
-    await act(async () => {
+    await harnessAct(async () => {
       first.root.unmount();
     });
     first.container.remove();
 
     const { container: secondContainer } = await renderApp();
-    await act(async () => {
-      Array.from(secondContainer.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Review"))
-        ?.click();
-    });
+    await clickButtonWith(secondContainer, "Review");
     await waitForCondition(
       () => secondContainer.textContent?.includes(greetingsLesson.sentences[0].text) ?? false,
     );
@@ -139,28 +132,20 @@ describe("WordPanel", () => {
 
     expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
     expect(container.textContent).toContain(sentence.text);
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
+    await click(container, "Loop");
+    await click(container, "morning");
     expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
     expect(buttonsNamed(container, "Save word")).toHaveLength(1);
 
-    await act(async () => {
-      buttonsNamed(container, "Hear word")[0]?.click();
-    });
+    await click(container, "Hear word");
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
     expect(speech.spoken.at(-1)?.text).toBe("morning");
-    await act(async () => {
+    await harnessAct(async () => {
       speech.finish();
     });
     expect(speech.spoken.at(-1)?.text).toBe("morning");
 
-    await act(async () => {
-      buttonsNamed(container, "nice")[0]?.click();
-    });
+    await click(container, "nice");
     expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
     expect(container.textContent).not.toContain("morningHear word");
   });
@@ -170,19 +155,17 @@ describe("WordPanel", () => {
     const { container, root } = await openLesson();
     const sentence = greetingsLesson.sentences[0];
 
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
+    await click(container, "morning");
     const save = buttonsNamed(container, "Save word")[0];
     if (!save) throw new Error("Save word button not found");
     // putCard is keyed by id, so a second write would not change the card count; count the writes.
     const put = vi.spyOn(IDBObjectStore.prototype, "put");
-    await act(async () => {
+    await harnessAct(async () => {
       save.click();
       save.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    await act(async () => {
+    await harnessAct(async () => {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
@@ -200,30 +183,23 @@ describe("WordPanel", () => {
     });
     expect(buttonsNamed(container, "Save to review")).toHaveLength(3);
 
-    await act(async () => {
+    await harnessAct(async () => {
       root.unmount();
     });
     container.remove();
 
-    const second = await openLesson();
-    await act(async () => {
-      buttonsNamed(second.container, "morning")[0]?.click();
-    });
+    // The URL still routes to the lesson, so the remount opens it directly.
+    const second = await renderApp();
+    await click(second.container, "morning");
     await waitForCondition(() => buttonsNamed(second.container, "Saved").length === 1);
     expect(buttonsNamed(second.container, "Save word")).toHaveLength(0);
 
-    await act(async () => {
-      buttonsNamed(second.container, "Review")[0]?.click();
-    });
+    await click(second.container, "Review");
     await waitForCondition(() => second.container.textContent?.includes("Show answer") ?? false);
     expect(second.container.textContent).toContain("morning");
-    await act(async () => {
-      buttonsNamed(second.container, "Show answer")[0]?.click();
-    });
+    await click(second.container, "Show answer");
     expect(second.container.textContent).toContain(`${sentence.text} — ${sentence.vi}`);
-    await act(async () => {
-      buttonsNamed(second.container, "Good")[0]?.click();
-    });
+    await click(second.container, "Good");
     await waitForCondition(() => second.container.textContent?.includes("All caught up") ?? false);
     const [reviewed] = await getAllCards();
     expect(reviewed?.fsrs.reps).toBe(1);
@@ -241,12 +217,8 @@ describe("WordPanel", () => {
     expect(buttonsNamed(container, "T-shirt")).toHaveLength(1);
     expect(buttonsNamed(container, "T")).toHaveLength(0);
     expect(buttonsNamed(container, "shirt")).toHaveLength(0);
-    await act(async () => {
-      buttonsNamed(container, "T-shirt")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Save word")[0]?.click();
-    });
+    await click(container, "T-shirt");
+    await click(container, "Save word");
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     const [card] = await getAllCards();
     expect(card?.id).toBe(`greetings-basics:${sentence.id}:t-shirt`);
@@ -263,9 +235,7 @@ describe("WordPanel", () => {
     await putCard(original);
     const { container } = await openLesson();
     const showView = async (name: "Review" | "Library") => {
-      await act(async () => {
-        buttonsNamed(container, name)[0]?.click();
-      });
+      await click(container, name);
     };
     // Library lists the lessons, so going back to the lesson reopens it from its row.
     const reopenLesson = async () => {
@@ -284,7 +254,7 @@ describe("WordPanel", () => {
     // Earlier tests can leave toasts behind: jsdom never ends a toast's exit transition.
     const earlier = new Set(buttonsNamed(document.body, "Undo"));
     toggle.focus();
-    await act(async () => {
+    await harnessAct(async () => {
       toggle.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
@@ -298,7 +268,7 @@ describe("WordPanel", () => {
 
     const undo = buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
     if (!undo) throw new Error("Undo button not found");
-    await act(async () => {
+    await harnessAct(async () => {
       undo.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -310,11 +280,11 @@ describe("WordPanel", () => {
     await reopenLesson();
 
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "Saved")[0]!.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "Save to review")[0]!.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -334,9 +304,7 @@ describe("WordPanel", () => {
     await putCard(original);
     const { container } = await openLesson();
     const showView = async (name: "Review" | "Library") => {
-      await act(async () => {
-        buttonsNamed(container, name)[0]?.click();
-      });
+      await click(container, name);
     };
     // Library lists the lessons, so going back to the lesson reopens it from its row.
     const reopenLesson = async () => {
@@ -352,11 +320,11 @@ describe("WordPanel", () => {
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
     // Earlier tests can leave toasts in document.body; this test's toast is the newest Undo.
     const undoCount = buttonsNamed(document.body, "Undo").length;
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "Saved")[0]!.click();
     });
     await waitForCondition(() => buttonsNamed(document.body, "Undo").length === undoCount + 1);
-    await act(async () => {
+    await harnessAct(async () => {
       buttonsNamed(container, "Save to review")[0]!.click();
     });
     await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
@@ -365,14 +333,14 @@ describe("WordPanel", () => {
     expect(resaved?.fsrs.due.getTime()).toBeGreaterThan(created.getTime());
 
     const undo = buttonsNamed(document.body, "Undo").at(-1)!;
-    await act(async () => {
+    await harnessAct(async () => {
       undo.click();
     });
     await waitForCondition(
       () => document.body.textContent?.includes("Couldn't undo: this card changed since it was removed.") ?? false,
     );
     // happy-dom runs no CSS transitions; end the toast row's exit transition so a dismissed toast leaves the DOM.
-    await act(async () => {
+    await harnessAct(async () => {
       for (let node = undo.parentElement; node; node = node.parentElement) {
         const end = new Event("transitionend", { bubbles: true });
         Object.defineProperty(end, "propertyName", { value: "grid-template-rows" });
@@ -399,22 +367,18 @@ describe("WordPanel", () => {
       await putCard(original);
       const view = await openLesson();
       const { container } = view;
-      await act(async () => {
-        buttonsNamed(container, "Review")[0]?.click();
-      });
+      await click(container, "Review");
       await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
-      await act(async () => {
-        buttonsNamed(container, "Library")[0]?.click();
-      });
+      await click(container, "Library");
       await reopenGreetings(container);
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       const earlier = new Set(buttonsNamed(document.body, "Undo"));
       const newUndo = () => buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
-      await act(async () => {
+      await harnessAct(async () => {
         buttonsNamed(container, "Saved")[0]!.click();
       });
       await waitForCondition(() => newUndo() !== undefined);
-      await act(async () => {
+      await harnessAct(async () => {
         buttonsNamed(container, "Back to lessons")[0]!.click();
       });
       await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 0);
@@ -430,7 +394,7 @@ describe("WordPanel", () => {
       const changed = { ...(await stored())!, updatedAt: new Date(Date.now() + 1000).toISOString() };
       await putCard(changed);
 
-      await act(async () => {
+      await harnessAct(async () => {
         undo.click();
       });
       await waitForCondition(() => toastSays("Couldn't undo: this card changed since it was removed."));
@@ -439,12 +403,10 @@ describe("WordPanel", () => {
 
     it("restores the exact FSRS state from a clean tombstone", async () => {
       const { container, undo } = await removeThenLeave();
-      await act(async () => {
-        buttonsNamed(container, "Review")[0]?.click();
-      });
+      await click(container, "Review");
       await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "0");
 
-      await act(async () => {
+      await harnessAct(async () => {
         undo.click();
       });
       await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
@@ -456,7 +418,7 @@ describe("WordPanel", () => {
       const tombstone = await stored();
       vi.spyOn(vocabStore, "restoreTombstone").mockRejectedValueOnce(new Error("quota"));
 
-      await act(async () => {
+      await harnessAct(async () => {
         undo.click();
       });
       await waitForCondition(() => toastSays("Couldn't undo. Try again."));
@@ -468,13 +430,9 @@ describe("WordPanel", () => {
     installSpeechFakes();
     const { container } = await openLesson();
 
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
+    await click(container, "morning");
     expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
-    await act(async () => {
-      buttonsNamed(container, "Transcript")[0]?.click();
-    });
+    await click(container, "Transcript");
     expect(buttonsNamed(container, "morning")).toHaveLength(0);
     expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
     expect(buttonsNamed(container, "Save word")).toHaveLength(0);
@@ -518,14 +476,10 @@ describe("WordPanel", () => {
       const { container } = await openLesson();
       routeDictionary(async (url) => definitionFor(url.split("/").at(-1)!));
 
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
+      await click(container, "morning");
       expect(dictionaryCalls()).toHaveLength(0);
 
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
+      await click(container, "Define");
       await waitForCondition(() => container.textContent?.includes("Meaning of morning.") ?? false);
       expect(dictionaryCalls()).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/morning"]);
       expect(container.textContent).toContain("/morning/");
@@ -537,12 +491,8 @@ describe("WordPanel", () => {
       const { container } = await openLesson();
       routeDictionary(async () => new Response(JSON.stringify({ title: "No Definitions Found" }), { status: 404 }));
 
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
+      await click(container, "morning");
+      await click(container, "Define");
       await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
     });
 
@@ -557,19 +507,13 @@ describe("WordPanel", () => {
           }),
       );
 
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
+      await click(container, "morning");
+      await click(container, "Define");
       expect(container.textContent).toContain("Looking up…");
 
-      await act(async () => {
-        buttonsNamed(container, "how")[0]?.click();
-      });
+      await click(container, "how");
       expect(container.textContent).not.toContain("Looking up…");
-      await act(async () => {
+      await harnessAct(async () => {
         resolveMorning(definitionFor("morning"));
         for (let attempt = 0; attempt < 5; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -584,9 +528,7 @@ describe("WordPanel", () => {
       installSpeechFakes();
       const { container } = await openLesson();
 
-      await act(async () => {
-        buttonsNamed(container, "Good")[0]?.click();
-      });
+      await click(container, "Good");
       const link = Array.from(container.querySelectorAll("a")).find(
         (anchor) => anchor.textContent?.startsWith("Hear it on YouGlish"),
       );

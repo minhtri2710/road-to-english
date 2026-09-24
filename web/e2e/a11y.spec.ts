@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 import {
   ACCOUNT_PASSWORD,
@@ -188,6 +188,58 @@ async function showSyncLine(page: Page): Promise<void> {
   await expect(page.getByText("Synced just now")).toBeVisible();
 }
 
+// The real api answers, then the response's status becomes `status`; the api's own CORS headers stay.
+async function answerWithStatus(page: Page, path: string, status: number): Promise<void> {
+  await page.route(`**${path}`, async (route) => {
+    const response = await route.fetch();
+    return route.fulfill({ response, status });
+  });
+}
+
+// Runs the app's own store modules in the page, served by the dev server, then reloads so the app reads the result.
+async function seedStore(page: Page, seed: "dueCards" | "newCardLimit" | "goalMet"): Promise<void> {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
+  await page.evaluate(async (which) => {
+    const load = (path: string) => import(/* @vite-ignore */ path);
+    const { createCard } = await load("/src/lib/vocab.ts");
+    const { putCard } = await load("/src/lib/vocabStore.ts");
+    const { todayKey } = await load("/src/lib/progress.ts");
+    const { recordPractice } = await load("/src/lib/progressStore.ts");
+    const words = which === "dueCards" ? ["able", "bake"] : which === "newCardLimit" ? ["calm"] : [];
+    for (const [index, word] of words.entries()) {
+      await putCard(createCard({ front: word, back: `The ${word} one.`, source: { lessonId: "greetings-basics", sentenceId: `seed-${index}`, word } }, new Date()));
+    }
+    // 20 new cards introduced today reach the daily limit; 5 actions meet a goal of 5.
+    const actions = which === "newCardLimit" ? 20 : which === "goalMet" ? 5 : 0;
+    if (which === "goalMet") localStorage.setItem("road-to-english.dailyGoal", "5");
+    for (let index = 0; index < actions; index += 1) {
+      await recordPractice(todayKey(new Date()), { newCard: which === "newCardLimit" });
+    }
+  }, seed);
+  await page.reload();
+}
+
+async function selectDictionaryWord(page: Page, answer: (route: Route) => Promise<void>): Promise<void> {
+  await page.route("https://api.dictionaryapi.dev/**", answer);
+  await selectWord(page);
+  await page.getByRole("button", { name: "Define" }).click();
+}
+
+async function openRecordingReady(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await page.getByRole("button", { name: "Record" }).first().click();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByRole("button", { name: "Compare" }).first()).toBeEnabled();
+}
+
+async function signUpWithSync(page: Page, status: number): Promise<void> {
+  await answerWithStatus(page, "/sync", status);
+  await page.goto("/");
+  await submitAccount(page, "Create account", uniqueEmail(), ACCOUNT_PASSWORD);
+}
+
 // Each state is reached through the UI and yields once so the caller can inspect it.
 const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<void>][] = [
   ["library list with a user lesson", async (page, inspect) => {
@@ -269,6 +321,130 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText(/^Nothing to review yet/)).toBeVisible();
     await inspect();
   }],
+  ["library when the lessons fetch fails, with Retry", async (page, inspect) => {
+    await page.route("**/lessons", (route) => route.fulfill({ status: 500, headers: { "access-control-allow-origin": "*" } }));
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await inspect();
+  }],
+  ["library while the lessons load", async (page, inspect) => {
+    await page.route("**/lessons", () => undefined);
+    await page.goto("/");
+    await expect(page.getByText("Loading lessons...")).toBeVisible();
+    await inspect();
+  }],
+  ["library with no lessons at the chosen level", async (page, inspect) => {
+    await page.route("**/lessons", async (route) => {
+      const response = await route.fetch();
+      const lessons = (await response.json()) as { level: string }[];
+      return route.fulfill({ response, json: lessons.filter((lesson) => lesson.level !== "B2") });
+    });
+    await page.goto("/");
+    await page.getByRole("radio", { name: "B2" }).click();
+    await expect(page.getByText("No lessons at this level.")).toBeVisible();
+    await inspect();
+  }],
+  ["Today card with cards due", async (page, inspect) => {
+    await seedStore(page, "dueCards");
+    await expect(todayCard(page).getByRole("button", { name: "Review 2 cards" })).toBeVisible();
+    await inspect();
+  }],
+  ["Today card with the daily goal met", async (page, inspect) => {
+    await seedStore(page, "goalMet");
+    await expect(todayCard(page).getByText("5 of 5 practice actions today · Daily goal met")).toBeVisible();
+    await inspect();
+  }],
+  ["lesson unavailable", async (page, inspect) => {
+    await page.goto("/#/lesson/no-such-lesson");
+    await expect(page.getByRole("heading", { level: 1, name: "Lesson unavailable" })).toBeVisible();
+    await inspect();
+  }],
+  ["lesson with Vietnamese shown", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    const vietnamese = page.getByRole("button", { name: "Vietnamese" });
+    await vietnamese.click();
+    await expect(vietnamese).toHaveAttribute("aria-pressed", "true");
+    await inspect();
+  }],
+  ["recording ready with Compare", async (page, inspect) => {
+    await openRecordingReady(page);
+    await inspect();
+  }],
+  ["pronunciation check unsupported", async (page, inspect) => {
+    await page.addInitScript(() => {
+      for (const name of ["SpeechRecognition", "webkitSpeechRecognition"]) {
+        Object.defineProperty(window, name, { configurable: false, get: () => undefined, set: () => undefined });
+      }
+    });
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await expect(page.getByText("Pronunciation check disabled: speech recognition is not supported in this browser.")).toBeVisible();
+    await inspect();
+  }],
+  ["blank result Not quite", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("button", { name: "Fill the blank" }).click();
+    await page.getByLabel("Which word fills the blank?").first().fill("evening");
+    await page.getByRole("button", { name: "Check" }).first().click();
+    await expect(page.getByText("Not quite — the word was morning")).toBeVisible();
+    await inspect();
+  }],
+  ["dictation after Try again", async (page, inspect) => {
+    await checkDictationWithHint(page);
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByLabel("What did you hear?").first()).toHaveValue("");
+    await inspect();
+  }],
+  ["word panel with a definition", async (page, inspect) => {
+    await selectDictionaryWord(page, (route) =>
+      route.fulfill({
+        headers: { "access-control-allow-origin": "*" },
+        json: [{ word: "morning", phonetic: "/ˈmɔːnɪŋ/", meanings: [{ partOfSpeech: "noun", definitions: [{ definition: "The early part of the day." }] }] }],
+      }),
+    );
+    await expect(page.getByText("The early part of the day.")).toBeVisible();
+    await inspect();
+  }],
+  ["word panel with the dictionary unreachable", async (page, inspect) => {
+    await selectDictionaryWord(page, (route) => route.abort());
+    await expect(page.getByText("Couldn't reach the dictionary. Check your connection.")).toBeVisible();
+    await inspect();
+  }],
+  ["word saved", async (page, inspect) => {
+    await selectWord(page);
+    await page.getByRole("button", { name: "Save word" }).click();
+    await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
+    await inspect();
+  }],
+  ["Undo toast after removing a saved word", async (page, inspect) => {
+    await selectWord(page);
+    await page.getByRole("button", { name: "Save word" }).click();
+    await page.getByRole("button", { name: "Saved, remove from review deck" }).click();
+    await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await inspect();
+  }],
+  ["review when the deck fails to load", async (page, inspect) => {
+    await page.addInitScript(() => {
+      indexedDB.open = () => {
+        throw new DOMException("The operation is insecure.", "SecurityError");
+      };
+    });
+    await page.goto("/#/review");
+    await expect(page.getByText("Your review deck couldn't be loaded.")).toBeVisible();
+    await inspect();
+  }],
+  ["review at the daily new-card limit", async (page, inspect) => {
+    await seedStore(page, "newCardLimit");
+    await page.goto("/#/review");
+    await expect(page.getByText("Daily limit of 20 new cards reached. 1 new card is waiting.")).toBeVisible();
+    await inspect();
+  }],
+  ["review all caught up", async (page, inspect) => {
+    await openReviewWithDueCard(page);
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await page.getByRole("button", { name: "Good" }).click();
+    await expect(page.getByText("0 due")).toBeVisible();
+    await inspect();
+  }],
   ["import form with a validation error", async (page, inspect) => {
     await showImportError(page);
     await inspect();
@@ -301,6 +477,36 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await showSyncLine(page);
     await inspect();
   }],
+  ["account form with a taken email and Sign in instead?", async (page, inspect) => {
+    await answerWithStatus(page, "/signup", 409);
+    await page.goto("/");
+    await submitAccount(page, "Create account", uniqueEmail(), ACCOUNT_PASSWORD);
+    await expect(page.getByRole("button", { name: "Sign in instead?" })).toBeVisible();
+    await inspect();
+  }],
+  ["account form after a wrong password", async (page, inspect) => {
+    await page.goto("/");
+    await submitAccount(page, "Sign in", uniqueEmail(), ACCOUNT_PASSWORD);
+    await expect(page.getByText("Invalid email or password.")).toBeVisible();
+    await inspect();
+  }],
+  ["account form when the server is unreachable", async (page, inspect) => {
+    await page.route("**/login", (route) => route.abort());
+    await page.goto("/");
+    await submitAccount(page, "Sign in", uniqueEmail(), ACCOUNT_PASSWORD);
+    await expect(page.getByText("Can't reach the server. You can keep practising on this device.")).toBeVisible();
+    await inspect();
+  }],
+  ["session expired", async (page, inspect) => {
+    await signUpWithSync(page, 401);
+    await expect(page.getByText("You were signed out. Sign in again to sync.")).toBeVisible();
+    await inspect();
+  }],
+  ["sync failed", async (page, inspect) => {
+    await signUpWithSync(page, 500);
+    await expect(page.getByText("Saved on this device. Will sync when you're back online.")).toBeVisible();
+    await inspect();
+  }],
 ];
 
 test.describe("axe", () => {
@@ -311,6 +517,22 @@ test.describe("axe", () => {
       });
     });
   }
+});
+
+test.describe("axe at 320px", () => {
+  test.use({ viewport: { width: 320, height: 740 } });
+
+  test("library, a lesson and review", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
+    expect(await axeViolations(page), "library").toEqual([]);
+    await openReviewWithDueCard(page);
+    expect(await axeViolations(page), "review").toEqual([]);
+    await page.getByRole("button", { name: "Library", exact: true }).click();
+    await page.getByRole("button", { name: LIBRARY_LESSON }).click();
+    await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
+    expect(await axeViolations(page), "lesson").toEqual([]);
+  });
 });
 
 async function focusIndicator(page: Page): Promise<{ label: string; visible: boolean }> {
@@ -712,6 +934,17 @@ test.describe("first-run welcome", () => {
       expect(box?.y).toBeLessThan(667);
     });
   }
+
+  test.describe("reduced motion", () => {
+    test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+    for (const [name, reach] of [["step 1", showStep1], ["step 2", showStep2]] as const) {
+      test(name, async ({ page }) => {
+        await reach(page);
+        expect(await motion(page)).toEqual([]);
+      });
+    }
+  });
 
   for (const width of [320, 360]) {
     test.describe(`at ${width}px`, () => {
