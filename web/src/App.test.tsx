@@ -97,22 +97,12 @@ describe("App", () => {
     });
     await waitForCondition(() => container.textContent?.includes("Show answer") ?? false);
 
-    const showAnswer = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Show answer",
-    );
     await act(async () => {
-      showAnswer?.click();
+      buttonsNamed(container, "Show answer")[0]?.click();
     });
-    await waitForCondition(
-      () =>
-        Array.from(container.querySelectorAll("button")).some(
-          (button) => button.textContent === "Good",
-        ),
-    );
+    await waitForCondition(() => buttonsNamed(container, "Good").length === 1);
 
-    const good = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Good",
-    );
+    const good = buttonsNamed(container, "Good")[0];
     if (!good) throw new Error("Good rating button not found");
     await act(async () => {
       good.click();

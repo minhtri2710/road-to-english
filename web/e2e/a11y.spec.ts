@@ -88,6 +88,13 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
     await inspect();
   }],
+  ["review recap with a card rated Again", async (page, inspect) => {
+    await openReviewWithDueCard(page);
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await page.getByRole("button", { name: "Again" }).click();
+    await expect(page.getByRole("heading", { name: "Rated Again" })).toBeVisible();
+    await inspect();
+  }],
   ["review with nothing to review", async (page, inspect) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Review", exact: true }).click();

@@ -3,7 +3,7 @@ import {
   fsrs,
   generatorParameters,
 } from "ts-fsrs";
-import { State } from "ts-fsrs";
+import { Rating, State } from "ts-fsrs";
 import type { Card, Grade } from "ts-fsrs";
 
 export { Rating, State } from "ts-fsrs";
@@ -101,11 +101,44 @@ export function createCard(input: NewCard, now: Date): VocabCard {
 // Rates at max(now, updatedAt + 1 ms, last_review): a clock behind another device's review would
 // make ts-fsrs throw, and a tie with the stored updatedAt would lose the merge. Stored times never
 // go backwards.
+function reviewTime(card: VocabCard, now: Date): Date {
+  return new Date(Math.max(now.getTime(), Date.parse(card.updatedAt) + 1, card.fsrs.last_review?.getTime() ?? 0));
+}
+
 export function reviewCard(card: VocabCard, rating: Grade, now: Date): VocabCard {
-  const at = new Date(
-    Math.max(now.getTime(), Date.parse(card.updatedAt) + 1, card.fsrs.last_review?.getTime() ?? 0),
-  );
+  const at = reviewTime(card, now);
   return { ...card, fsrs: scheduler.next(card.fsrs, at, rating).card, updatedAt: at.toISOString() };
+}
+
+export const GRADES: readonly Grade[] = [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy];
+
+// The due each grade would give if rated now: the reviewCard schedule, without the review.
+export function previewIntervals(card: VocabCard, now: Date): Record<Grade, Date> {
+  const preview = scheduler.repeat(card.fsrs, reviewTime(card, now));
+  return Object.fromEntries(GRADES.map((grade) => [grade, preview[grade].card.due])) as Record<Grade, Date>;
+}
+
+const MINUTE = 60_000;
+
+// A duration as short text: "<1 min", "N min", "N h", "N d", "N mo", "N y"; mo and y keep one decimal under 10.
+export function formatInterval(ms: number): string {
+  if (ms < MINUTE) {
+    return "<1 min";
+  }
+  const minutes = Math.round(ms / MINUTE);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.round(ms / (60 * MINUTE));
+  if (hours < 24) {
+    return `${hours} h`;
+  }
+  const days = Math.round(ms / (24 * 60 * MINUTE));
+  if (days < 30) {
+    return `${days} d`;
+  }
+  const [value, unit] = days < 365 ? [days / 30, "mo"] : [days / 365, "y"];
+  return `${value < 10 ? Number(value.toFixed(1)) : Math.round(value)} ${unit}`;
 }
 
 export function deleteCard(card: VocabCard, now: Date): VocabCard {

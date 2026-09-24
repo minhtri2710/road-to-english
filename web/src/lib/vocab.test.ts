@@ -2,7 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { mergeCard } from "./mergeCard";
 import { card as newCard } from "../test/fixtures";
-import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, splitCardBack, State, wordCardBack } from "./vocab";
+import {
+  capNewCards,
+  cardWord,
+  createCard,
+  deleteCard,
+  formatInterval,
+  GRADES,
+  isCardWord,
+  previewIntervals,
+  Rating,
+  restoreCard,
+  reviewCard,
+  splitCardBack,
+  State,
+  wordCardBack,
+} from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
 const input = {
@@ -130,6 +145,62 @@ describe("vocabulary cards", () => {
     expect(reviewCard(card, Rating.Good, now)).toEqual(
       reviewCard(card, Rating.Good, now),
     );
+  });
+});
+
+describe("previewIntervals", () => {
+  it("previews the due reviewCard gives for each grade", () => {
+    let card = newCard();
+    while (card.fsrs.state !== State.Review) {
+      card = reviewCard(card, Rating.Good, card.fsrs.due);
+    }
+    for (const subject of [newCard(), card]) {
+      const preview = previewIntervals(subject, subject.fsrs.due);
+      for (const grade of GRADES) {
+        expect(preview[grade]).toEqual(reviewCard(subject, grade, subject.fsrs.due).fsrs.due);
+      }
+    }
+  });
+
+  it("previews at the same clamped time as reviewCard when updatedAt is ahead of now", () => {
+    const stored = reviewCard(newCard(), Rating.Good, new Date(now.getTime() + 86_400_000));
+    const preview = previewIntervals(stored, now);
+    for (const grade of GRADES) {
+      expect(preview[grade]).toEqual(reviewCard(stored, grade, now).fsrs.due);
+    }
+  });
+
+  it("lists the grades from Again to Easy", () => {
+    expect(GRADES).toEqual([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy]);
+  });
+});
+
+describe("formatInterval", () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+
+  it.each([
+    [-5_000, "<1 min"],
+    [0, "<1 min"],
+    [MIN - 1, "<1 min"],
+    [MIN, "1 min"],
+    [59 * MIN, "59 min"],
+    [59.5 * MIN, "1 h"],
+    [HOUR, "1 h"],
+    [23 * HOUR, "23 h"],
+    [23.5 * HOUR, "1 d"],
+    [DAY, "1 d"],
+    [29 * DAY, "29 d"],
+    [30 * DAY, "1 mo"],
+    [45 * DAY, "1.5 mo"],
+    [299 * DAY, "10 mo"],
+    [364 * DAY, "12 mo"],
+    [365 * DAY, "1 y"],
+    [548 * DAY, "1.5 y"],
+    [3650 * DAY, "10 y"],
+  ])("formats %d ms as %s", (ms, text) => {
+    expect(formatInterval(ms)).toBe(text);
   });
 });
 
