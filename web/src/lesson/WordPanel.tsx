@@ -30,6 +30,14 @@ const styles = stylex.create({
   },
 });
 
+// Without a word, only the Saved state needs a name beyond the visible label.
+function saveLabel(saved: boolean, word: string | undefined): string | undefined {
+  if (word === undefined) {
+    return saved ? "Saved, remove from review deck" : undefined;
+  }
+  return saved ? `Saved “${word}”, remove from review deck` : `Save “${word}” to review`;
+}
+
 export function SaveToReview({
   card,
   label,
@@ -109,15 +117,7 @@ export function SaveToReview({
       <Button
         ref={buttonRef}
         label={saved ? "Saved" : label}
-        aria-label={
-          word === undefined
-            ? saved
-              ? "Saved, remove from review deck"
-              : undefined
-            : saved
-              ? `Saved “${word}”, remove from review deck`
-              : `Save “${word}” to review`
-        }
+        aria-label={saveLabel(saved, word)}
         variant="ghost"
         isDisabled={isSaving}
         // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
