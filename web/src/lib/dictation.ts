@@ -122,3 +122,57 @@ export function blankFor(text: string): { parts: string[]; index: number; answer
 export function blankMatches(typed: string, answer: string): boolean {
   return tokens(typed).join(" ") === tokens(answer).join(" ");
 }
+
+// The text with every letter masked but the first of each word and of each
+// hyphen part: "Good morning, T-shirt!" -> "G___ m______, T-s____!". Digits and
+// punctuation stay.
+export function hintFor(text: string): string {
+  return text.replace(/[A-Za-z0-9'’]+(?:-[A-Za-z0-9'’]+)*/g, (word) =>
+    word.replace(/[A-Za-z]/g, (letter, at: number) => (at === 0 || word[at - 1] === "-" ? letter : "_")),
+  );
+}
+
+// Normalized tokens drop apostrophes, so the "'s" ending is the "s" one.
+const ENDINGS = ["s", "es", "d", "ed", "t"];
+
+// Reference words of replaced entries typed without one of ENDINGS
+// ("want" for "wanted"), each once, in order.
+export function endingHints(diff: WordDiff[]): string[] {
+  const words = diff.flatMap((entry) =>
+    entry.kind === "replaced" && ENDINGS.some((ending) => entry.word === entry.typed + ending) ? [entry.word] : [],
+  );
+  return [...new Set(words)];
+}
+
+// A small string hash (FNV-1a), so the choice order is fixed per seed.
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  }
+  return h >>> 0;
+}
+
+// The answer and up to 3 distractors from lessonWords (splitWords parts of the
+// lesson; card words other than the answer by cardWord, each as written at its
+// first appearance, closest in length first, first appearance on ties),
+// ordered by seed. Empty when fewer than 2 distractors exist.
+export function wordBank(answer: string, lessonWords: string[], seed: string): string[] {
+  const written = new Map<string, string>();
+  for (const word of lessonWords) {
+    const key = cardWord(word);
+    if (isCardWord(key) && key !== cardWord(answer) && !written.has(key)) {
+      written.set(key, word);
+    }
+  }
+  const length = cardWord(answer).length;
+  const distractors = [...written.keys()]
+    .sort((a, b) => Math.abs(a.length - length) - Math.abs(b.length - length))
+    .slice(0, 3);
+  if (distractors.length < 2) {
+    return [];
+  }
+  return [cardWord(answer), ...distractors]
+    .sort((a, b) => hash(seed + a) - hash(seed + b))
+    .map((key) => written.get(key) ?? answer);
+}

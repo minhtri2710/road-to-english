@@ -1,54 +1,73 @@
-import { useRef, useState, type FormEvent, type RefObject } from "react";
+import { Fragment, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import { Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
-import { blankFor, blankMatches, diffWords, type WordDiff } from "../lib/dictation";
+import { blankFor, blankMatches, diffWords, endingHints, hintFor, wordBank, type WordDiff } from "../lib/dictation";
 import { speak, speechSupported } from "../lib/speech";
 
 const styles = stylex.create({
   wordCorrect: {
     color: "var(--color-success)",
   },
+  hearWord: {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "0.2em",
+  },
 });
 
 export type PracticeMode = "recording" | "check" | "dictation" | "blank";
 
-function wordLabel(entry: WordDiff, verb: "typed" | "said"): string {
+function wordNote(entry: WordDiff, verb: "typed" | "said"): string {
   switch (entry.kind) {
     case "correct":
-      return entry.word;
+      return "";
     case "missed":
-      return `${entry.word} (missed)`;
+      return " (missed)";
     case "replaced":
-      return `${entry.word} (you ${verb} "${entry.typed}")`;
+      return ` (you ${verb} "${entry.typed}")`;
     case "extra":
-      return `${entry.typed} (extra)`;
+      return " (extra)";
   }
 }
 
+// Missed and replaced reference words are buttons that speak the word when speech is supported.
 export function WordDiffResult({
   text,
   answer,
   verb,
   notes,
+  targetWpm,
+  speed,
+  stopMedia,
 }: {
   text: string;
   answer: string;
   verb: "typed" | "said";
   notes?: string;
+  targetWpm: number;
+  speed: number;
+  stopMedia: () => void;
 }) {
   const diff = diffWords(answer, text);
+  const total = diff.filter((entry) => entry.kind !== "extra").length;
+  const matched = diff.filter((entry) => entry.kind === "correct").length;
+  const endings = endingHints(diff);
+  const canSpeak = speechSupported();
   return (
     <VStack gap={1}>
-      <Text as="p">Reference: {text}</Text>
-      <Text as="p">
-        You {verb}: {answer}
+      <Text as="p" weight="semibold">
+        {matched === diff.length
+          ? `Correct: ${total} of ${total} words`
+          : `Not quite: ${matched} of ${total} words matched`}
       </Text>
+      <Text as="p">Reference: {text}</Text>
       <Text as="p">
         {diff.map((entry, index) => (
           <Text
@@ -58,14 +77,33 @@ export function WordDiffResult({
             xstyle={entry.kind === "correct" ? styles.wordCorrect : sharedStyles.error}
           >
             {index > 0 && " "}
-            {wordLabel(entry, verb)}
+            {entry.kind === "extra" ? (
+              entry.typed
+            ) : canSpeak && entry.kind !== "correct" ? (
+              <Button
+                label={entry.word}
+                aria-label={`Hear ${entry.word}`}
+                size="sm"
+                variant="ghost"
+                xstyle={styles.hearWord}
+                onClick={() => {
+                  stopMedia();
+                  speak(entry.word, targetWpm, speed);
+                }}
+              />
+            ) : (
+              entry.word
+            )}
+            {wordNote(entry, verb)}
           </Text>
         ))}
       </Text>
+      {endings.length > 0 && (
+        <Text as="p" type="supporting">
+          Check the ending sound: {endings.join(", ")}
+        </Text>
+      )}
       {notes && <Text as="p" type="supporting">{notes}</Text>}
-      <Text as="p" weight="semibold">
-        {diff.every((entry) => entry.kind === "correct") ? "Correct" : "Not quite"}
-      </Text>
     </VStack>
   );
 }
@@ -108,6 +146,7 @@ function AnswerForm({
   value,
   onChange,
   onSubmit,
+  children,
 }: {
   id: string;
   label: string;
@@ -115,6 +154,8 @@ function AnswerForm({
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  // Rendered between the input and Check.
+  children?: ReactNode;
 }) {
   return (
     <form
@@ -140,6 +181,7 @@ function AnswerForm({
           autoCapitalize="off"
           spellCheck={false}
         />
+        {children}
         <Button label="Check" variant="primary" type="submit" />
       </VStack>
     </form>
@@ -149,6 +191,7 @@ function AnswerForm({
 export function SentenceDictation({ id, text, notes, targetWpm, speed, practice, stopMedia }: QuizProps & { notes?: string }) {
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const checkAnswer = () => {
@@ -162,6 +205,7 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
   const tryAgain = () => {
     setTyped("");
     setChecked(null);
+    setShowHint(false);
     inputRef.current?.focus();
   };
 
@@ -176,9 +220,23 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
         onChange={setTyped}
         onSubmit={checkAnswer}
       />
+      <Button
+        label={showHint ? "Hide hint" : "Show hint"}
+        variant="ghost"
+        onClick={() => setShowHint((shown) => !shown)}
+      />
+      {showHint && <Text as="p">Hint: {hintFor(text)}</Text>}
       <Status>
         {checked !== null && (
-          <WordDiffResult text={text} answer={checked} verb="typed" notes={notes} />
+          <WordDiffResult
+            text={text}
+            answer={checked}
+            verb="typed"
+            notes={notes}
+            targetWpm={targetWpm}
+            speed={speed}
+            stopMedia={stopMedia}
+          />
         )}
       </Status>
       {checked !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
@@ -186,11 +244,21 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
   );
 }
 
-export function SentenceBlank({ id, text, targetWpm, speed, practice, stopMedia }: QuizProps) {
+// lessonWords (card words of the whole lesson) turns on the word bank.
+export function SentenceBlank({
+  id,
+  text,
+  targetWpm,
+  speed,
+  practice,
+  stopMedia,
+  lessonWords,
+}: QuizProps & { lessonWords?: string[] }) {
   const [typed, setTyped] = useState("");
   const [correct, setCorrect] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { parts, index, answer } = blankFor(text);
+  const choices = lessonWords ? wordBank(parts[index], lessonWords, id) : [];
 
   if (index === -1) {
     return <Text as="p">{text}</Text>;
@@ -213,7 +281,16 @@ export function SentenceBlank({ id, text, targetWpm, speed, practice, stopMedia 
   return (
     <VStack gap={1}>
       <Text as="p">
-        {parts.map((part, i) => (i === index ? "____" : part)).join("")}
+        {parts.map((part, i) =>
+          i === index ? (
+            <Fragment key={i}>
+              <span aria-hidden="true">____</span>
+              <VisuallyHidden>blank</VisuallyHidden>
+            </Fragment>
+          ) : (
+            part
+          ),
+        )}
       </Text>
       <PlayButton text={text} targetWpm={targetWpm} speed={speed} stopMedia={stopMedia} />
       <AnswerForm
@@ -223,7 +300,28 @@ export function SentenceBlank({ id, text, targetWpm, speed, practice, stopMedia 
         value={typed}
         onChange={setTyped}
         onSubmit={checkAnswer}
-      />
+      >
+        {choices.length > 0 && (
+          <VStack gap={1} role="group" aria-labelledby={`bank-${id}`}>
+            <Text as="span" type="supporting" id={`bank-${id}`}>
+              Choose a word
+            </Text>
+            <HStack gap={1} xstyle={sharedStyles.shadowingControls}>
+              {choices.map((choice) => (
+                <Button
+                  key={choice}
+                  label={choice}
+                  variant="secondary"
+                  onClick={() => {
+                    setTyped(choice);
+                    inputRef.current?.focus();
+                  }}
+                />
+              ))}
+            </HStack>
+          </VStack>
+        )}
+      </AnswerForm>
       <Status>
         {correct !== null && (
           <Text as="p" weight="semibold">

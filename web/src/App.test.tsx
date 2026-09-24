@@ -57,8 +57,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 36 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV and the Pronunciation check toggle) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(51);
+    // 39 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(54);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -748,7 +748,7 @@ describe("App", () => {
       });
       const { parts, index } = blankFor("We drink it every morning.");
       expect(view.container.textContent).toContain(
-        parts.map((part, i) => (i === index ? "____" : part)).join(""),
+        parts.map((part, i) => (i === index ? "____blank" : part)).join(""),
       );
       const blank = view.container.querySelector<HTMLInputElement>("#blank-s3");
       if (!blank) throw new Error("blank input not found");

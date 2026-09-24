@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blankFor, blankMatches, diffWords, splitWords } from "./dictation";
+import { blankFor, blankMatches, diffWords, endingHints, hintFor, splitWords, wordBank } from "./dictation";
 
 describe("normalization", () => {
   it.each([
@@ -191,5 +191,75 @@ describe("number equivalence", () => {
   it("applies to the blank check", () => {
     expect(blankMatches("7", "seven")).toBe(true);
     expect(blankMatches("8", "seven")).toBe(false);
+  });
+});
+
+describe("hintFor", () => {
+  it.each([
+    ["Good morning, how are you today?", "G___ m______, h__ a__ y__ t____?"],
+    ["I get up at 6:30.", "I g__ u_ a_ 6:30."],
+    ["It's 7 o'clock", "I_'_ 7 o'_____"],
+    ["I wear a T-shirt.", "I w___ a T-s____."],
+    ["", ""],
+  ])("masks %j", (text, hint) => {
+    expect(hintFor(text)).toBe(hint);
+  });
+});
+
+describe("endingHints", () => {
+  it.each([
+    ["s", "I work here", "He works here", "works"],
+    ["es", "She watch TV", "She watches TV", "watches"],
+    ["'s", "It is Lan book", "It is Lan's book", "lans"],
+    ["d", "I live there", "I lived there", "lived"],
+    ["ed", "I want tea", "I wanted tea", "wanted"],
+    ["t", "I learn it", "I learnt it", "learnt"],
+  ])("flags a dropped %s", (_ending, typed, reference, word) => {
+    expect(endingHints(diffWords(typed, reference))).toEqual([word]);
+  });
+
+  it("lists each flagged word once, in order", () => {
+    expect(endingHints(diffWords("I want tea and ask", "I wanted tea and asked"))).toEqual(["wanted", "asked"]);
+    expect(endingHints(diffWords("work work", "works works"))).toEqual(["works"]);
+  });
+
+  it.each([
+    ["another word", "I wander", "I wanted"],
+    ["a correct word", "I wanted tea", "I wanted tea"],
+    ["a missed word", "I tea", "I wanted tea"],
+    ["an added ending", "I wanted tea", "I want tea"],
+    ["an ending not on the list", "I go", "I going"],
+  ])("ignores %s", (_name, typed, reference) => {
+    expect(endingHints(diffWords(typed, reference))).toEqual([]);
+  });
+});
+
+describe("wordBank", () => {
+  const words = ["my", "name", "is", "lan", "i", "come", "from", "vietnam", "like", "coffee", "i'm", "twenty-five", ", "];
+
+  it("offers the answer and three distractors closest in length, first appearance on ties", () => {
+    const choices = wordBank("name", words, "about-me-1");
+    expect([...choices].sort()).toEqual(["come", "from", "like", "name"]);
+  });
+
+  it("skips the answer in any case and non-word parts", () => {
+    const choices = wordBank("Coffee", ["coffee", "COFFEE", "tea", "milk", ", "], "s");
+    expect([...choices].sort()).toEqual(["Coffee", "milk", "tea"]);
+  });
+
+  it("shows each word as written at its first appearance", () => {
+    const choices = wordBank("English", ["I", "come", "from", "Vietnam", ".", "vietnam", "English", "Come"], "s");
+    expect([...choices].sort()).toEqual(["English", "Vietnam", "come", "from"]);
+  });
+
+  it("orders the choices the same for the same seed and differently across seeds", () => {
+    expect(wordBank("name", words, "about-me-1")).toEqual(wordBank("name", words, "about-me-1"));
+    const orders = new Set(["a", "b", "c", "d", "e", "f"].map((seed) => wordBank("name", words, seed).join(" ")));
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it("offers no bank with fewer than two distractors", () => {
+    expect(wordBank("tea", ["tea", "milk"], "s")).toEqual([]);
+    expect(wordBank("tea", [], "s")).toEqual([]);
   });
 });

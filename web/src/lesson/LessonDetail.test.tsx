@@ -77,7 +77,8 @@ describe("LessonDetail", () => {
     await act(async () => {
       button("Fill the blank")?.click();
     });
-    expect(container.textContent).toContain("Good ____, how are you today?");
+    // The gap is aria-hidden; a visually hidden "blank" is read in its place.
+    expect(container.textContent).toContain("Good ____blank, how are you today?");
     expect(container.textContent).not.toContain("morning");
     expect(container.querySelector(`label[for="blank-${first.id}"]`)).not.toBeNull();
     expect(container.textContent).toContain("Goal 0/10");
@@ -709,7 +710,7 @@ describe("LessonDetail", () => {
       expect(buttonsNamed(remounted.container, "Check pronunciation")).toHaveLength(3);
     });
 
-    it("shows what was said, the diff, and counts one practice", async () => {
+    it("shows the word count, the diff, and counts one practice", async () => {
       const view = await openShadow();
       await waitForCondition(hasText(view.container, "Goal 0/10"));
       await enable(view.container);
@@ -724,8 +725,7 @@ describe("LessonDetail", () => {
         recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
         recognition.onend?.();
       });
-      expect(view.container.textContent).toContain("You said: good morning how are you today");
-      expect(view.container.textContent).toContain("Correct");
+      expect(view.container.textContent).toContain("Correct: 6 of 6 words");
       await waitForCondition(hasText(view.container, "Goal 1/10"));
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -733,7 +733,7 @@ describe("LessonDetail", () => {
       expect(view.container.textContent).toContain("Goal 1/10");
 
       await click(view.container, "Try again");
-      expect(view.container.textContent).not.toContain("You said:");
+      expect(view.container.textContent).not.toContain("Reference:");
     });
 
     it("labels a wrong word with what was said", async () => {
@@ -856,7 +856,7 @@ describe("LessonDetail", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
-      expect(view.container.textContent).not.toContain("You said:");
+      expect(view.container.textContent).not.toContain("Reference:");
       expect(view.container.textContent).not.toContain("Speech recognition couldn't reach its service.");
       expect(view.container.textContent).toContain("Goal 0/10");
       await close(view);
@@ -874,7 +874,7 @@ describe("LessonDetail", () => {
         setInputValue(input, "Good morning, how are you tomorrow?");
         input.form?.requestSubmit();
       });
-      expect(view.container.textContent).toContain("You typed: Good morning, how are you tomorrow?");
+      expect(view.container.textContent).toContain("Not quite: 5 of 6 words matched");
       expect(view.container.textContent).toContain('today (you typed "tomorrow")');
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
     });
@@ -1303,6 +1303,112 @@ describe("LessonDetail", () => {
         // 90 WPM is rate 0.5, halved by the 0.5x speed.
         expect(speech.spoken.at(-1)?.rate).toBe(0.25);
       }
+    });
+  });
+
+  describe("hide text", () => {
+    const AUTO_HIDE_KEY = "road-to-english.autoHideText";
+    const autoHideSwitch = (container: HTMLElement) =>
+      container.querySelector<HTMLInputElement>('input[role="switch"]');
+    const card = (container: HTMLElement, index: number) =>
+      container.querySelectorAll<HTMLElement>("ol > li")[index];
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("hides one sentence's text, notes and translation and keeps its practice controls", async () => {
+      installSpeechFakes();
+      const view = await openLesson();
+      await click(view.container, "Show Vietnamese");
+      const third = greetingsLesson.sentences[2];
+      const toggle = buttonsNamed(view.container, "Hide text")[2];
+      toggle.focus();
+      await act(async () => {
+        toggle.click();
+      });
+
+      expect(toggle.textContent).toBe("Show text");
+      expect(document.activeElement).toBe(toggle);
+      const hidden = card(view.container, 2);
+      expect(hidden.textContent).not.toContain("tomorrow");
+      expect(hidden.textContent).not.toContain(third.notes);
+      expect(hidden.textContent).not.toContain(third.vi);
+      expect(buttonsNamed(hidden, "Listen")).toHaveLength(1);
+      expect(buttonsNamed(hidden, "Loop")).toHaveLength(1);
+      expect(buttonsNamed(hidden, "Record")).toHaveLength(1);
+      expect(card(view.container, 0).textContent).toContain("morning");
+
+      await act(async () => {
+        toggle.click();
+      });
+      expect(toggle.textContent).toBe("Hide text");
+      expect(document.activeElement).toBe(toggle);
+      expect(card(view.container, 2).textContent).toContain(third.notes);
+    });
+
+    it("keeps the global transcript toggle hiding every sentence", async () => {
+      installSpeechFakes();
+      const view = await openLesson();
+      await click(view.container, "Hide transcript");
+      await click(view.container, "Hide text");
+      await click(view.container, "Show text");
+      expect(card(view.container, 0).textContent).not.toContain("morning");
+    });
+
+    it("hides a sentence after its first check when the remembered switch is on, per visit", async () => {
+      installSpeechFakes();
+      const instances: { onresult: ((event: unknown) => void) | null; onend: (() => void) | null }[] = [];
+      vi.stubGlobal(
+        "webkitSpeechRecognition",
+        class {
+          lang = "";
+          processLocally = false;
+          onresult: ((event: unknown) => void) | null = null;
+          onerror = null;
+          onend: (() => void) | null = null;
+          start = vi.fn();
+          abort = vi.fn();
+          constructor() {
+            instances.push(this);
+          }
+        },
+      );
+      localStorage.setItem("road-to-english.pronunciationCheck", "on");
+      const view = await openLesson();
+      const input = autoHideSwitch(view.container);
+      expect(input?.checked).toBe(false);
+      await act(async () => {
+        input?.click();
+      });
+      expect(localStorage.getItem(AUTO_HIDE_KEY)).toBe("on");
+
+      await click(view.container, "Check pronunciation");
+      await act(async () => {
+        instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
+        instances.at(-1)?.onend?.();
+      });
+      expect(card(view.container, 0).textContent).toContain("Correct: 6 of 6 words");
+      expect(buttonsNamed(card(view.container, 0), "morning")).toHaveLength(0);
+      expect(buttonsNamed(card(view.container, 0), "Show text")).toHaveLength(1);
+      expect(card(view.container, 1).textContent).toContain("nice");
+
+      await click(card(view.container, 0), "Show text");
+      await click(view.container, "Try again");
+      await click(view.container, "Check pronunciation");
+      await act(async () => {
+        instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
+      });
+      expect(buttonsNamed(card(view.container, 0), "Hide text")).toHaveLength(1);
+      await close(view);
+
+      const again = await openLesson();
+      expect(autoHideSwitch(again.container)?.checked).toBe(true);
+      expect(buttonsNamed(again.container, "Hide text")).toHaveLength(3);
+      await act(async () => {
+        autoHideSwitch(again.container)?.click();
+      });
+      expect(localStorage.getItem(AUTO_HIDE_KEY)).toBeNull();
     });
   });
 });

@@ -44,6 +44,27 @@ async function showImportError(page: Page): Promise<void> {
   await expect(page.getByText(/^Title must be/)).toBeVisible();
 }
 
+async function checkDictationWithHint(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("button", { name: "Show hint" }).first().click();
+  await page.getByLabel("What did you hear?").first().fill("Good, how are you tomorrow?");
+  await page.getByRole("button", { name: "Check" }).first().click();
+  await expect(page.getByRole("button", { name: "Hear morning" })).toBeVisible();
+}
+
+async function openA1WordBank(page: Page): Promise<void> {
+  await openLibraryLesson(page, "About Me");
+  await page.getByRole("button", { name: "Fill the blank" }).click();
+  await expect(page.getByRole("group", { name: "Choose a word" }).first()).toBeVisible();
+}
+
+async function hideFirstSentenceText(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await page.getByRole("button", { name: "Hide text" }).first().click();
+  await expect(page.getByRole("button", { name: "Show text" })).toBeVisible();
+}
+
 async function openVideoLesson(page: Page): Promise<void> {
   await createLesson(page, {
     title: "Video lesson",
@@ -73,6 +94,18 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await openLibraryLesson(page, LIBRARY_LESSON);
     await page.getByRole("button", { name: "Fill the blank" }).click();
     await expect(page.getByLabel("Which word fills the blank?").first()).toBeVisible();
+    await inspect();
+  }],
+  ["dictation result with the hint and diff word buttons", async (page, inspect) => {
+    await checkDictationWithHint(page);
+    await inspect();
+  }],
+  ["A1 blank with the word bank", async (page, inspect) => {
+    await openA1WordBank(page);
+    await inspect();
+  }],
+  ["shadow mode with one sentence's text hidden", async (page, inspect) => {
+    await hideFirstSentenceText(page);
     await inspect();
   }],
   ["pronunciation disclosure open", async (page, inspect) => {
@@ -311,6 +344,26 @@ test.describe("mobile 375x667", () => {
     expect(box?.height).toBeGreaterThanOrEqual(24);
   });
 });
+
+const PRACTICE_STATES: [string, (page: Page) => Promise<void>][] = [
+  ["dictation result with the hint", checkDictationWithHint],
+  ["A1 blank with the word bank", openA1WordBank],
+  ["shadow mode with one sentence's text hidden", hideFirstSentenceText],
+];
+
+for (const width of [320, 360]) {
+  test.describe(`practice controls at ${width}px`, () => {
+    test.use({ viewport: { width, height: 740 } });
+
+    for (const [name, reach] of PRACTICE_STATES) {
+      test(name, async ({ page }, testInfo) => {
+        await reach(page);
+        await page.screenshot({ path: testInfo.outputPath(`${width}.png`), fullPage: true });
+        expect(await layoutProblems(page)).toEqual([]);
+      });
+    }
+  });
+}
 
 async function motion(page: Page): Promise<string[]> {
   return page.evaluate(() => {

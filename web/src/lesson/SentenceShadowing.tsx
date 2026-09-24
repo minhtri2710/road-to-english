@@ -264,7 +264,14 @@ export function SentenceShadowing({
           </Text>
         )}
         {check.status === "heard" && (
-          <WordDiffResult text={text} answer={check.transcript} verb="said" />
+          <WordDiffResult
+            text={text}
+            answer={check.transcript}
+            verb="said"
+            targetWpm={targetWpm}
+            speed={speed}
+            stopMedia={stopMedia}
+          />
         )}
         {check.status === "failed" && (
           <Text as="p" color="primary" xstyle={sharedStyles.error}>

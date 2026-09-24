@@ -4,6 +4,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { Card } from "@astryxdesign/core/Card";
+import { Switch } from "@astryxdesign/core/Switch";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -14,6 +15,7 @@ import { Alert, ErrorMessage, Status, ViewHeading } from "../components/feedback
 import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
+import { splitWords } from "../lib/dictation";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "../lib/vocab";
@@ -37,6 +39,12 @@ const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";
 
 function readPronunciationCheck(): boolean {
   return localStorage.getItem(PRONUNCIATION_CHECK_KEY) === "on";
+}
+
+const AUTO_HIDE_TEXT_KEY = "road-to-english.autoHideText";
+
+function readAutoHideText(): boolean {
+  return localStorage.getItem(AUTO_HIDE_TEXT_KEY) === "on";
 }
 
 type LessonMode = "shadow" | "dictation" | "blank";
@@ -93,6 +101,16 @@ export function LessonDetail({
   const [showTranscript, setShowTranscript] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(false);
   const [pronunciationCheck, setPronunciationCheck] = useState(readPronunciationCheck);
+  const [autoHideText, setAutoHideText] = useState(readAutoHideText);
+  // Sentences whose text is hidden in shadow mode, for this lesson visit.
+  const [hiddenText, setHiddenText] = useState<ReadonlySet<string>>(new Set());
+  const setTextHidden = (sentenceId: string, hidden: boolean) =>
+    setHiddenText((current) => {
+      const next = new Set(current);
+      if (hidden) next.add(sentenceId);
+      else next.delete(sentenceId);
+      return next;
+    });
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const pronunciationSupported = recognitionSupported();
   const [selectedWord, setSelectedWord] = useState<{
@@ -104,6 +122,9 @@ export function LessonDetail({
     charIndex: number;
   } | null>(null);
   const [completeFailed, setCompleteFailed] = useState(false);
+  // A1 blanks offer a word bank drawn from the whole lesson.
+  const bankWords =
+    data.level === "A1" ? data.sentences.flatMap((sentence) => splitWords(sentence.text)) : undefined;
   const { stopMedia, video } = usePracticeMedia(data.videoId, () => {
     setLoopingSentenceId(null);
     setSpokenWord(null);
@@ -125,6 +146,14 @@ export function LessonDetail({
     }
     practiced.current.add(key);
     void recordPractice({ newCard: false });
+  };
+  // With autoHideText on, a sentence's first recording or check this visit hides its text.
+  const shadowPractice = (sentenceId: string, mode: PracticeMode) => {
+    const first = !["recording", "check"].some((shadowMode) => practiced.current.has(`${sentenceId}:${shadowMode}`));
+    practice(sentenceId, mode);
+    if (first && autoHideText) {
+      setTextHidden(sentenceId, true);
+    }
   };
 
   useEffect(() => {
@@ -239,6 +268,20 @@ export function LessonDetail({
           </>
         )}
       </HStack>
+      {mode === "shadow" && (
+        <Switch
+          label="Hide each sentence after I practise it"
+          value={autoHideText}
+          onChange={(checked) => {
+            if (checked) {
+              localStorage.setItem(AUTO_HIDE_TEXT_KEY, "on");
+            } else {
+              localStorage.removeItem(AUTO_HIDE_TEXT_KEY);
+            }
+            setAutoHideText(checked);
+          }}
+        />
+      )}
       {mode === "shadow" && !pronunciationSupported && (
         <Text as="p" type="supporting">
           Pronunciation check disabled: speech recognition is not supported in this browser.
@@ -277,7 +320,10 @@ export function LessonDetail({
         </Card>
       )}
       <VStack as="ol" gap={2} padding={0}>
-        {data.sentences.map((sentence) => (
+        {data.sentences.map((sentence) => {
+          const textHidden = hiddenText.has(sentence.id);
+          const showText = showTranscript && !textHidden;
+          return (
           <li key={sentence.id}>
             <Card padding={3} xstyle={sharedStyles.sentence}>
               {sentence.cue && (
@@ -295,7 +341,13 @@ export function LessonDetail({
               )}
               {mode === "shadow" ? (
                 <VStack gap={1}>
-                  {showTranscript && (
+                  <Button
+                    label={textHidden ? "Show text" : "Hide text"}
+                    variant="ghost"
+                    xstyle={styles.modeToggle}
+                    onClick={() => setTextHidden(sentence.id, !textHidden)}
+                  />
+                  {showText && (
                     <SentenceWords
                       text={sentence.text}
                       selected={
@@ -313,17 +365,17 @@ export function LessonDetail({
                       }
                     />
                   )}
-                  {showTranscript && sentence.notes && (
+                  {showText && sentence.notes && (
                     <Text as="p" type="supporting">
                       {sentence.notes}
                     </Text>
                   )}
-                  {showVietnamese && (
+                  {showVietnamese && !textHidden && (
                     <Text as="p" type="supporting">
                       <span lang="vi">{sentence.vi}</span>
                     </Text>
                   )}
-                  {showTranscript && selectedWord?.sentenceId === sentence.id && (
+                  {showText && selectedWord?.sentenceId === sentence.id && (
                     <WordPanel
                       key={cardWord(selectedWord.text)}
                       text={selectedWord.text}
@@ -356,7 +408,7 @@ export function LessonDetail({
                     }
                     sentenceId={sentence.id}
                     setSpokenWord={setSpokenWord}
-                    practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                    practice={(practiceMode) => shadowPractice(sentence.id, practiceMode)}
                     pronunciationCheck={pronunciationSupported && pronunciationCheck}
                     stopMedia={stopMedia}
                   />
@@ -389,6 +441,7 @@ export function LessonDetail({
                       speed={Number(speed)}
                       practice={(practiceMode) => practice(sentence.id, practiceMode)}
                       stopMedia={stopMedia}
+                      lessonWords={bankWords}
                     />
                   )}
                   <SaveToReview
@@ -403,7 +456,8 @@ export function LessonDetail({
               )}
             </Card>
           </li>
-        ))}
+          );
+        })}
       </VStack>
     </VStack>
   );
