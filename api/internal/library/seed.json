@@ -5,15 +5,15 @@
     "level": "A1",
     "targetWpm": 80,
     "sentences": [
-      { "id": "about-me-1", "text": "My name is Lan.", "vi": "Tôi tên là Lan." },
-      { "id": "about-me-2", "text": "I am twenty-five years old.", "vi": "Tôi hai mươi lăm tuổi.", "notes": "\"twenty-five\": the first t is always clear; in American English the second t often disappears (\"twenny\")" },
-      { "id": "about-me-3", "text": "I come from Vietnam.", "vi": "Tôi đến từ Việt Nam.", "notes": "\"I come\", but \"he comes\" and \"my friend comes\": add -s after he, she, it or one person" },
-      { "id": "about-me-4", "text": "I am a nurse.", "vi": "Tôi là y tá.", "notes": "use \"a\" before a job: a nurse, a teacher" },
-      { "id": "about-me-5", "text": "I work in a big hospital.", "vi": "Tôi làm việc ở một bệnh viện lớn.", "notes": "say the final /k/ in \"work\"" },
-      { "id": "about-me-6", "text": "I like music and coffee.", "vi": "Tôi thích âm nhạc và cà phê." },
-      { "id": "about-me-7", "text": "I can speak a little English.", "vi": "Tôi có thể nói một chút tiếng Anh." },
-      { "id": "about-me-8", "text": "My best friend is Mai.", "vi": "Bạn thân nhất của tôi là Mai.", "notes": "link \"best friend\": keep the /t/ short" },
-      { "id": "about-me-9", "text": "I don't like cold weather.", "vi": "Tôi không thích thời tiết lạnh.", "notes": "\"don't\" = do not" }
+      { "id": "about-me-1", "text": "My name is Lan.", "vi": "Tôi tên là Lan.", "viStatus": "draft" },
+      { "id": "about-me-2", "text": "I am twenty-five years old.", "vi": "Tôi hai mươi lăm tuổi.", "viStatus": "draft", "notes": "\"twenty-five\": the first t is always clear; in American English the second t often disappears (\"twenny\")" },
+      { "id": "about-me-3", "text": "I come from Vietnam.", "vi": "Tôi đến từ Việt Nam.", "viStatus": "draft", "notes": "\"I come\", but \"he comes\" and \"my friend comes\": add -s after he, she, it or one person" },
+      { "id": "about-me-4", "text": "I am a nurse.", "vi": "Tôi là y tá.", "viStatus": "draft", "notes": "use \"a\" before a job: a nurse, a teacher" },
+      { "id": "about-me-5", "text": "I work in a big hospital.", "vi": "Tôi làm việc ở một bệnh viện lớn.", "viStatus": "draft", "notes": "say the final /k/ in \"work\"" },
+      { "id": "about-me-6", "text": "I like music and coffee.", "vi": "Tôi thích âm nhạc và cà phê.", "viStatus": "draft" },
+      { "id": "about-me-7", "text": "I can speak a little English.", "vi": "Tôi có thể nói một chút tiếng Anh.", "viStatus": "draft" },
+      { "id": "about-me-8", "text": "My best friend is Mai.", "vi": "Bạn thân nhất của tôi là Mai.", "viStatus": "draft", "notes": "link \"best friend\": keep the /t/ short" },
+      { "id": "about-me-9", "text": "I don't like cold weather.", "vi": "Tôi không thích thời tiết lạnh.", "viStatus": "draft", "notes": "\"don't\" = do not" }
     ]
   },
   {
@@ -22,15 +22,15 @@
     "level": "A1",
     "targetWpm": 80,
     "sentences": [
-      { "id": "my-family-1", "text": "I have a small family.", "vi": "Tôi có một gia đình nhỏ.", "notes": "link \"have a\": ha-va" },
-      { "id": "my-family-2", "text": "My father is a doctor.", "vi": "Bố tôi là bác sĩ.", "notes": "\"father\": th /ð/, tongue between the teeth" },
-      { "id": "my-family-3", "text": "My mother cooks every day.", "vi": "Mẹ tôi nấu ăn mỗi ngày.", "notes": "\"cooks\" ends in /ks/: say the -s" },
-      { "id": "my-family-4", "text": "I have one brother and two sisters.", "vi": "Tôi có một người anh em trai và hai người chị em gái.", "notes": "\"sisters\" ends in /z/" },
-      { "id": "my-family-5", "text": "My brother is tall and funny.", "vi": "Anh trai tôi cao và vui tính." },
-      { "id": "my-family-6", "text": "My sister has long black hair.", "vi": "Chị gái tôi có mái tóc đen dài.", "notes": "\"has\" after he, she, it; \"have\" after I, you, we, they" },
-      { "id": "my-family-7", "text": "My grandmother lives with us.", "vi": "Bà tôi sống cùng chúng tôi.", "notes": "\"lives\" ends in /vz/" },
-      { "id": "my-family-8", "text": "We eat dinner together.", "vi": "Chúng tôi ăn tối cùng nhau." },
-      { "id": "my-family-9", "text": "I love my family very much.", "vi": "Tôi rất yêu gia đình mình." }
+      { "id": "my-family-1", "text": "I have a small family.", "vi": "Tôi có một gia đình nhỏ.", "viStatus": "draft", "notes": "link \"have a\": ha-va" },
+      { "id": "my-family-2", "text": "My father is a doctor.", "vi": "Bố tôi là bác sĩ.", "viStatus": "draft", "notes": "\"father\": th /ð/, tongue between the teeth" },
+      { "id": "my-family-3", "text": "My mother cooks every day.", "vi": "Mẹ tôi nấu ăn mỗi ngày.", "viStatus": "draft", "notes": "\"cooks\" ends in /ks/: say the -s" },
+      { "id": "my-family-4", "text": "I have one brother and two sisters.", "vi": "Tôi có một người anh em trai và hai người chị em gái.", "viStatus": "draft", "notes": "\"sisters\" ends in /z/" },
+      { "id": "my-family-5", "text": "My brother is tall and funny.", "vi": "Anh trai tôi cao và vui tính.", "viStatus": "draft" },
+      { "id": "my-family-6", "text": "My sister has long black hair.", "vi": "Chị gái tôi có mái tóc đen dài.", "viStatus": "draft", "notes": "\"has\" after he, she, it; \"have\" after I, you, we, they" },
+      { "id": "my-family-7", "text": "My grandmother lives with us.", "vi": "Bà tôi sống cùng chúng tôi.", "viStatus": "draft", "notes": "\"lives\" ends in /vz/" },
+      { "id": "my-family-8", "text": "We eat dinner together.", "vi": "Chúng tôi ăn tối cùng nhau.", "viStatus": "draft" },
+      { "id": "my-family-9", "text": "I love my family very much.", "vi": "Tôi rất yêu gia đình mình.", "viStatus": "draft" }
     ]
   },
   {
@@ -39,15 +39,15 @@
     "level": "A1",
     "targetWpm": 80,
     "sentences": [
-      { "id": "numbers-and-time-1", "text": "What time is it?", "vi": "Mấy giờ rồi?" },
-      { "id": "numbers-and-time-2", "text": "It's seven o'clock.", "vi": "Bây giờ là bảy giờ.", "notes": "\"o'clock\" only for whole hours" },
-      { "id": "numbers-and-time-3", "text": "It's half past three.", "vi": "Bây giờ là ba giờ rưỡi.", "notes": "half past three = 3:30" },
-      { "id": "numbers-and-time-4", "text": "I get up at six thirty.", "vi": "Tôi thức dậy lúc sáu giờ ba mươi.", "notes": "\"thirty\": th /θ/, air between tongue and teeth" },
-      { "id": "numbers-and-time-5", "text": "Today is Monday.", "vi": "Hôm nay là thứ Hai.", "notes": "days of the week start with a capital letter" },
-      { "id": "numbers-and-time-6", "text": "I have class on Tuesday and Thursday.", "vi": "Tôi có lớp vào thứ Ba và thứ Năm.", "notes": "Tuesday /ˈtuːzdeɪ/ vs Thursday /ˈθɝːzdeɪ/" },
-      { "id": "numbers-and-time-7", "text": "There are seven days in a week.", "vi": "Một tuần có bảy ngày." },
-      { "id": "numbers-and-time-8", "text": "My phone number is zero nine one two.", "vi": "Số điện thoại của tôi là không chín một hai.", "notes": "say phone numbers one digit at a time" },
-      { "id": "numbers-and-time-9", "text": "The shop opens at nine.", "vi": "Cửa hàng mở cửa lúc chín giờ.", "notes": "\"opens\" ends in /z/" }
+      { "id": "numbers-and-time-1", "text": "What time is it?", "vi": "Mấy giờ rồi?", "viStatus": "draft" },
+      { "id": "numbers-and-time-2", "text": "It's seven o'clock.", "vi": "Bây giờ là bảy giờ.", "viStatus": "draft", "notes": "\"o'clock\" only for whole hours" },
+      { "id": "numbers-and-time-3", "text": "It's half past three.", "vi": "Bây giờ là ba giờ rưỡi.", "viStatus": "draft", "notes": "half past three = 3:30" },
+      { "id": "numbers-and-time-4", "text": "I get up at six thirty.", "vi": "Tôi thức dậy lúc sáu giờ ba mươi.", "viStatus": "draft", "notes": "\"thirty\": th /θ/, air between tongue and teeth" },
+      { "id": "numbers-and-time-5", "text": "Today is Monday.", "vi": "Hôm nay là thứ Hai.", "viStatus": "draft", "notes": "days of the week start with a capital letter" },
+      { "id": "numbers-and-time-6", "text": "I have class on Tuesday and Thursday.", "vi": "Tôi có lớp vào thứ Ba và thứ Năm.", "viStatus": "draft", "notes": "Tuesday /ˈtuːzdeɪ/ vs Thursday /ˈθɝːzdeɪ/" },
+      { "id": "numbers-and-time-7", "text": "There are seven days in a week.", "vi": "Một tuần có bảy ngày.", "viStatus": "draft" },
+      { "id": "numbers-and-time-8", "text": "My phone number is zero nine one two.", "vi": "Số điện thoại của tôi là không chín một hai.", "viStatus": "draft", "notes": "say phone numbers one digit at a time" },
+      { "id": "numbers-and-time-9", "text": "The shop opens at nine.", "vi": "Cửa hàng mở cửa lúc chín giờ.", "viStatus": "draft", "notes": "\"opens\" ends in /z/" }
     ]
   },
   {
@@ -56,15 +56,15 @@
     "level": "A1",
     "targetWpm": 80,
     "sentences": [
-      { "id": "my-home-1", "text": "I live in a small flat.", "vi": "Tôi sống trong một căn hộ nhỏ." },
-      { "id": "my-home-2", "text": "My home has two bedrooms.", "vi": "Nhà tôi có hai phòng ngủ." },
-      { "id": "my-home-3", "text": "The kitchen is next to the living room.", "vi": "Bếp ở cạnh phòng khách." },
-      { "id": "my-home-4", "text": "There is a sofa in the living room.", "vi": "Có một cái ghế sofa trong phòng khách.", "notes": "\"there is\" for one thing, \"there are\" for two or more" },
-      { "id": "my-home-5", "text": "My bed is near the window.", "vi": "Giường của tôi ở gần cửa sổ." },
-      { "id": "my-home-6", "text": "The books are on the table.", "vi": "Những quyển sách ở trên bàn.", "notes": "\"books\" ends in /ks/" },
-      { "id": "my-home-7", "text": "The cat is under the chair.", "vi": "Con mèo ở dưới cái ghế." },
-      { "id": "my-home-8", "text": "We have a big fridge.", "vi": "Nhà chúng tôi có một cái tủ lạnh lớn." },
-      { "id": "my-home-9", "text": "I like my room a lot.", "vi": "Tôi rất thích phòng của mình." }
+      { "id": "my-home-1", "text": "I live in a small flat.", "vi": "Tôi sống trong một căn hộ nhỏ.", "viStatus": "draft" },
+      { "id": "my-home-2", "text": "My home has two bedrooms.", "vi": "Nhà tôi có hai phòng ngủ.", "viStatus": "draft" },
+      { "id": "my-home-3", "text": "The kitchen is next to the living room.", "vi": "Bếp ở cạnh phòng khách.", "viStatus": "draft" },
+      { "id": "my-home-4", "text": "There is a sofa in the living room.", "vi": "Có một cái ghế sofa trong phòng khách.", "viStatus": "draft", "notes": "\"there is\" for one thing, \"there are\" for two or more" },
+      { "id": "my-home-5", "text": "My bed is near the window.", "vi": "Giường của tôi ở gần cửa sổ.", "viStatus": "draft" },
+      { "id": "my-home-6", "text": "The books are on the table.", "vi": "Những quyển sách ở trên bàn.", "viStatus": "draft", "notes": "\"books\" ends in /ks/" },
+      { "id": "my-home-7", "text": "The cat is under the chair.", "vi": "Con mèo ở dưới cái ghế.", "viStatus": "draft" },
+      { "id": "my-home-8", "text": "We have a big fridge.", "vi": "Nhà chúng tôi có một cái tủ lạnh lớn.", "viStatus": "draft" },
+      { "id": "my-home-9", "text": "I like my room a lot.", "vi": "Tôi rất thích phòng của mình.", "viStatus": "draft" }
     ]
   },
   {
@@ -73,15 +73,66 @@
     "level": "A1",
     "targetWpm": 80,
     "sentences": [
-      { "id": "weather-and-clothes-1", "text": "It's sunny today.", "vi": "Hôm nay trời nắng." },
-      { "id": "weather-and-clothes-2", "text": "It's very hot in summer.", "vi": "Mùa hè trời rất nóng." },
-      { "id": "weather-and-clothes-3", "text": "It's raining now.", "vi": "Bây giờ trời đang mưa." },
-      { "id": "weather-and-clothes-4", "text": "Take your umbrella.", "vi": "Hãy mang theo ô của bạn." },
-      { "id": "weather-and-clothes-5", "text": "It's cold and windy in winter.", "vi": "Mùa đông trời lạnh và có gió." },
-      { "id": "weather-and-clothes-6", "text": "I wear a jacket when it's cold.", "vi": "Tôi mặc áo khoác khi trời lạnh.", "notes": "\"wear\" sounds like \"where\"" },
-      { "id": "weather-and-clothes-7", "text": "She likes her red dress.", "vi": "Cô ấy thích chiếc váy đỏ của mình.", "notes": "\"likes\" ends in /ks/" },
-      { "id": "weather-and-clothes-8", "text": "These shoes are new.", "vi": "Đôi giày này mới.", "notes": "\"shoes\" ends in /z/" },
-      { "id": "weather-and-clothes-9", "text": "I wear a T-shirt and shorts.", "vi": "Tôi mặc áo phông và quần soóc." }
+      { "id": "weather-and-clothes-1", "text": "It's sunny today.", "vi": "Hôm nay trời nắng.", "viStatus": "draft" },
+      { "id": "weather-and-clothes-2", "text": "It's very hot in summer.", "vi": "Mùa hè trời rất nóng.", "viStatus": "draft" },
+      { "id": "weather-and-clothes-3", "text": "It's raining now.", "vi": "Bây giờ trời đang mưa.", "viStatus": "draft" },
+      { "id": "weather-and-clothes-4", "text": "Take your umbrella.", "vi": "Hãy mang theo ô của bạn.", "viStatus": "draft" },
+      { "id": "weather-and-clothes-5", "text": "It's cold and windy in winter.", "vi": "Mùa đông trời lạnh và có gió.", "viStatus": "draft" },
+      { "id": "weather-and-clothes-6", "text": "I wear a jacket when it's cold.", "vi": "Tôi mặc áo khoác khi trời lạnh.", "viStatus": "draft", "notes": "\"wear\" sounds like \"where\"" },
+      { "id": "weather-and-clothes-7", "text": "She likes her red dress.", "vi": "Cô ấy thích chiếc váy đỏ của mình.", "viStatus": "draft", "notes": "\"likes\" ends in /ks/" },
+      { "id": "weather-and-clothes-8", "text": "These shoes are new.", "vi": "Đôi giày này mới.", "viStatus": "draft", "notes": "\"shoes\" ends in /z/" },
+      { "id": "weather-and-clothes-9", "text": "I wear a T-shirt and shorts.", "vi": "Tôi mặc áo phông và quần soóc.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "at-school",
+    "title": "At School",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "at-school-1", "text": "I go to school by bike.", "vi": "Tôi đi học bằng xe đạp.", "viStatus": "draft" },
+      { "id": "at-school-2", "text": "My school is near my house.", "vi": "Trường tôi ở gần nhà.", "viStatus": "draft", "notes": "\"school\": the \"ch\" sounds like /k/" },
+      { "id": "at-school-3", "text": "I have English on Monday.", "vi": "Tôi có tiết tiếng Anh vào thứ Hai.", "viStatus": "draft", "notes": "days of the week start with a capital letter" },
+      { "id": "at-school-4", "text": "Our teacher is very kind.", "vi": "Giáo viên của chúng tôi rất tốt bụng.", "viStatus": "draft" },
+      { "id": "at-school-5", "text": "I sit next to my friend.", "vi": "Tôi ngồi cạnh bạn tôi.", "viStatus": "draft", "notes": "link \"next to\": say the /t/ once" },
+      { "id": "at-school-6", "text": "We read books in class.", "vi": "Chúng tôi đọc sách trong lớp.", "viStatus": "draft", "notes": "\"books\" ends in /ks/" },
+      { "id": "at-school-7", "text": "I have a lot of homework.", "vi": "Tôi có rất nhiều bài tập về nhà.", "viStatus": "draft", "notes": "\"homework\" has no -s: not \"homeworks\"" },
+      { "id": "at-school-8", "text": "Lunch is at twelve o'clock.", "vi": "Bữa trưa lúc mười hai giờ.", "viStatus": "draft" },
+      { "id": "at-school-9", "text": "School finishes at four.", "vi": "Giờ học kết thúc lúc bốn giờ.", "viStatus": "draft", "notes": "\"finishes\" ends in /ɪz/: an extra syllable" }
+    ]
+  },
+  {
+    "id": "my-day-off",
+    "title": "My Day Off",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "my-day-off-1", "text": "Today is my day off.", "vi": "Hôm nay là ngày nghỉ của tôi.", "viStatus": "draft" },
+      { "id": "my-day-off-2", "text": "I get up late on Sunday.", "vi": "Chủ nhật tôi dậy muộn.", "viStatus": "draft", "notes": "link \"get up\": ge-tup" },
+      { "id": "my-day-off-3", "text": "I drink tea in the garden.", "vi": "Tôi uống trà trong vườn.", "viStatus": "draft" },
+      { "id": "my-day-off-4", "text": "I clean my room.", "vi": "Tôi dọn phòng của mình.", "viStatus": "draft" },
+      { "id": "my-day-off-5", "text": "I call my mother.", "vi": "Tôi gọi điện cho mẹ.", "viStatus": "draft" },
+      { "id": "my-day-off-6", "text": "In the afternoon, I watch a film.", "vi": "Buổi chiều, tôi xem một bộ phim.", "viStatus": "draft", "notes": "\"watch\" ends in /tʃ/" },
+      { "id": "my-day-off-7", "text": "My friends come to my house.", "vi": "Các bạn tôi đến nhà tôi chơi.", "viStatus": "draft", "notes": "\"friends\" ends in /dz/" },
+      { "id": "my-day-off-8", "text": "We cook dinner together.", "vi": "Chúng tôi cùng nhau nấu bữa tối.", "viStatus": "draft" },
+      { "id": "my-day-off-9", "text": "I go to bed early.", "vi": "Tôi đi ngủ sớm.", "viStatus": "draft", "notes": "\"bed\" ends in /d/: don't say \"bet\"" }
+    ]
+  },
+  {
+    "id": "pets-and-animals",
+    "title": "Pets & Animals",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "pets-and-animals-1", "text": "I have a small dog.", "vi": "Tôi có một con chó nhỏ.", "viStatus": "draft", "notes": "\"dog\" ends in /g/" },
+      { "id": "pets-and-animals-2", "text": "My dog is brown and white.", "vi": "Con chó của tôi màu nâu và trắng.", "viStatus": "draft" },
+      { "id": "pets-and-animals-3", "text": "He likes to run in the park.", "vi": "Nó thích chạy trong công viên.", "viStatus": "draft", "notes": "\"likes\" ends in /ks/" },
+      { "id": "pets-and-animals-4", "text": "My sister has a black cat.", "vi": "Chị gái tôi có một con mèo đen.", "viStatus": "draft" },
+      { "id": "pets-and-animals-5", "text": "The cat sleeps all day.", "vi": "Con mèo ngủ cả ngày.", "viStatus": "draft", "notes": "\"sleeps\": add -s after he, she, it" },
+      { "id": "pets-and-animals-6", "text": "Birds sing in the morning.", "vi": "Chim hót vào buổi sáng.", "viStatus": "draft", "notes": "\"birds\" ends in /dz/" },
+      { "id": "pets-and-animals-7", "text": "I feed my dog twice a day.", "vi": "Tôi cho chó ăn hai lần một ngày.", "viStatus": "draft" },
+      { "id": "pets-and-animals-8", "text": "Cows and horses live on farms.", "vi": "Bò và ngựa sống ở trang trại.", "viStatus": "draft" },
+      { "id": "pets-and-animals-9", "text": "My favorite animal is the elephant.", "vi": "Con vật tôi thích nhất là con voi.", "viStatus": "draft" }
     ]
   },
   {
@@ -90,15 +141,15 @@
     "level": "A2",
     "targetWpm": 90,
     "sentences": [
-      { "id": "greetings-basics-1", "text": "Good morning, how are you today?", "vi": "Chào buổi sáng, hôm nay bạn thế nào?" },
-      { "id": "greetings-basics-2", "text": "It is nice to meet you.", "vi": "Rất vui được gặp bạn." },
-      { "id": "greetings-basics-3", "text": "See you tomorrow.", "vi": "Hẹn gặp lại ngày mai.", "notes": "casual sign-off" },
-      { "id": "greetings-basics-4", "text": "What's your name?", "vi": "Bạn tên là gì?", "notes": "\"What's your\" often sounds like \"whatcha\" in fast speech" },
-      { "id": "greetings-basics-5", "text": "I'm from Vietnam, and I live in Hanoi.", "vi": "Tôi đến từ Việt Nam và tôi sống ở Hà Nội." },
-      { "id": "greetings-basics-6", "text": "Sorry, could you say that again?", "vi": "Xin lỗi, bạn có thể nói lại được không?" },
-      { "id": "greetings-basics-7", "text": "Thanks a lot for your help.", "vi": "Cảm ơn bạn rất nhiều vì đã giúp đỡ.", "notes": "link \"thanks a lot\": thank-sa-lot" },
-      { "id": "greetings-basics-8", "text": "Have a good weekend!", "vi": "Chúc bạn cuối tuần vui vẻ!" },
-      { "id": "greetings-basics-9", "text": "Long time no see. How have you been?", "vi": "Lâu rồi không gặp. Dạo này bạn thế nào?" }
+      { "id": "greetings-basics-1", "text": "Good morning, how are you today?", "vi": "Chào buổi sáng, hôm nay bạn thế nào?", "viStatus": "draft" },
+      { "id": "greetings-basics-2", "text": "It is nice to meet you.", "vi": "Rất vui được gặp bạn.", "viStatus": "draft" },
+      { "id": "greetings-basics-3", "text": "See you tomorrow.", "vi": "Hẹn gặp lại ngày mai.", "viStatus": "draft", "notes": "casual sign-off" },
+      { "id": "greetings-basics-4", "text": "What's your name?", "vi": "Bạn tên là gì?", "viStatus": "draft", "notes": "\"What's your\" often sounds like \"whatcha\" in fast speech" },
+      { "id": "greetings-basics-5", "text": "I'm from Vietnam, and I live in Hanoi.", "vi": "Tôi đến từ Việt Nam và tôi sống ở Hà Nội.", "viStatus": "draft" },
+      { "id": "greetings-basics-6", "text": "Sorry, could you say that again?", "vi": "Xin lỗi, bạn có thể nói lại được không?", "viStatus": "draft" },
+      { "id": "greetings-basics-7", "text": "Thanks a lot for your help.", "vi": "Cảm ơn bạn rất nhiều vì đã giúp đỡ.", "viStatus": "draft", "notes": "link \"thanks a lot\": thank-sa-lot" },
+      { "id": "greetings-basics-8", "text": "Have a good weekend!", "vi": "Chúc bạn cuối tuần vui vẻ!", "viStatus": "draft" },
+      { "id": "greetings-basics-9", "text": "Long time no see. How have you been?", "vi": "Lâu rồi không gặp. Dạo này bạn thế nào?", "viStatus": "draft" }
     ]
   },
   {
@@ -107,15 +158,15 @@
     "level": "A2",
     "targetWpm": 95,
     "sentences": [
-      { "id": "shopping-basics-1", "text": "How much is this shirt?", "vi": "Cái áo sơ mi này bao nhiêu tiền?", "notes": "shirt /ʃɜːrt/: start with \"sh\", not \"s\"" },
-      { "id": "shopping-basics-2", "text": "Do you have it in a smaller size?", "vi": "Bạn có cỡ nhỏ hơn không?" },
-      { "id": "shopping-basics-3", "text": "Can I try it on?", "vi": "Tôi mặc thử được không?", "notes": "link \"try it on\": try-i-ton" },
-      { "id": "shopping-basics-4", "text": "I'm just looking, thanks.", "vi": "Tôi chỉ xem thôi, cảm ơn." },
-      { "id": "shopping-basics-5", "text": "Can I pay by card?", "vi": "Tôi trả bằng thẻ được không?" },
-      { "id": "shopping-basics-6", "text": "Where is the fitting room?", "vi": "Phòng thử đồ ở đâu?" },
-      { "id": "shopping-basics-7", "text": "That's a bit too expensive for me.", "vi": "Cái đó hơi quá túi tiền của tôi." },
-      { "id": "shopping-basics-8", "text": "I'll take two of these, please.", "vi": "Cho tôi lấy hai cái này nhé." },
-      { "id": "shopping-basics-9", "text": "Could I have a bag, please?", "vi": "Cho tôi xin một cái túi được không?" }
+      { "id": "shopping-basics-1", "text": "How much is this shirt?", "vi": "Cái áo sơ mi này bao nhiêu tiền?", "viStatus": "draft", "notes": "shirt /ʃɜːrt/: start with \"sh\", not \"s\"" },
+      { "id": "shopping-basics-2", "text": "Do you have it in a smaller size?", "vi": "Bạn có cỡ nhỏ hơn không?", "viStatus": "draft" },
+      { "id": "shopping-basics-3", "text": "Can I try it on?", "vi": "Tôi mặc thử được không?", "viStatus": "draft", "notes": "link \"try it on\": try-i-ton" },
+      { "id": "shopping-basics-4", "text": "I'm just looking, thanks.", "vi": "Tôi chỉ xem thôi, cảm ơn.", "viStatus": "draft" },
+      { "id": "shopping-basics-5", "text": "Can I pay by card?", "vi": "Tôi trả bằng thẻ được không?", "viStatus": "draft" },
+      { "id": "shopping-basics-6", "text": "Where is the fitting room?", "vi": "Phòng thử đồ ở đâu?", "viStatus": "draft" },
+      { "id": "shopping-basics-7", "text": "That's a bit too expensive for me.", "vi": "Cái đó hơi quá túi tiền của tôi.", "viStatus": "draft" },
+      { "id": "shopping-basics-8", "text": "I'll take two of these, please.", "vi": "Cho tôi lấy hai cái này nhé.", "viStatus": "draft" },
+      { "id": "shopping-basics-9", "text": "Could I have a bag, please?", "vi": "Cho tôi xin một cái túi được không?", "viStatus": "draft" }
     ]
   },
   {
@@ -124,15 +175,15 @@
     "level": "A2",
     "targetWpm": 95,
     "sentences": [
-      { "id": "food-and-drinks-1", "text": "A table for two, please.", "vi": "Cho tôi một bàn hai người." },
-      { "id": "food-and-drinks-2", "text": "Can I see the menu?", "vi": "Cho tôi xem thực đơn được không?", "notes": "menu: stress on MEN" },
-      { "id": "food-and-drinks-3", "text": "I'd like a coffee with milk, please.", "vi": "Cho tôi một ly cà phê sữa." },
-      { "id": "food-and-drinks-4", "text": "Is this dish spicy?", "vi": "Món này có cay không?" },
-      { "id": "food-and-drinks-5", "text": "I don't eat meat.", "vi": "Tôi không ăn thịt." },
-      { "id": "food-and-drinks-6", "text": "Could we have some more water?", "vi": "Cho chúng tôi thêm ít nước được không?" },
-      { "id": "food-and-drinks-7", "text": "This soup is really delicious.", "vi": "Món súp này ngon thật." },
-      { "id": "food-and-drinks-8", "text": "Can we have the bill, please?", "vi": "Cho chúng tôi tính tiền nhé." },
-      { "id": "food-and-drinks-9", "text": "Let's get something to eat after class.", "vi": "Tan học mình đi ăn gì đó nhé." }
+      { "id": "food-and-drinks-1", "text": "A table for two, please.", "vi": "Cho tôi một bàn hai người.", "viStatus": "draft" },
+      { "id": "food-and-drinks-2", "text": "Can I see the menu?", "vi": "Cho tôi xem thực đơn được không?", "viStatus": "draft", "notes": "menu: stress on MEN" },
+      { "id": "food-and-drinks-3", "text": "I'd like a coffee with milk, please.", "vi": "Cho tôi một ly cà phê sữa.", "viStatus": "draft" },
+      { "id": "food-and-drinks-4", "text": "Is this dish spicy?", "vi": "Món này có cay không?", "viStatus": "draft" },
+      { "id": "food-and-drinks-5", "text": "I don't eat meat.", "vi": "Tôi không ăn thịt.", "viStatus": "draft" },
+      { "id": "food-and-drinks-6", "text": "Could we have some more water?", "vi": "Cho chúng tôi thêm ít nước được không?", "viStatus": "draft" },
+      { "id": "food-and-drinks-7", "text": "This soup is really delicious.", "vi": "Món súp này ngon thật.", "viStatus": "draft" },
+      { "id": "food-and-drinks-8", "text": "Can we have the bill, please?", "vi": "Cho chúng tôi tính tiền nhé.", "viStatus": "draft" },
+      { "id": "food-and-drinks-9", "text": "Let's get something to eat after class.", "vi": "Tan học mình đi ăn gì đó nhé.", "viStatus": "draft" }
     ]
   },
   {
@@ -141,15 +192,100 @@
     "level": "A2",
     "targetWpm": 100,
     "sentences": [
-      { "id": "asking-directions-1", "text": "Excuse me, where is the train station?", "vi": "Xin lỗi, ga tàu ở đâu ạ?" },
-      { "id": "asking-directions-2", "text": "Is it far from here?", "vi": "Chỗ đó có xa đây không?" },
-      { "id": "asking-directions-3", "text": "Go straight and turn left at the corner.", "vi": "Đi thẳng rồi rẽ trái ở góc đường." },
-      { "id": "asking-directions-4", "text": "It's next to the bank.", "vi": "Nó nằm cạnh ngân hàng." },
-      { "id": "asking-directions-5", "text": "You can walk there in five minutes.", "vi": "Bạn có thể đi bộ tới đó trong năm phút." },
-      { "id": "asking-directions-6", "text": "Which bus goes to the city center?", "vi": "Xe buýt nào đi vào trung tâm thành phố?" },
-      { "id": "asking-directions-7", "text": "I think I'm lost.", "vi": "Tôi nghĩ là tôi bị lạc rồi.", "notes": "lost /lɔːst/: keep the final \"st\"" },
-      { "id": "asking-directions-8", "text": "Take the second street on the right.", "vi": "Đi vào con đường thứ hai bên phải." },
-      { "id": "asking-directions-9", "text": "Can you show me on the map?", "vi": "Bạn chỉ cho tôi trên bản đồ được không?" }
+      { "id": "asking-directions-1", "text": "Excuse me, where is the train station?", "vi": "Xin lỗi, ga tàu ở đâu ạ?", "viStatus": "draft" },
+      { "id": "asking-directions-2", "text": "Is it far from here?", "vi": "Chỗ đó có xa đây không?", "viStatus": "draft" },
+      { "id": "asking-directions-3", "text": "Go straight and turn left at the corner.", "vi": "Đi thẳng rồi rẽ trái ở góc đường.", "viStatus": "draft" },
+      { "id": "asking-directions-4", "text": "It's next to the bank.", "vi": "Nó nằm cạnh ngân hàng.", "viStatus": "draft" },
+      { "id": "asking-directions-5", "text": "You can walk there in five minutes.", "vi": "Bạn có thể đi bộ tới đó trong năm phút.", "viStatus": "draft" },
+      { "id": "asking-directions-6", "text": "Which bus goes to the city center?", "vi": "Xe buýt nào đi vào trung tâm thành phố?", "viStatus": "draft" },
+      { "id": "asking-directions-7", "text": "I think I'm lost.", "vi": "Tôi nghĩ là tôi bị lạc rồi.", "viStatus": "draft", "notes": "lost /lɔːst/: keep the final \"st\"" },
+      { "id": "asking-directions-8", "text": "Take the second street on the right.", "vi": "Đi vào con đường thứ hai bên phải.", "viStatus": "draft" },
+      { "id": "asking-directions-9", "text": "Can you show me on the map?", "vi": "Bạn chỉ cho tôi trên bản đồ được không?", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "making-plans",
+    "title": "Making Plans",
+    "level": "A2",
+    "targetWpm": 95,
+    "sentences": [
+      { "id": "making-plans-1", "text": "Are you free on Saturday?", "vi": "Thứ Bảy bạn có rảnh không?", "viStatus": "draft", "notes": "let your voice go up at the end of a yes/no question" },
+      { "id": "making-plans-2", "text": "Let's go to the cinema.", "vi": "Mình đi xem phim đi.", "viStatus": "draft", "notes": "\"let's\" = let us" },
+      { "id": "making-plans-3", "text": "What time shall we meet?", "vi": "Mấy giờ chúng ta gặp nhau?", "viStatus": "draft" },
+      { "id": "making-plans-4", "text": "How about seven o'clock?", "vi": "Bảy giờ thì sao?", "viStatus": "draft" },
+      { "id": "making-plans-5", "text": "Sorry, I'm busy that evening.", "vi": "Xin lỗi, tối hôm đó tôi bận rồi.", "viStatus": "draft" },
+      { "id": "making-plans-6", "text": "Can we meet on Sunday instead?", "vi": "Mình gặp nhau vào Chủ nhật được không?", "viStatus": "draft", "notes": "\"instead\" = in place of the first plan" },
+      { "id": "making-plans-7", "text": "I'll book the tickets online.", "vi": "Tôi sẽ đặt vé trên mạng.", "viStatus": "draft", "notes": "\"I'll\" = I will" },
+      { "id": "making-plans-8", "text": "Let's meet in front of the station.", "vi": "Mình gặp nhau trước nhà ga nhé.", "viStatus": "draft" },
+      { "id": "making-plans-9", "text": "Text me if you're going to be late.", "vi": "Nếu bạn đến muộn thì nhắn tin cho tôi nhé.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "getting-around",
+    "title": "Getting Around",
+    "level": "A2",
+    "targetWpm": 100,
+    "sentences": [
+      { "id": "getting-around-1", "text": "How do you get to work?", "vi": "Bạn đi làm bằng gì?", "viStatus": "draft" },
+      { "id": "getting-around-2", "text": "I usually take the bus.", "vi": "Tôi thường đi xe buýt.", "viStatus": "draft", "notes": "\"bus\" ends in /s/, not /z/" },
+      { "id": "getting-around-3", "text": "The train is faster but more expensive.", "vi": "Tàu hỏa nhanh hơn nhưng đắt hơn.", "viStatus": "draft" },
+      { "id": "getting-around-4", "text": "Where can I buy a ticket?", "vi": "Tôi có thể mua vé ở đâu?", "viStatus": "draft" },
+      { "id": "getting-around-5", "text": "A one-way ticket costs two dollars.", "vi": "Vé một chiều giá hai đô la.", "viStatus": "draft", "notes": "\"costs\": say the /sts/ at the end" },
+      { "id": "getting-around-6", "text": "Does this bus stop at the hospital?", "vi": "Xe buýt này có dừng ở bệnh viện không?", "viStatus": "draft" },
+      { "id": "getting-around-7", "text": "You need to change at the next stop.", "vi": "Bạn cần đổi xe ở trạm kế tiếp.", "viStatus": "draft" },
+      { "id": "getting-around-8", "text": "The last train leaves at midnight.", "vi": "Chuyến tàu cuối cùng rời ga lúc nửa đêm.", "viStatus": "draft", "notes": "link \"last train\": say the /t/ once" },
+      { "id": "getting-around-9", "text": "It's quicker to walk from here.", "vi": "Từ đây đi bộ thì nhanh hơn.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "birthdays-and-parties",
+    "title": "Birthdays & Parties",
+    "level": "A2",
+    "targetWpm": 100,
+    "sentences": [
+      { "id": "birthdays-and-parties-1", "text": "When is your birthday?", "vi": "Sinh nhật bạn là ngày nào?", "viStatus": "draft" },
+      { "id": "birthdays-and-parties-2", "text": "My birthday is on the fifth of May.", "vi": "Sinh nhật tôi là ngày năm tháng Năm.", "viStatus": "draft", "notes": "\"fifth\" ends in /fθ/: say both sounds" },
+      { "id": "birthdays-and-parties-3", "text": "We're having a party on Friday night.", "vi": "Tối thứ Sáu chúng tôi tổ chức một bữa tiệc.", "viStatus": "draft", "notes": "\"we're having\": present continuous for a fixed plan" },
+      { "id": "birthdays-and-parties-4", "text": "Would you like to come?", "vi": "Bạn có muốn đến không?", "viStatus": "draft" },
+      { "id": "birthdays-and-parties-5", "text": "I'd love to. What should I bring?", "vi": "Mình rất muốn đến. Mình nên mang gì theo?", "viStatus": "draft", "notes": "\"I'd love to\" = yes, happily" },
+      { "id": "birthdays-and-parties-6", "text": "Just bring something to drink.", "vi": "Bạn chỉ cần mang theo gì đó để uống thôi.", "viStatus": "draft" },
+      { "id": "birthdays-and-parties-7", "text": "Happy birthday! This is for you.", "vi": "Chúc mừng sinh nhật! Cái này tặng bạn.", "viStatus": "draft" },
+      { "id": "birthdays-and-parties-8", "text": "Thank you, what a lovely present!", "vi": "Cảm ơn bạn, món quà đáng yêu quá!", "viStatus": "draft", "notes": "\"present\" here means a gift" },
+      { "id": "birthdays-and-parties-9", "text": "We sang and danced until late.", "vi": "Chúng tôi hát và nhảy đến khuya.", "viStatus": "draft", "notes": "\"sang\" is the past of \"sing\"; \"danced\" ends in /t/" }
+    ]
+  },
+  {
+    "id": "final-sounds-t-k-s-z",
+    "title": "Final Sounds: t, k, s, z",
+    "level": "A2",
+    "targetWpm": 90,
+    "sentences": [
+      { "id": "final-sounds-t-k-s-z-1", "text": "I like to lie on the grass.", "vi": "Tôi thích nằm trên bãi cỏ.", "viStatus": "draft", "notes": "\"like\" ends in /k/, \"lie\" has no final consonant: keep them apart; \"grass\" ends in /s/" },
+      { "id": "final-sounds-t-k-s-z-2", "text": "Good night, see you at nine.", "vi": "Chúc ngủ ngon, hẹn gặp lúc chín giờ.", "viStatus": "draft", "notes": "\"night\" ends in /t/, \"nine\" ends in /n/: don't drop the /t/" },
+      { "id": "final-sounds-t-k-s-z-3", "text": "The bus makes a loud buzz.", "vi": "Chiếc xe buýt kêu rè rè rất to.", "viStatus": "draft", "notes": "\"bus\" ends in /s/ with no voice, \"buzz\" ends in /z/ with the throat buzzing; \"makes\" ends in /ks/" },
+      { "id": "final-sounds-t-k-s-z-4", "text": "The cats sat on the cards.", "vi": "Mấy con mèo ngồi lên những tấm thiệp.", "viStatus": "draft", "notes": "\"cats\" ends in /ts/, \"cards\" ends in /dz/; \"sat\" ends in /t/" },
+      { "id": "final-sounds-t-k-s-z-5", "text": "Put the cup on the back seat.", "vi": "Đặt cái cốc lên ghế sau.", "viStatus": "draft", "notes": "\"put\" and \"seat\" end in /t/, \"back\" ends in /k/: finish each word" },
+      { "id": "final-sounds-t-k-s-z-6", "text": "I need a white hat, not a black one.", "vi": "Tôi cần một cái mũ trắng, không phải mũ đen.", "viStatus": "draft", "notes": "\"white\", \"hat\" and \"not\" end in /t/; \"black\" ends in /k/" },
+      { "id": "final-sounds-t-k-s-z-7", "text": "She keeps her keys in her bag.", "vi": "Cô ấy để chìa khóa trong túi xách.", "viStatus": "draft", "notes": "\"keeps\" ends in /s/, \"keys\" ends in /z/: the same letter s, two sounds" },
+      { "id": "final-sounds-t-k-s-z-8", "text": "Don't put ice in your eyes.", "vi": "Đừng cho đá vào mắt.", "viStatus": "draft", "notes": "\"ice\" ends in /s/, \"eyes\" ends in /z/; \"don't\" and \"put\" end in /t/" },
+      { "id": "final-sounds-t-k-s-z-9", "text": "Take a seat and look at the clock.", "vi": "Hãy ngồi xuống và nhìn đồng hồ.", "viStatus": "draft", "notes": "\"take\", \"look\" and \"clock\" end in /k/; \"seat\" and \"at\" end in /t/" }
+    ]
+  },
+  {
+    "id": "past-tense-ed-endings",
+    "title": "Past Tense -ed Endings",
+    "level": "A2",
+    "targetWpm": 90,
+    "sentences": [
+      { "id": "past-tense-ed-endings-1", "text": "I walked to work this morning.", "vi": "Sáng nay tôi đi bộ đi làm.", "viStatus": "draft", "notes": "\"walked\" ends in /t/: walk-t, one syllable" },
+      { "id": "past-tense-ed-endings-2", "text": "We played football after school.", "vi": "Chúng tôi chơi bóng đá sau giờ học.", "viStatus": "draft", "notes": "\"played\" ends in /d/: play-d, one syllable" },
+      { "id": "past-tense-ed-endings-3", "text": "She wanted a cup of tea.", "vi": "Cô ấy muốn một tách trà.", "viStatus": "draft", "notes": "\"wanted\" ends in /ɪd/: want-id, an extra syllable after t" },
+      { "id": "past-tense-ed-endings-4", "text": "He cooked dinner and washed the dishes.", "vi": "Anh ấy nấu bữa tối và rửa bát.", "viStatus": "draft", "notes": "\"cooked\" and \"washed\" both end in /t/" },
+      { "id": "past-tense-ed-endings-5", "text": "They moved to a new apartment last year.", "vi": "Năm ngoái họ chuyển đến một căn hộ mới.", "viStatus": "draft", "notes": "\"moved\" ends in /d/" },
+      { "id": "past-tense-ed-endings-6", "text": "The class started at nine and ended at noon.", "vi": "Lớp học bắt đầu lúc chín giờ và kết thúc lúc trưa.", "viStatus": "draft", "notes": "\"started\" and \"ended\" end in /ɪd/: after t or d, add a syllable" },
+      { "id": "past-tense-ed-endings-7", "text": "I stayed home and watched a film.", "vi": "Tôi ở nhà và xem một bộ phim.", "viStatus": "draft", "notes": "\"stayed\" ends in /d/, \"watched\" ends in /t/" },
+      { "id": "past-tense-ed-endings-8", "text": "My friend needed help, so I helped her.", "vi": "Bạn tôi cần giúp đỡ nên tôi đã giúp cô ấy.", "viStatus": "draft", "notes": "\"needed\" ends in /ɪd/, \"helped\" ends in /t/" },
+      { "id": "past-tense-ed-endings-9", "text": "We laughed, cleaned up and waited for the bus.", "vi": "Chúng tôi cười đùa, dọn dẹp rồi đợi xe buýt.", "viStatus": "draft", "notes": "\"laughed\" ends in /t/, \"cleaned\" ends in /d/, \"waited\" ends in /ɪd/" }
     ]
   },
   {
@@ -158,15 +294,15 @@
     "level": "B1",
     "targetWpm": 110,
     "sentences": [
-      { "id": "daily-routine-1", "text": "I usually review my plans before breakfast.", "vi": "Tôi thường xem lại kế hoạch của mình trước bữa sáng." },
-      { "id": "daily-routine-2", "text": "A short walk helps me focus at work.", "vi": "Một cuộc đi bộ ngắn giúp tôi tập trung khi làm việc." },
-      { "id": "daily-routine-3", "text": "In the evening, I prepare for the next day.", "vi": "Buổi tối, tôi chuẩn bị cho ngày hôm sau." },
-      { "id": "daily-routine-4", "text": "My alarm goes off at six, but I hardly ever get up right away.", "vi": "Chuông báo thức reo lúc sáu giờ, nhưng tôi hầu như không bao giờ dậy ngay." },
-      { "id": "daily-routine-5", "text": "I take the bus to work because parking is a nightmare.", "vi": "Tôi đi xe buýt đi làm vì chỗ đậu xe là một cơn ác mộng." },
-      { "id": "daily-routine-6", "text": "I try to have lunch away from my desk.", "vi": "Tôi cố gắng ăn trưa xa bàn làm việc." },
-      { "id": "daily-routine-7", "text": "After work, I'm gonna pick up some groceries.", "vi": "Sau giờ làm, tôi sẽ đi mua ít đồ tạp hóa.", "notes": "\"gonna\" = going to, casual speech only" },
-      { "id": "daily-routine-8", "text": "On weekends, I sleep in and call my parents.", "vi": "Cuối tuần, tôi ngủ nướng và gọi điện cho bố mẹ." },
-      { "id": "daily-routine-9", "text": "I usually go to bed around eleven.", "vi": "Tôi thường đi ngủ khoảng mười một giờ." }
+      { "id": "daily-routine-1", "text": "I usually review my plans before breakfast.", "vi": "Tôi thường xem lại kế hoạch của mình trước bữa sáng.", "viStatus": "draft" },
+      { "id": "daily-routine-2", "text": "A short walk helps me focus at work.", "vi": "Một cuộc đi bộ ngắn giúp tôi tập trung khi làm việc.", "viStatus": "draft" },
+      { "id": "daily-routine-3", "text": "In the evening, I prepare for the next day.", "vi": "Buổi tối, tôi chuẩn bị cho ngày hôm sau.", "viStatus": "draft" },
+      { "id": "daily-routine-4", "text": "My alarm goes off at six, but I hardly ever get up right away.", "vi": "Chuông báo thức reo lúc sáu giờ, nhưng tôi hầu như không bao giờ dậy ngay.", "viStatus": "draft" },
+      { "id": "daily-routine-5", "text": "I take the bus to work because parking is a nightmare.", "vi": "Tôi đi xe buýt đi làm vì chỗ đậu xe là một cơn ác mộng.", "viStatus": "draft" },
+      { "id": "daily-routine-6", "text": "I try to have lunch away from my desk.", "vi": "Tôi cố gắng ăn trưa xa bàn làm việc.", "viStatus": "draft" },
+      { "id": "daily-routine-7", "text": "After work, I'm gonna pick up some groceries.", "vi": "Sau giờ làm, tôi sẽ đi mua ít đồ tạp hóa.", "viStatus": "draft", "notes": "\"gonna\" = going to, casual speech only" },
+      { "id": "daily-routine-8", "text": "On weekends, I sleep in and call my parents.", "vi": "Cuối tuần, tôi ngủ nướng và gọi điện cho bố mẹ.", "viStatus": "draft" },
+      { "id": "daily-routine-9", "text": "I usually go to bed around eleven.", "vi": "Tôi thường đi ngủ khoảng mười một giờ.", "viStatus": "draft" }
     ]
   },
   {
@@ -175,15 +311,15 @@
     "level": "B1",
     "targetWpm": 115,
     "sentences": [
-      { "id": "travel-plans-1", "text": "We're thinking of going to Da Nang next month.", "vi": "Chúng tôi đang tính đi Đà Nẵng vào tháng tới." },
-      { "id": "travel-plans-2", "text": "I'd like to book a room for three nights.", "vi": "Tôi muốn đặt một phòng trong ba đêm." },
-      { "id": "travel-plans-3", "text": "Is breakfast included in the price?", "vi": "Giá phòng có bao gồm bữa sáng không?" },
-      { "id": "travel-plans-4", "text": "Our flight was delayed by two hours.", "vi": "Chuyến bay của chúng tôi bị hoãn hai tiếng." },
-      { "id": "travel-plans-5", "text": "Could you recommend somewhere to eat nearby?", "vi": "Bạn có thể gợi ý chỗ nào ăn gần đây không?" },
-      { "id": "travel-plans-6", "text": "I'd rather take the train than drive.", "vi": "Tôi thà đi tàu còn hơn lái xe." },
-      { "id": "travel-plans-7", "text": "Don't forget to bring your passport.", "vi": "Đừng quên mang theo hộ chiếu nhé.", "notes": "passport: stress on PASS" },
-      { "id": "travel-plans-8", "text": "What time do we need to check out?", "vi": "Mấy giờ chúng ta phải trả phòng?" },
-      { "id": "travel-plans-9", "text": "The view from the hotel was amazing.", "vi": "Cảnh nhìn từ khách sạn thật tuyệt vời." }
+      { "id": "travel-plans-1", "text": "We're thinking of going to Da Nang next month.", "vi": "Chúng tôi đang tính đi Đà Nẵng vào tháng tới.", "viStatus": "draft" },
+      { "id": "travel-plans-2", "text": "I'd like to book a room for three nights.", "vi": "Tôi muốn đặt một phòng trong ba đêm.", "viStatus": "draft" },
+      { "id": "travel-plans-3", "text": "Is breakfast included in the price?", "vi": "Giá phòng có bao gồm bữa sáng không?", "viStatus": "draft" },
+      { "id": "travel-plans-4", "text": "Our flight was delayed by two hours.", "vi": "Chuyến bay của chúng tôi bị hoãn hai tiếng.", "viStatus": "draft" },
+      { "id": "travel-plans-5", "text": "Could you recommend somewhere to eat nearby?", "vi": "Bạn có thể gợi ý chỗ nào ăn gần đây không?", "viStatus": "draft" },
+      { "id": "travel-plans-6", "text": "I'd rather take the train than drive.", "vi": "Tôi thà đi tàu còn hơn lái xe.", "viStatus": "draft" },
+      { "id": "travel-plans-7", "text": "Don't forget to bring your passport.", "vi": "Đừng quên mang theo hộ chiếu nhé.", "viStatus": "draft", "notes": "passport: stress on PASS" },
+      { "id": "travel-plans-8", "text": "What time do we need to check out?", "vi": "Mấy giờ chúng ta phải trả phòng?", "viStatus": "draft" },
+      { "id": "travel-plans-9", "text": "The view from the hotel was amazing.", "vi": "Cảnh nhìn từ khách sạn thật tuyệt vời.", "viStatus": "draft" }
     ]
   },
   {
@@ -192,15 +328,15 @@
     "level": "B1",
     "targetWpm": 115,
     "sentences": [
-      { "id": "phone-calls-1", "text": "Hi, this is Linh. Is Mark there?", "vi": "Chào, tôi là Linh đây. Có Mark ở đó không?", "notes": "on the phone, say \"this is\", not \"I am\"" },
-      { "id": "phone-calls-2", "text": "Sorry, you're breaking up. Can you hear me?", "vi": "Xin lỗi, tiếng bạn bị ngắt quãng. Bạn có nghe tôi nói không?" },
-      { "id": "phone-calls-3", "text": "Could you ask him to call me back?", "vi": "Bạn có thể nhắn anh ấy gọi lại cho tôi được không?" },
-      { "id": "phone-calls-4", "text": "I'm calling about the apartment you advertised.", "vi": "Tôi gọi về căn hộ mà bạn đã đăng quảng cáo." },
-      { "id": "phone-calls-5", "text": "Can I leave a message?", "vi": "Tôi có thể để lại lời nhắn không?" },
-      { "id": "phone-calls-6", "text": "Hold on a second, I'll put you through.", "vi": "Chờ một chút, tôi sẽ nối máy cho bạn." },
-      { "id": "phone-calls-7", "text": "Sorry, I think you've got the wrong number.", "vi": "Xin lỗi, tôi nghĩ bạn gọi nhầm số rồi." },
-      { "id": "phone-calls-8", "text": "Let me just grab a pen.", "vi": "Để tôi lấy cây bút đã." },
-      { "id": "phone-calls-9", "text": "Thanks for calling. Talk to you soon.", "vi": "Cảm ơn bạn đã gọi. Nói chuyện sau nhé." }
+      { "id": "phone-calls-1", "text": "Hi, this is Linh. Is Mark there?", "vi": "Chào, tôi là Linh đây. Có Mark ở đó không?", "viStatus": "draft", "notes": "on the phone, say \"this is\", not \"I am\"" },
+      { "id": "phone-calls-2", "text": "Sorry, you're breaking up. Can you hear me?", "vi": "Xin lỗi, tiếng bạn bị ngắt quãng. Bạn có nghe tôi nói không?", "viStatus": "draft" },
+      { "id": "phone-calls-3", "text": "Could you ask him to call me back?", "vi": "Bạn có thể nhắn anh ấy gọi lại cho tôi được không?", "viStatus": "draft" },
+      { "id": "phone-calls-4", "text": "I'm calling about the apartment you advertised.", "vi": "Tôi gọi về căn hộ mà bạn đã đăng quảng cáo.", "viStatus": "draft" },
+      { "id": "phone-calls-5", "text": "Can I leave a message?", "vi": "Tôi có thể để lại lời nhắn không?", "viStatus": "draft" },
+      { "id": "phone-calls-6", "text": "Hold on a second, I'll put you through.", "vi": "Chờ một chút, tôi sẽ nối máy cho bạn.", "viStatus": "draft" },
+      { "id": "phone-calls-7", "text": "Sorry, I think you've got the wrong number.", "vi": "Xin lỗi, tôi nghĩ bạn gọi nhầm số rồi.", "viStatus": "draft" },
+      { "id": "phone-calls-8", "text": "Let me just grab a pen.", "vi": "Để tôi lấy cây bút đã.", "viStatus": "draft" },
+      { "id": "phone-calls-9", "text": "Thanks for calling. Talk to you soon.", "vi": "Cảm ơn bạn đã gọi. Nói chuyện sau nhé.", "viStatus": "draft" }
     ]
   },
   {
@@ -209,15 +345,66 @@
     "level": "B1",
     "targetWpm": 120,
     "sentences": [
-      { "id": "health-visit-1", "text": "I'd like to make an appointment with a doctor.", "vi": "Tôi muốn đặt lịch hẹn với bác sĩ." },
-      { "id": "health-visit-2", "text": "I've had a sore throat since Monday.", "vi": "Tôi bị đau họng từ thứ Hai.", "notes": "throat /θroʊt/: tongue between teeth for \"th\"" },
-      { "id": "health-visit-3", "text": "My head hurts and I feel a bit dizzy.", "vi": "Tôi đau đầu và thấy hơi chóng mặt." },
-      { "id": "health-visit-4", "text": "Are you allergic to any medicine?", "vi": "Bạn có bị dị ứng với loại thuốc nào không?" },
-      { "id": "health-visit-5", "text": "Take one tablet twice a day after meals.", "vi": "Uống một viên, ngày hai lần sau bữa ăn." },
-      { "id": "health-visit-6", "text": "You should get plenty of rest and drink lots of water.", "vi": "Bạn nên nghỉ ngơi nhiều và uống nhiều nước." },
-      { "id": "health-visit-7", "text": "How long will it take to get better?", "vi": "Mất bao lâu thì tôi khỏe lại?" },
-      { "id": "health-visit-8", "text": "I need a note for my employer.", "vi": "Tôi cần một giấy xác nhận để nộp cho công ty." },
-      { "id": "health-visit-9", "text": "If it gets worse, come back and see me.", "vi": "Nếu bệnh nặng hơn, hãy quay lại gặp tôi." }
+      { "id": "health-visit-1", "text": "I'd like to make an appointment with a doctor.", "vi": "Tôi muốn đặt lịch hẹn với bác sĩ.", "viStatus": "draft" },
+      { "id": "health-visit-2", "text": "I've had a sore throat since Monday.", "vi": "Tôi bị đau họng từ thứ Hai.", "viStatus": "draft", "notes": "throat /θroʊt/: tongue between teeth for \"th\"" },
+      { "id": "health-visit-3", "text": "My head hurts and I feel a bit dizzy.", "vi": "Tôi đau đầu và thấy hơi chóng mặt.", "viStatus": "draft" },
+      { "id": "health-visit-4", "text": "Are you allergic to any medicine?", "vi": "Bạn có bị dị ứng với loại thuốc nào không?", "viStatus": "draft" },
+      { "id": "health-visit-5", "text": "Take one tablet twice a day after meals.", "vi": "Uống một viên, ngày hai lần sau bữa ăn.", "viStatus": "draft" },
+      { "id": "health-visit-6", "text": "You should get plenty of rest and drink lots of water.", "vi": "Bạn nên nghỉ ngơi nhiều và uống nhiều nước.", "viStatus": "draft" },
+      { "id": "health-visit-7", "text": "How long will it take to get better?", "vi": "Mất bao lâu thì tôi khỏe lại?", "viStatus": "draft" },
+      { "id": "health-visit-8", "text": "I need a note for my employer.", "vi": "Tôi cần một giấy xác nhận để nộp cho công ty.", "viStatus": "draft" },
+      { "id": "health-visit-9", "text": "If it gets worse, come back and see me.", "vi": "Nếu bệnh nặng hơn, hãy quay lại gặp tôi.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "renting-an-apartment",
+    "title": "Renting an Apartment",
+    "level": "B1",
+    "targetWpm": 110,
+    "sentences": [
+      { "id": "renting-an-apartment-1", "text": "I'm looking for a one-bedroom apartment near the city center.", "vi": "Tôi đang tìm một căn hộ một phòng ngủ gần trung tâm thành phố.", "viStatus": "draft" },
+      { "id": "renting-an-apartment-2", "text": "How much is the rent per month?", "vi": "Tiền thuê mỗi tháng là bao nhiêu?", "viStatus": "draft" },
+      { "id": "renting-an-apartment-3", "text": "Are bills included, or do I pay them separately?", "vi": "Tiền điện nước đã bao gồm chưa, hay tôi phải trả riêng?", "viStatus": "draft", "notes": "in an either/or question, the voice goes up on the first choice and down on the last" },
+      { "id": "renting-an-apartment-4", "text": "The landlord wants a deposit of one month's rent.", "vi": "Chủ nhà muốn đặt cọc một tháng tiền thuê.", "viStatus": "draft", "notes": "\"month's\": keep the th before the s" },
+      { "id": "renting-an-apartment-5", "text": "Is the apartment furnished?", "vi": "Căn hộ có sẵn đồ đạc không?", "viStatus": "draft", "notes": "\"furnished\" = with furniture already inside" },
+      { "id": "renting-an-apartment-6", "text": "The kitchen is small, but it gets a lot of light.", "vi": "Bếp nhỏ nhưng có nhiều ánh sáng.", "viStatus": "draft" },
+      { "id": "renting-an-apartment-7", "text": "Can I come and see it this weekend?", "vi": "Cuối tuần này tôi đến xem được không?", "viStatus": "draft" },
+      { "id": "renting-an-apartment-8", "text": "The contract is for twelve months.", "vi": "Hợp đồng có thời hạn mười hai tháng.", "viStatus": "draft" },
+      { "id": "renting-an-apartment-9", "text": "Please let me know if anything breaks.", "vi": "Nếu có gì bị hỏng thì cứ báo cho tôi nhé.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "job-interview",
+    "title": "Job Interview",
+    "level": "B1",
+    "targetWpm": 115,
+    "sentences": [
+      { "id": "job-interview-1", "text": "Thank you for inviting me to this interview.", "vi": "Cảm ơn quý công ty đã mời tôi đến buổi phỏng vấn này.", "viStatus": "draft" },
+      { "id": "job-interview-2", "text": "Could you tell me a little about yourself?", "vi": "Bạn có thể giới thiệu đôi chút về bản thân không?", "viStatus": "draft" },
+      { "id": "job-interview-3", "text": "I've worked in customer service for three years.", "vi": "Tôi đã làm trong lĩnh vực chăm sóc khách hàng được ba năm.", "viStatus": "draft", "notes": "\"I've worked ... for three years\": present perfect for something that is still true now" },
+      { "id": "job-interview-4", "text": "My main strength is that I stay calm under pressure.", "vi": "Điểm mạnh chính của tôi là luôn giữ bình tĩnh khi chịu áp lực.", "viStatus": "draft" },
+      { "id": "job-interview-5", "text": "I'm applying because I want to grow in this field.", "vi": "Tôi ứng tuyển vì muốn phát triển trong lĩnh vực này.", "viStatus": "draft" },
+      { "id": "job-interview-6", "text": "In my last job, I trained new staff.", "vi": "Ở công việc trước, tôi đã đào tạo nhân viên mới.", "viStatus": "draft", "notes": "\"trained\" ends in /d/" },
+      { "id": "job-interview-7", "text": "Where do you see yourself in five years?", "vi": "Bạn hình dung bản thân sẽ ở đâu sau năm năm nữa?", "viStatus": "draft" },
+      { "id": "job-interview-8", "text": "Is there any training for new employees?", "vi": "Công ty có chương trình đào tạo cho nhân viên mới không?", "viStatus": "draft" },
+      { "id": "job-interview-9", "text": "When can I expect to hear from you?", "vi": "Khi nào tôi có thể nhận được phản hồi từ quý công ty?", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "hobbies-and-free-time",
+    "title": "Hobbies & Free Time",
+    "level": "B1",
+    "targetWpm": 120,
+    "sentences": [
+      { "id": "hobbies-and-free-time-1", "text": "What do you like doing in your free time?", "vi": "Lúc rảnh bạn thích làm gì?", "viStatus": "draft", "notes": "\"like doing\" and \"like to do\" are both correct" },
+      { "id": "hobbies-and-free-time-2", "text": "I've been learning the guitar for a year.", "vi": "Tôi học đàn ghi-ta được một năm rồi.", "viStatus": "draft" },
+      { "id": "hobbies-and-free-time-3", "text": "I go swimming twice a week to stay fit.", "vi": "Tôi đi bơi hai lần một tuần để giữ sức khỏe.", "viStatus": "draft" },
+      { "id": "hobbies-and-free-time-4", "text": "My brother is really into photography.", "vi": "Anh trai tôi rất mê nhiếp ảnh.", "viStatus": "draft", "notes": "\"be into something\" = like it a lot" },
+      { "id": "hobbies-and-free-time-5", "text": "We sometimes go hiking in the mountains.", "vi": "Thỉnh thoảng chúng tôi đi leo núi.", "viStatus": "draft" },
+      { "id": "hobbies-and-free-time-6", "text": "Reading helps me relax after a long day.", "vi": "Đọc sách giúp tôi thư giãn sau một ngày dài.", "viStatus": "draft" },
+      { "id": "hobbies-and-free-time-7", "text": "I used to play chess, but I don't have time now.", "vi": "Trước đây tôi hay chơi cờ vua, nhưng giờ tôi không có thời gian.", "viStatus": "draft", "notes": "\"used to\" = something you did often in the past but not now; say \"yoost-tuh\"" },
+      { "id": "hobbies-and-free-time-8", "text": "Have you ever tried painting?", "vi": "Bạn đã bao giờ thử vẽ tranh chưa?", "viStatus": "draft" },
+      { "id": "hobbies-and-free-time-9", "text": "It's a great way to meet new people.", "vi": "Đó là một cách tuyệt vời để làm quen với người mới.", "viStatus": "draft" }
     ]
   },
   {
@@ -226,15 +413,15 @@
     "level": "B2",
     "targetWpm": 130,
     "sentences": [
-      { "id": "careful-decisions-1", "text": "She compared the options before making a commitment.", "vi": "Cô ấy đã so sánh các lựa chọn trước khi cam kết." },
-      { "id": "careful-decisions-2", "text": "A clear explanation can prevent an unnecessary disagreement.", "vi": "Một lời giải thích rõ ràng có thể ngăn một bất đồng không cần thiết." },
-      { "id": "careful-decisions-3", "text": "We changed the plan after considering the long-term effects.", "vi": "Chúng tôi đã thay đổi kế hoạch sau khi cân nhắc những ảnh hưởng lâu dài." },
-      { "id": "careful-decisions-4", "text": "I'd like to sleep on it before I decide.", "vi": "Tôi muốn suy nghĩ thêm một đêm trước khi quyết định.", "notes": "\"sleep on it\" = wait a day before deciding" },
-      { "id": "careful-decisions-5", "text": "The cheaper option might cost us more in the long run.", "vi": "Lựa chọn rẻ hơn có thể khiến chúng ta tốn kém hơn về lâu dài." },
-      { "id": "careful-decisions-6", "text": "Let's weigh the pros and cons before we commit.", "vi": "Hãy cân nhắc ưu và nhược điểm trước khi chúng ta cam kết." },
-      { "id": "careful-decisions-7", "text": "He regretted rushing into the contract without reading it.", "vi": "Anh ấy hối hận vì đã vội ký hợp đồng mà không đọc kỹ." },
-      { "id": "careful-decisions-8", "text": "Whatever we choose, we should be able to explain why.", "vi": "Dù chọn gì, chúng ta cũng nên giải thích được lý do." },
-      { "id": "careful-decisions-9", "text": "Sometimes not deciding is a decision in itself.", "vi": "Đôi khi không quyết định cũng chính là một quyết định." }
+      { "id": "careful-decisions-1", "text": "She compared the options before making a commitment.", "vi": "Cô ấy đã so sánh các lựa chọn trước khi cam kết.", "viStatus": "draft" },
+      { "id": "careful-decisions-2", "text": "A clear explanation can prevent an unnecessary disagreement.", "vi": "Một lời giải thích rõ ràng có thể ngăn một bất đồng không cần thiết.", "viStatus": "draft" },
+      { "id": "careful-decisions-3", "text": "We changed the plan after considering the long-term effects.", "vi": "Chúng tôi đã thay đổi kế hoạch sau khi cân nhắc những ảnh hưởng lâu dài.", "viStatus": "draft" },
+      { "id": "careful-decisions-4", "text": "I'd like to sleep on it before I decide.", "vi": "Tôi muốn suy nghĩ thêm một đêm trước khi quyết định.", "viStatus": "draft", "notes": "\"sleep on it\" = wait a day before deciding" },
+      { "id": "careful-decisions-5", "text": "The cheaper option might cost us more in the long run.", "vi": "Lựa chọn rẻ hơn có thể khiến chúng ta tốn kém hơn về lâu dài.", "viStatus": "draft" },
+      { "id": "careful-decisions-6", "text": "Let's weigh the pros and cons before we commit.", "vi": "Hãy cân nhắc ưu và nhược điểm trước khi chúng ta cam kết.", "viStatus": "draft" },
+      { "id": "careful-decisions-7", "text": "He regretted rushing into the contract without reading it.", "vi": "Anh ấy hối hận vì đã vội ký hợp đồng mà không đọc kỹ.", "viStatus": "draft" },
+      { "id": "careful-decisions-8", "text": "Whatever we choose, we should be able to explain why.", "vi": "Dù chọn gì, chúng ta cũng nên giải thích được lý do.", "viStatus": "draft" },
+      { "id": "careful-decisions-9", "text": "Sometimes not deciding is a decision in itself.", "vi": "Đôi khi không quyết định cũng chính là một quyết định.", "viStatus": "draft" }
     ]
   },
   {
@@ -243,15 +430,15 @@
     "level": "B2",
     "targetWpm": 140,
     "sentences": [
-      { "id": "work-meetings-1", "text": "Let's get started, since everyone's here.", "vi": "Mọi người đã đến đủ, chúng ta bắt đầu thôi." },
-      { "id": "work-meetings-2", "text": "Could you walk us through the latest figures?", "vi": "Bạn có thể trình bày cho chúng tôi các số liệu mới nhất không?" },
-      { "id": "work-meetings-3", "text": "Sorry to interrupt, but I have a quick question.", "vi": "Xin lỗi đã ngắt lời, nhưng tôi có một câu hỏi nhanh." },
-      { "id": "work-meetings-4", "text": "We're running behind schedule on the new project.", "vi": "Chúng ta đang bị chậm tiến độ trong dự án mới.", "notes": "schedule: US /ˈskedʒuːl/, UK /ˈʃedjuːl/" },
-      { "id": "work-meetings-5", "text": "I'll follow up with the client by the end of the day.", "vi": "Tôi sẽ liên hệ lại với khách hàng trước cuối ngày." },
-      { "id": "work-meetings-6", "text": "Can we push this discussion to next week?", "vi": "Chúng ta có thể dời cuộc thảo luận này sang tuần sau không?" },
-      { "id": "work-meetings-7", "text": "Just to be clear, who's responsible for the budget?", "vi": "Để cho rõ, ai chịu trách nhiệm về ngân sách?" },
-      { "id": "work-meetings-8", "text": "I see your point, but I'm not sure it'll work in practice.", "vi": "Tôi hiểu ý bạn, nhưng tôi không chắc nó sẽ hiệu quả trong thực tế." },
-      { "id": "work-meetings-9", "text": "Let's wrap up and send out the action items.", "vi": "Chúng ta kết thúc ở đây và gửi danh sách việc cần làm nhé." }
+      { "id": "work-meetings-1", "text": "Let's get started, since everyone's here.", "vi": "Mọi người đã đến đủ, chúng ta bắt đầu thôi.", "viStatus": "draft" },
+      { "id": "work-meetings-2", "text": "Could you walk us through the latest figures?", "vi": "Bạn có thể trình bày cho chúng tôi các số liệu mới nhất không?", "viStatus": "draft" },
+      { "id": "work-meetings-3", "text": "Sorry to interrupt, but I have a quick question.", "vi": "Xin lỗi đã ngắt lời, nhưng tôi có một câu hỏi nhanh.", "viStatus": "draft" },
+      { "id": "work-meetings-4", "text": "We're running behind schedule on the new project.", "vi": "Chúng ta đang bị chậm tiến độ trong dự án mới.", "viStatus": "draft", "notes": "schedule: US /ˈskedʒuːl/, UK /ˈʃedjuːl/" },
+      { "id": "work-meetings-5", "text": "I'll follow up with the client by the end of the day.", "vi": "Tôi sẽ liên hệ lại với khách hàng trước cuối ngày.", "viStatus": "draft" },
+      { "id": "work-meetings-6", "text": "Can we push this discussion to next week?", "vi": "Chúng ta có thể dời cuộc thảo luận này sang tuần sau không?", "viStatus": "draft" },
+      { "id": "work-meetings-7", "text": "Just to be clear, who's responsible for the budget?", "vi": "Để cho rõ, ai chịu trách nhiệm về ngân sách?", "viStatus": "draft" },
+      { "id": "work-meetings-8", "text": "I see your point, but I'm not sure it'll work in practice.", "vi": "Tôi hiểu ý bạn, nhưng tôi không chắc nó sẽ hiệu quả trong thực tế.", "viStatus": "draft" },
+      { "id": "work-meetings-9", "text": "Let's wrap up and send out the action items.", "vi": "Chúng ta kết thúc ở đây và gửi danh sách việc cần làm nhé.", "viStatus": "draft" }
     ]
   },
   {
@@ -260,15 +447,15 @@
     "level": "B2",
     "targetWpm": 145,
     "sentences": [
-      { "id": "sharing-opinions-1", "text": "Personally, I think working from home has more benefits than drawbacks.", "vi": "Cá nhân tôi nghĩ làm việc tại nhà có nhiều lợi ích hơn bất lợi." },
-      { "id": "sharing-opinions-2", "text": "I couldn't agree more.", "vi": "Tôi hoàn toàn đồng ý.", "notes": "means full agreement, despite the \"not\"" },
-      { "id": "sharing-opinions-3", "text": "That's a fair point, but have you considered the cost?", "vi": "Ý đó hợp lý, nhưng bạn đã tính đến chi phí chưa?" },
-      { "id": "sharing-opinions-4", "text": "I see it a little differently.", "vi": "Tôi nhìn nhận vấn đề hơi khác một chút." },
-      { "id": "sharing-opinions-5", "text": "It depends on what you mean by success.", "vi": "Còn tùy vào việc bạn hiểu thành công là gì." },
-      { "id": "sharing-opinions-6", "text": "To be honest, I haven't made up my mind yet.", "vi": "Thành thật mà nói, tôi vẫn chưa quyết định.", "notes": "honest: silent \"h\", /ˈɑːnɪst/" },
-      { "id": "sharing-opinions-7", "text": "The way I see it, both sides have a point.", "vi": "Theo tôi thấy, cả hai bên đều có lý." },
-      { "id": "sharing-opinions-8", "text": "I used to believe that, but I've changed my mind.", "vi": "Tôi từng tin như vậy, nhưng giờ tôi đã đổi ý." },
-      { "id": "sharing-opinions-9", "text": "Let's agree to disagree on this one.", "vi": "Về chuyện này, chúng ta cứ giữ quan điểm riêng vậy." }
+      { "id": "sharing-opinions-1", "text": "Personally, I think working from home has more benefits than drawbacks.", "vi": "Cá nhân tôi nghĩ làm việc tại nhà có nhiều lợi ích hơn bất lợi.", "viStatus": "draft" },
+      { "id": "sharing-opinions-2", "text": "I couldn't agree more.", "vi": "Tôi hoàn toàn đồng ý.", "viStatus": "draft", "notes": "means full agreement, despite the \"not\"" },
+      { "id": "sharing-opinions-3", "text": "That's a fair point, but have you considered the cost?", "vi": "Ý đó hợp lý, nhưng bạn đã tính đến chi phí chưa?", "viStatus": "draft" },
+      { "id": "sharing-opinions-4", "text": "I see it a little differently.", "vi": "Tôi nhìn nhận vấn đề hơi khác một chút.", "viStatus": "draft" },
+      { "id": "sharing-opinions-5", "text": "It depends on what you mean by success.", "vi": "Còn tùy vào việc bạn hiểu thành công là gì.", "viStatus": "draft" },
+      { "id": "sharing-opinions-6", "text": "To be honest, I haven't made up my mind yet.", "vi": "Thành thật mà nói, tôi vẫn chưa quyết định.", "viStatus": "draft", "notes": "honest: silent \"h\", /ˈɑːnɪst/" },
+      { "id": "sharing-opinions-7", "text": "The way I see it, both sides have a point.", "vi": "Theo tôi thấy, cả hai bên đều có lý.", "viStatus": "draft" },
+      { "id": "sharing-opinions-8", "text": "I used to believe that, but I've changed my mind.", "vi": "Tôi từng tin như vậy, nhưng giờ tôi đã đổi ý.", "viStatus": "draft" },
+      { "id": "sharing-opinions-9", "text": "Let's agree to disagree on this one.", "vi": "Về chuyện này, chúng ta cứ giữ quan điểm riêng vậy.", "viStatus": "draft" }
     ]
   },
   {
@@ -277,15 +464,66 @@
     "level": "B2",
     "targetWpm": 150,
     "sentences": [
-      { "id": "solving-problems-1", "text": "I'm afraid there's been a mistake with my order.", "vi": "Tôi e là đơn hàng của tôi đã bị nhầm." },
-      { "id": "solving-problems-2", "text": "The heating hasn't been working properly since last week.", "vi": "Máy sưởi không hoạt động bình thường từ tuần trước." },
-      { "id": "solving-problems-3", "text": "Would it be possible to get a refund instead?", "vi": "Thay vào đó, tôi có thể được hoàn tiền không?" },
-      { "id": "solving-problems-4", "text": "I've already tried restarting it, but nothing happened.", "vi": "Tôi đã thử khởi động lại rồi, nhưng không có gì xảy ra." },
-      { "id": "solving-problems-5", "text": "Let's figure out what went wrong before we fix it.", "vi": "Hãy tìm ra chỗ sai trước khi sửa nó." },
-      { "id": "solving-problems-6", "text": "I understand your frustration, and I'll do my best to help.", "vi": "Tôi hiểu sự bực bội của bạn và tôi sẽ cố gắng hết sức để giúp." },
-      { "id": "solving-problems-7", "text": "If that doesn't work, we'll send a technician tomorrow.", "vi": "Nếu cách đó không được, chúng tôi sẽ cử kỹ thuật viên đến vào ngày mai.", "notes": "technician: stress on NI" },
-      { "id": "solving-problems-8", "text": "Could you put that in writing for me?", "vi": "Bạn có thể xác nhận điều đó bằng văn bản cho tôi không?" },
-      { "id": "solving-problems-9", "text": "Thanks for sorting this out so quickly.", "vi": "Cảm ơn bạn đã giải quyết việc này nhanh như vậy." }
+      { "id": "solving-problems-1", "text": "I'm afraid there's been a mistake with my order.", "vi": "Tôi e là đơn hàng của tôi đã bị nhầm.", "viStatus": "draft" },
+      { "id": "solving-problems-2", "text": "The heating hasn't been working properly since last week.", "vi": "Máy sưởi không hoạt động bình thường từ tuần trước.", "viStatus": "draft" },
+      { "id": "solving-problems-3", "text": "Would it be possible to get a refund instead?", "vi": "Thay vào đó, tôi có thể được hoàn tiền không?", "viStatus": "draft" },
+      { "id": "solving-problems-4", "text": "I've already tried restarting it, but nothing happened.", "vi": "Tôi đã thử khởi động lại rồi, nhưng không có gì xảy ra.", "viStatus": "draft" },
+      { "id": "solving-problems-5", "text": "Let's figure out what went wrong before we fix it.", "vi": "Hãy tìm ra chỗ sai trước khi sửa nó.", "viStatus": "draft" },
+      { "id": "solving-problems-6", "text": "I understand your frustration, and I'll do my best to help.", "vi": "Tôi hiểu sự bực bội của bạn và tôi sẽ cố gắng hết sức để giúp.", "viStatus": "draft" },
+      { "id": "solving-problems-7", "text": "If that doesn't work, we'll send a technician tomorrow.", "vi": "Nếu cách đó không được, chúng tôi sẽ cử kỹ thuật viên đến vào ngày mai.", "viStatus": "draft", "notes": "technician: stress on NI" },
+      { "id": "solving-problems-8", "text": "Could you put that in writing for me?", "vi": "Bạn có thể xác nhận điều đó bằng văn bản cho tôi không?", "viStatus": "draft" },
+      { "id": "solving-problems-9", "text": "Thanks for sorting this out so quickly.", "vi": "Cảm ơn bạn đã giải quyết việc này nhanh như vậy.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "negotiating",
+    "title": "Negotiating",
+    "level": "B2",
+    "targetWpm": 135,
+    "sentences": [
+      { "id": "negotiating-1", "text": "We're interested, but the price is higher than we expected.", "vi": "Chúng tôi quan tâm, nhưng giá cao hơn chúng tôi dự kiến.", "viStatus": "draft", "notes": "\"expected\" ends in /ɪd/" },
+      { "id": "negotiating-2", "text": "Is there any flexibility on the delivery date?", "vi": "Ngày giao hàng có thể linh động được không?", "viStatus": "draft" },
+      { "id": "negotiating-3", "text": "If you can lower the price, we'll place a larger order.", "vi": "Nếu bên bạn giảm được giá, chúng tôi sẽ đặt đơn hàng lớn hơn.", "viStatus": "draft" },
+      { "id": "negotiating-4", "text": "I understand your position, but it doesn't solve our budget problem.", "vi": "Tôi hiểu lập trường của bên bạn, nhưng điều đó không giải quyết được vấn đề ngân sách của chúng tôi.", "viStatus": "draft" },
+      { "id": "negotiating-5", "text": "What would you need from us to make this work?", "vi": "Bên bạn cần chúng tôi làm gì để thỏa thuận này thành công?", "viStatus": "draft" },
+      { "id": "negotiating-6", "text": "We could meet you halfway on the shipping costs.", "vi": "Chúng tôi có thể chia đôi chi phí vận chuyển với bên bạn.", "viStatus": "draft", "notes": "\"meet someone halfway\" = each side gives up part of what it wants" },
+      { "id": "negotiating-7", "text": "I'm afraid that's the lowest we can go.", "vi": "Tôi e rằng đó là mức thấp nhất chúng tôi có thể đưa ra.", "viStatus": "draft" },
+      { "id": "negotiating-8", "text": "Let me check with my manager and get back to you tomorrow.", "vi": "Để tôi hỏi lại quản lý và ngày mai sẽ phản hồi bạn.", "viStatus": "draft", "notes": "\"get back to you\" = reply to you later" },
+      { "id": "negotiating-9", "text": "I think we have a deal.", "vi": "Tôi nghĩ chúng ta đã đạt được thỏa thuận.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "giving-feedback",
+    "title": "Giving Feedback",
+    "level": "B2",
+    "targetWpm": 140,
+    "sentences": [
+      { "id": "giving-feedback-1", "text": "Do you have a few minutes to talk about the report?", "vi": "Bạn có vài phút để nói về bản báo cáo không?", "viStatus": "draft" },
+      { "id": "giving-feedback-2", "text": "Overall, you did a really good job on it.", "vi": "Nhìn chung, bạn đã làm rất tốt.", "viStatus": "draft" },
+      { "id": "giving-feedback-3", "text": "The analysis was clear and well organized.", "vi": "Phần phân tích rõ ràng và được sắp xếp tốt.", "viStatus": "draft" },
+      { "id": "giving-feedback-4", "text": "One thing I'd like you to work on is the summary.", "vi": "Một điểm tôi muốn bạn cải thiện là phần tóm tắt.", "viStatus": "draft", "notes": "\"work on\" = practice and improve" },
+      { "id": "giving-feedback-5", "text": "It's a bit long, so the main message gets lost.", "vi": "Phần đó hơi dài nên ý chính bị lu mờ.", "viStatus": "draft" },
+      { "id": "giving-feedback-6", "text": "Next time, try to put the key numbers first.", "vi": "Lần sau, hãy thử đưa các con số quan trọng lên đầu.", "viStatus": "draft", "notes": "link \"next time\": say the /t/ once, lightly" },
+      { "id": "giving-feedback-7", "text": "Thanks for the feedback; that's really helpful.", "vi": "Cảm ơn góp ý của bạn, thật sự rất hữu ích.", "viStatus": "draft" },
+      { "id": "giving-feedback-8", "text": "Could you give me an example of what you mean?", "vi": "Bạn có thể cho tôi một ví dụ về ý bạn muốn nói không?", "viStatus": "draft" },
+      { "id": "giving-feedback-9", "text": "I'll revise it and send you a new version on Friday.", "vi": "Tôi sẽ chỉnh sửa và gửi bạn bản mới vào thứ Sáu.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "news-and-media",
+    "title": "News & Media",
+    "level": "B2",
+    "targetWpm": 150,
+    "sentences": [
+      { "id": "news-and-media-1", "text": "Where do you usually get your news from?", "vi": "Bạn thường xem tin tức từ đâu?", "viStatus": "draft" },
+      { "id": "news-and-media-2", "text": "I mostly read the news on my phone.", "vi": "Tôi chủ yếu đọc tin trên điện thoại.", "viStatus": "draft" },
+      { "id": "news-and-media-3", "text": "It's hard to know which sources you can trust.", "vi": "Thật khó để biết nguồn tin nào đáng tin cậy.", "viStatus": "draft" },
+      { "id": "news-and-media-4", "text": "That headline is misleading; the article says something different.", "vi": "Tiêu đề đó gây hiểu lầm; bài báo nói một điều khác hẳn.", "viStatus": "draft", "notes": "\"misleading\" = gives people the wrong idea" },
+      { "id": "news-and-media-5", "text": "I always check whether a story has been reported elsewhere.", "vi": "Tôi luôn kiểm tra xem tin đó đã được đưa ở nơi khác chưa.", "viStatus": "draft" },
+      { "id": "news-and-media-6", "text": "Social media spreads rumors faster than the truth.", "vi": "Mạng xã hội lan truyền tin đồn nhanh hơn sự thật.", "viStatus": "draft" },
+      { "id": "news-and-media-7", "text": "The report was based on a survey of two thousand people.", "vi": "Bản tin dựa trên một cuộc khảo sát hai nghìn người.", "viStatus": "draft", "notes": "\"based\" ends in /t/" },
+      { "id": "news-and-media-8", "text": "Some channels focus more on opinion than on facts.", "vi": "Một số kênh tập trung vào quan điểm nhiều hơn là dữ kiện.", "viStatus": "draft" },
+      { "id": "news-and-media-9", "text": "I try to read at least two points of view on every issue.", "vi": "Tôi cố gắng đọc ít nhất hai quan điểm về mỗi vấn đề.", "viStatus": "draft" }
     ]
   }
 ]

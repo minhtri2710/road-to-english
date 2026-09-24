@@ -16,11 +16,20 @@ const (
 	LevelB2 Level = "B2"
 )
 
+// VIStatus records whether a sentence's Vietnamese has had a native check.
+type VIStatus string
+
+const (
+	VIStatusDraft   VIStatus = "draft"
+	VIStatusChecked VIStatus = "checked"
+)
+
 type Sentence struct {
-	ID    string `json:"id"`
-	Text  string `json:"text"`
-	VI    string `json:"vi"`
-	Notes string `json:"notes,omitempty"`
+	ID       string   `json:"id"`
+	Text     string   `json:"text"`
+	VI       string   `json:"vi"`
+	VIStatus VIStatus `json:"viStatus"`
+	Notes    string   `json:"notes,omitempty"`
 }
 
 type Lesson struct {
@@ -92,6 +101,9 @@ func NewStore(lessons []Lesson) (*Store, error) {
 			if sentence.VI == "" {
 				return nil, fmt.Errorf("lesson %q sentence %q has empty vi", lesson.ID, sentence.ID)
 			}
+			if sentence.VIStatus != VIStatusDraft && sentence.VIStatus != VIStatusChecked {
+				return nil, fmt.Errorf("lesson %q sentence %q has invalid viStatus %q", lesson.ID, sentence.ID, sentence.VIStatus)
+			}
 			if _, exists := sentenceIDs[sentence.ID]; exists {
 				return nil, fmt.Errorf("lesson %q has duplicate sentence id %q", lesson.ID, sentence.ID)
 			}
@@ -122,6 +134,7 @@ func (s *Store) Summaries() []Summary {
 
 func (s *Store) Lesson(id string) (Lesson, bool) {
 	lesson, ok := s.lessonsByID[id]
+	lesson.Sentences = append([]Sentence(nil), lesson.Sentences...)
 	return lesson, ok
 }
 

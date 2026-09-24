@@ -16,19 +16,19 @@ test("the level filter narrows the library rows and survives a reload", async ({
   await page.goto("/");
   const rows = page.getByRole("button").filter({ hasText: /· \d+ sentences/ });
   await expect(rows.first()).toContainText("About Me");
-  await expect(page.getByText("0 of 17 completed")).toBeVisible();
+  await expect(page.getByText("0 of 31 completed")).toBeVisible();
 
   const level = page.getByRole("radiogroup", { name: "Level" });
   await level.getByRole("radio", { name: "B2" }).click();
   await expect(level.getByRole("radio", { name: "B2" })).toBeFocused();
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveCount(7);
   await expect(rows.first()).toContainText("B2 ·");
-  await expect(page.getByText("B2: 0 of 4 completed")).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "B2: 0 of 4 completed" })).toHaveAttribute("aria-valuemax", "4");
+  await expect(page.getByText("B2: 0 of 7 completed")).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "B2: 0 of 7 completed" })).toHaveAttribute("aria-valuemax", "7");
 
   await page.reload();
   await expect(page.getByRole("radio", { name: "B2" })).toHaveAttribute("aria-checked", "true");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveCount(7);
 });
 
 test("Today offers Continue for the lesson opened last", async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe("first-run welcome", () => {
     const rows = page.getByRole("button").filter({ hasText: /· \d+ sentences/ });
 
     await welcome.getByRole("radiogroup", { name: "English level" }).getByRole("radio", { name: "B2" }).click();
-    await expect(rows).toHaveCount(4);
+    await expect(rows).toHaveCount(7);
     await welcome.getByRole("button", { name: "Next" }).click();
     await expect(welcome.getByText("Step 2 of 2")).toBeVisible();
     await expect(welcome.getByText("How much practice a day?")).toBeFocused();
@@ -108,7 +108,7 @@ test.describe("first-run welcome", () => {
     await page.reload();
     await expect(page.getByText("0 of 5 practice actions today")).toBeVisible();
     await expect(page.getByRole("radiogroup", { name: "Level" }).getByRole("radio", { name: "B2" })).toHaveAttribute("aria-checked", "true");
-    await expect(rows).toHaveCount(4);
+    await expect(rows).toHaveCount(7);
     await expect(welcome).toHaveCount(0);
   });
 
@@ -119,7 +119,7 @@ test.describe("first-run welcome", () => {
     await expect(welcome).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today" })).toBeFocused();
     await expect(page.getByText("0 of 10 practice actions today")).toBeVisible();
-    await expect(page.getByText("0 of 17 completed")).toBeVisible();
+    await expect(page.getByText("0 of 31 completed")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(welcome).toHaveCount(0);
