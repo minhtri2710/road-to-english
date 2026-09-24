@@ -15,17 +15,17 @@ import type { Lesson } from "../api/lessons";
 import { ErrorMessage, Status, ViewHeading } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
+import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
-import { speak, speechSupported, stopSpeaking } from "../lib/speech";
-import { cardId, sentenceCard, wordCard, type NewCard, type VocabCard } from "../lib/vocab";
-import { cardWord, isCardWord, splitWords } from "../lib/words";
+import { speechSupported, stopSpeaking } from "../lib/speech";
+import type { NewCard, VocabCard } from "../lib/vocab";
+import { splitWords } from "../lib/words";
 import { GuidedShadowing } from "./GuidedShadowing";
-import { SentenceShadowing } from "./SentenceShadowing";
-import { SentenceBlank, SentenceDictation, type PracticeMode } from "./SentenceQuiz";
+import { SentenceCard, type LessonMode } from "./SentenceCard";
+import type { PracticeMode } from "./SentenceQuiz";
 import { LessonSummary, type SummaryProps } from "./LessonSummary";
-import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
 
 const styles = stylex.create({
   video: {
@@ -48,8 +48,6 @@ const AUTO_HIDE_TEXT_KEY = "road-to-english.autoHideText";
 function readAutoHideText(): boolean {
   return readPref(AUTO_HIDE_TEXT_KEY) === "on";
 }
-
-type LessonMode = "shadow" | "dictation" | "blank";
 
 interface LessonDetailProps extends SummaryProps {
   onBack: () => void;
@@ -126,7 +124,6 @@ export function LessonDetail({
     sentenceId: string;
     charIndex: number;
   } | null>(null);
-  const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
   // A1 blanks offer a word bank drawn from the whole lesson.
   const bankWords =
     data.level === "A1" ? data.sentences.flatMap((sentence) => splitWords(sentence.text)) : undefined;
@@ -142,198 +139,47 @@ export function LessonDetail({
       element.focus();
     }
   };
-  // Each sentence and mode counts once per lesson visit; retries are not counted.
-  const practiced = useRef(new Set<string>());
-  // Sentences attempted in any mode this visit; attempting every one completes the lesson.
-  const [attempted, setAttempted] = useState<ReadonlySet<string>>(new Set());
-  const allAttempted = data.sentences.every((sentence) => attempted.has(sentence.id));
-  const practice = (sentenceId: string, mode: PracticeMode) => {
-    setAttempted((current) => (current.has(sentenceId) ? current : new Set(current).add(sentenceId)));
-    const key = `${sentenceId}:${mode}`;
-    if (practiced.current.has(key)) {
-      return;
-    }
-    practiced.current.add(key);
-    void recordPractice({ newCard: false });
-  };
-  // Card words missed in a typed answer this visit, in first-occurrence order, each under the sentence
-  // where it was first missed.
-  const [missed, setMissed] = useState<readonly NewCard[]>([]);
-  const miss = (sentence: Lesson["sentences"][number], words: string[]) =>
-    setMissed((current) => {
-      const next = [...current];
-      for (const word of words) {
-        const key = cardWord(word);
-        if (isCardWord(key) && !next.some((card) => card.source.word === key)) {
-          next.push(wordCard(data.id, sentence, word));
-        }
-      }
-      return next.length === current.length ? current : next;
-    });
+  const { hasPracticed, allAttempted, practice, missed, miss, saveFailed, saveCompletion } = useLessonProgress(
+    data,
+    completed,
+    recordPractice,
+    markLessonComplete,
+  );
   // With autoHideText on, a sentence's first recording or check this visit hides its text.
   const shadowPractice = (sentenceId: string, mode: PracticeMode) => {
-    const first = !["recording", "check"].some((shadowMode) => practiced.current.has(`${sentenceId}:${shadowMode}`));
+    const first = !(["recording", "check"] as const).some((shadowMode) => hasPracticed(sentenceId, shadowMode));
     practice(sentenceId, mode);
     if (first && autoHideText) {
       setTextHidden(sentenceId, true);
     }
   };
 
-  // One sentence's card, shared by the list and the guided view.
-  const renderCard = (sentence: Lesson["sentences"][number]) => {
-    const textHidden = hiddenText.has(sentence.id);
-    const showText = showTranscript && !textHidden;
-    return (
-      // Keyed so a step to another sentence starts its practice afresh.
-      <Card key={sentence.id} padding={3} xstyle={sharedStyles.sentence}>
-        {sentence.cue && (
-          <Button
-            label="Play clip"
-            variant="secondary"
-            isDisabled={video.status !== "ready"}
-            onClick={() => {
-              const { cue } = sentence;
-              if (!cue) return;
-              stopMedia({ keepVideo: true });
-              video.playClip(cue, Number(speed));
-            }}
-          />
-        )}
-        {mode === "shadow" ? (
-          <VStack gap={1}>
-            <ToggleButton
-              label="Text"
-              isPressed={!textHidden}
-              xstyle={styles.modeToggle}
-              onPressedChange={(pressed) => setTextHidden(sentence.id, !pressed)}
-            />
-            {showText && (
-              <SentenceWords
-                text={sentence.text}
-                panelId={wordPanelId(sentence.id)}
-                selected={
-                  selectedWord?.sentenceId === sentence.id
-                    ? selectedWord.text
-                    : null
-                }
-                spokenChar={
-                  spokenWord?.sentenceId === sentence.id
-                    ? spokenWord.charIndex
-                    : null
-                }
-                onSelect={(text) =>
-                  setSelectedWord({ sentenceId: sentence.id, text })
-                }
-              />
-            )}
-            {showText && sentence.notes && (
-              <Text as="p" type="supporting">
-                {sentence.notes}
-              </Text>
-            )}
-            {showVietnamese && !textHidden && (
-              <Text as="p" type="supporting">
-                <span lang="vi">{sentence.vi}</span>
-              </Text>
-            )}
-            {showText && selectedWord?.sentenceId === sentence.id && (
-              <WordPanel
-                key={cardWord(selectedWord.text)}
-                id={wordPanelId(sentence.id)}
-                text={selectedWord.text}
-                card={wordCard(data.id, sentence, selectedWord.text)}
-                savedCardIds={savedCardIds}
-                addCard={addCard}
-                removeCard={removeCard}
-                undoRemove={undoRemove}
-                hear={() => {
-                  stopMedia();
-                  speak(selectedWord.text, data.targetWpm, Number(speed));
-                }}
-              />
-            )}
-            <SentenceShadowing
-              text={sentence.text}
-              targetWpm={data.targetWpm}
-              speed={Number(speed)}
-              looping={loopingSentenceId === sentence.id}
-              setLooping={(looping) =>
-                setLoopingSentenceId(looping ? sentence.id : null)
-              }
-              sentenceId={sentence.id}
-              setSpokenWord={setSpokenWord}
-              practice={(practiceMode) => shadowPractice(sentence.id, practiceMode)}
-              pronunciationCheck={pronunciationSupported && pronunciationCheck}
-              stopMedia={stopMedia}
-            />
-            <SaveToReview
-              card={sentenceCard(data.id, sentence)}
-              label="Save to review"
-              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-              addCard={addCard}
-              removeCard={removeCard}
-              undoRemove={undoRemove}
-            />
-          </VStack>
-        ) : (
-          <VStack gap={1}>
-            {mode === "dictation" ? (
-              <SentenceDictation
-                id={sentence.id}
-                text={sentence.text}
-                notes={sentence.notes}
-                targetWpm={data.targetWpm}
-                speed={Number(speed)}
-                practice={(practiceMode) => practice(sentence.id, practiceMode)}
-                miss={(words) => miss(sentence, words)}
-                stopMedia={stopMedia}
-              />
-            ) : (
-              <SentenceBlank
-                id={sentence.id}
-                text={sentence.text}
-                targetWpm={data.targetWpm}
-                speed={Number(speed)}
-                practice={(practiceMode) => practice(sentence.id, practiceMode)}
-                miss={(words) => miss(sentence, words)}
-                stopMedia={stopMedia}
-                lessonWords={bankWords}
-              />
-            )}
-            <SaveToReview
-              card={sentenceCard(data.id, sentence)}
-              label="Save to review"
-              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-              addCard={addCard}
-              removeCard={removeCard}
-              undoRemove={undoRemove}
-            />
-          </VStack>
-        )}
-      </Card>
-    );
+  // Props shared by every sentence's card, in the list and the guided view.
+  const cardProps = {
+    lesson: data,
+    mode,
+    speed,
+    video,
+    stopMedia,
+    showTranscript,
+    showVietnamese,
+    setTextHidden,
+    selectedWord,
+    setSelectedWord,
+    spokenWord,
+    setSpokenWord,
+    loopingSentenceId,
+    setLoopingSentenceId,
+    pronunciationCheck: pronunciationSupported && pronunciationCheck,
+    practice,
+    shadowPractice,
+    miss,
+    bankWords,
+    savedCardIds,
+    addCard,
+    removeCard,
+    undoRemove,
   };
-
-  // The save runs once per visit; a failure waits for Try again, and a lesson already complete is never saved again.
-  const saveStarted = useRef(false);
-  const [saveFailed, setSaveFailed] = useState(false);
-  const saveCompletion = () =>
-    markLessonComplete(data.id).then(
-      () => {
-        setSaveFailed(false);
-        return true;
-      },
-      () => {
-        setSaveFailed(true);
-        return false;
-      },
-    );
-  useEffect(() => {
-    if (allAttempted && !completed && !saveStarted.current) {
-      saveStarted.current = true;
-      void saveCompletion();
-    }
-  }, [allAttempted, completed]);
 
   useEffect(() => {
     return () => {
@@ -492,12 +338,25 @@ export function LessonDetail({
             setGuidedIndex(index);
           }}
         >
-          {renderCard(data.sentences[guidedIndex])}
+          {/* Keyed so a step to another sentence starts its practice afresh. */}
+          <SentenceCard
+            key={data.sentences[guidedIndex].id}
+            sentence={data.sentences[guidedIndex]}
+            textHidden={hiddenText.has(data.sentences[guidedIndex].id)}
+            {...cardProps}
+          />
         </GuidedShadowing>
       ) : (
         <VStack as="ol" gap={2} padding={0}>
           {data.sentences.map((sentence) => (
-            <li key={sentence.id}>{renderCard(sentence)}</li>
+            <li key={sentence.id}>
+              <SentenceCard
+                key={sentence.id}
+                sentence={sentence}
+                textHidden={hiddenText.has(sentence.id)}
+                {...cardProps}
+              />
+            </li>
           ))}
         </VStack>
       )}
