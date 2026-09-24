@@ -62,12 +62,36 @@ export interface AppView {
   unmount: () => Promise<void>;
 }
 
+// React 19 act() scopes must not overlap: a scope that ends late or never nests every later act() and leaves
+// its updates unflushed, so the rest of the file fails. A test that times out keeps running in the background,
+// so every helper act belongs to the test that called the helper: resetApp ends that test and waits for its
+// act in flight, and a helper of an ended test throws instead of starting another act.
+const realSetTimeout = globalThis.setTimeout;
+let currentTest = 0;
+let actInFlight: Promise<unknown> = Promise.resolve();
+
+async function harnessAct(callback: () => void | Promise<void>, test = currentTest): Promise<void> {
+  if (test !== currentTest) {
+    throw new Error("The test that called this helper has ended");
+  }
+  const scope = Promise.resolve(
+    act(async () => {
+      await callback();
+    }),
+  );
+  actInFlight = scope.catch(() => undefined);
+  await scope;
+}
+
+// One macrotask on the real clock, so fake timers cannot hold a helper act open.
+const nextTask = () => new Promise<void>((resolve) => realSetTimeout(resolve, 0));
+
 // Every root renderApp mounted and close has not yet closed; resetApp closes the rest.
 const mounted = new Set<{ container: HTMLElement; root: Root }>();
 
 export async function close(view: { container: HTMLElement; root: Root }): Promise<void> {
   mounted.delete(view);
-  await act(async () => {
+  await harnessAct(() => {
     view.root.unmount();
   });
   view.container.remove();
@@ -79,7 +103,7 @@ export async function renderApp({ route, lesson }: { route?: FetchRoute; lesson?
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => {
+  await harnessAct(() => {
     root.render(
       <StrictMode>
         <App />
@@ -94,7 +118,7 @@ export async function renderApp({ route, lesson }: { route?: FetchRoute; lesson?
 // Renders the App and opens the Greetings & Basics row, served as `lesson`.
 export async function openLesson(lesson: Lesson = greetingsLesson): Promise<AppView> {
   const view = await renderApp({ lesson });
-  await act(async () => {
+  await harnessAct(() => {
     const button = Array.from(view.container.querySelectorAll("button")).find(
       (candidate) => candidate.textContent?.includes("Greetings & Basics"),
     );
@@ -108,7 +132,7 @@ export async function reopenGreetings(container: HTMLElement): Promise<void> {
   const row = () =>
     Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Greetings & Basics"));
   await waitForCondition(() => row() !== undefined);
-  await act(async () => {
+  await harnessAct(() => {
     row()?.click();
   });
 }
@@ -128,7 +152,7 @@ export function buttonsNamed(container: HTMLElement, name: string): HTMLButtonEl
 export async function click(container: HTMLElement, name: string, index = 0): Promise<HTMLButtonElement> {
   const button = buttonsNamed(container, name)[index];
   if (!button) throw new Error(`${name} button not found`);
-  await act(async () => {
+  await harnessAct(() => {
     button.click();
   });
   return button;
@@ -155,7 +179,7 @@ export function accountDisclosure(container: HTMLElement): HTMLButtonElement {
 export async function openAccountForm(container: HTMLElement): Promise<void> {
   const disclosure = accountDisclosure(container);
   if (disclosure.getAttribute("aria-expanded") !== "true") {
-    await act(async () => {
+    await harnessAct(() => {
       disclosure.click();
     });
   }
@@ -165,13 +189,12 @@ export const hasText = (container: HTMLElement, text: string) => () =>
   container.textContent?.includes(text) ?? false;
 
 export async function waitForCondition(condition: () => boolean): Promise<void> {
+  const test = currentTest;
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (condition()) {
       return;
     }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await harnessAct(nextTask, test);
   }
 
   throw new Error("Timed out waiting for condition");
@@ -183,13 +206,12 @@ export async function actionsToday(): Promise<number> {
 }
 
 export async function waitForActions(count: number): Promise<void> {
+  const test = currentTest;
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if ((await actionsToday()) === count) {
       return;
     }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await harnessAct(nextTask, test);
   }
 
   throw new Error(`Timed out waiting for ${count} practice actions`);
@@ -216,16 +238,31 @@ export function restoreProperty(
   }
 }
 
+const originalLocalStorage = Object.getOwnPropertyDescriptor(window, "localStorage");
+
+// Makes every localStorage access throw, as a browser does when site data is blocked; resetApp undoes it.
+export function blockStorage(): void {
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    },
+  });
+}
+
 const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
 
 // Every App test file runs this after each test; it first unmounts any App the test left mounted.
 export async function resetApp(): Promise<void> {
+  currentTest += 1;
+  await actInFlight;
   for (const view of [...mounted]) {
     await close(view);
   }
   window.history.replaceState(null, "", "/");
+  restoreProperty(window, "localStorage", originalLocalStorage);
   localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

@@ -5,6 +5,7 @@ import {
   accountDisclosure,
   callsTo,
   click,
+  close,
   hasText,
   inputLabelled,
   openAccountForm,
@@ -111,6 +112,26 @@ describe("useSync", () => {
     });
     expect(syncLine(container)?.textContent).toBe("Synced 1 h ago");
     expect(liveRegions(container)).not.toContain("Synced");
+  });
+
+  it("keeps one minute timer across sync runs and clears it on unmount", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const view = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
+    await waitForCondition(() => syncLine(view.container) !== undefined);
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(syncLine(view.container)?.textContent).toBe("Synced 1 min ago");
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitForCondition(() => syncLine(view.container)?.textContent === "Synced just now");
+    expect(vi.getTimerCount()).toBe(1);
+
+    await close(view);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("shows no sync line once signed out", async () => {

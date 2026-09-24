@@ -92,7 +92,7 @@ describe("SentenceQuiz", () => {
     });
 
     expect(container.textContent).toContain(
-      'good morning (missed) how are you today (you typed "tomorrow")',
+      'Good morning (missed) how are you today (you typed "tomorrow")',
     );
     expect(container.textContent).not.toContain("(extra)");
     expect(container.textContent).toContain("Not quite");
@@ -206,9 +206,14 @@ describe("SentenceQuiz", () => {
     const hint = "G___ m______, h__ a__ y__ t____?";
     expect(container.textContent).not.toContain(hint);
 
+    const toggle = buttonsNamed(container, "Show hint")[0]!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     await click(container, "Show hint");
     expect(container.textContent).toContain(hint);
     expect(buttonsNamed(container, "Show hint")).toHaveLength(2);
+    expect(toggle.textContent).toBe("Hide hint");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(toggle.getAttribute("aria-controls")!)?.textContent).toBe(`Hint: ${hint}`);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -232,6 +237,19 @@ describe("SentenceQuiz", () => {
     const lines = Array.from(container.querySelectorAll('[role="status"] p')).map((p) => p.textContent);
     expect(lines[0]).toBe("Not quite: 2 of 4 words matched");
     expect(lines.slice(-2)).toEqual(["Check the ending sound: wanted, coffees", "past tense"]);
+  });
+
+  it("names ending hints and Hear buttons with the lesson's own word", async () => {
+    installSpeechFakes();
+    const lesson = {
+      ...greetingsLesson,
+      sentences: [{ id: "s1", text: "It is John's book.", vi: "", notes: "" }],
+    };
+    const { container } = await openLesson(lesson);
+    await click(container, "Dictation");
+    await submitDictation(container, "s1", "It is John book");
+    expect(hearButton(container, "John's")?.textContent).toBe("John's");
+    expect(container.textContent).toContain("Check the ending sound: John's");
   });
 
   it("reads the blank as the word blank", async () => {

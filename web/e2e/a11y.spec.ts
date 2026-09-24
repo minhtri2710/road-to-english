@@ -153,7 +153,17 @@ async function openFreezeTooltip(page: Page): Promise<void> {
   await page.reload();
   await expect(todayCard(page).getByText("1-day streak")).toBeVisible();
   await tabTo(page, page.getByText("Freezes 0 of 2"));
-  await expect(page.getByRole("tooltip")).toHaveText(FREEZE_HELP);
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toHaveText(FREEZE_HELP);
+  // Axe measures contrast as drawn, so wait until the tooltip has finished appearing: full opacity, no animation left.
+  await expect.poll(() => tooltip.evaluate((el) => {
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      if (getComputedStyle(node).opacity !== "1" || node.getAnimations().some((animation) => animation.playState === "running")) {
+        return false;
+      }
+    }
+    return true;
+  })).toBe(true);
 }
 
 async function showStorageBanner(page: Page): Promise<void> {

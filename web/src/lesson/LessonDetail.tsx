@@ -16,6 +16,7 @@ import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import { splitWords } from "../lib/dictation";
+import { readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "../lib/vocab";
@@ -38,13 +39,13 @@ const SPEEDS = ["0.5", "0.75", "1"] as const;
 const PRONUNCIATION_CHECK_KEY = "road-to-english.pronunciationCheck";
 
 function readPronunciationCheck(): boolean {
-  return localStorage.getItem(PRONUNCIATION_CHECK_KEY) === "on";
+  return readPref(PRONUNCIATION_CHECK_KEY) === "on";
 }
 
 const AUTO_HIDE_TEXT_KEY = "road-to-english.autoHideText";
 
 function readAutoHideText(): boolean {
-  return localStorage.getItem(AUTO_HIDE_TEXT_KEY) === "on";
+  return readPref(AUTO_HIDE_TEXT_KEY) === "on";
 }
 
 type LessonMode = "shadow" | "dictation" | "blank";
@@ -260,7 +261,7 @@ export function LessonDetail({
                   disclosureFocus.current = "enable";
                   setDisclosureOpen(true);
                 } else {
-                  localStorage.removeItem(PRONUNCIATION_CHECK_KEY);
+                  writePref(PRONUNCIATION_CHECK_KEY, null);
                   setPronunciationCheck(false);
                 }
               }}
@@ -273,11 +274,7 @@ export function LessonDetail({
           label="Hide each sentence after I practise it"
           value={autoHideText}
           onChange={(checked) => {
-            if (checked) {
-              localStorage.setItem(AUTO_HIDE_TEXT_KEY, "on");
-            } else {
-              localStorage.removeItem(AUTO_HIDE_TEXT_KEY);
-            }
+            writePref(AUTO_HIDE_TEXT_KEY, checked ? "on" : null);
             setAutoHideText(checked);
           }}
         />
@@ -301,7 +298,7 @@ export function LessonDetail({
                 label="Enable"
                 variant="primary"
                 onClick={() => {
-                  localStorage.setItem(PRONUNCIATION_CHECK_KEY, "on");
+                  writePref(PRONUNCIATION_CHECK_KEY, "on");
                   setPronunciationCheck(true);
                   disclosureFocus.current = "toggle";
                   setDisclosureOpen(false);

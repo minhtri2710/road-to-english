@@ -137,7 +137,9 @@ export function formatInterval(ms: number): string {
   if (days < 30) {
     return `${days} d`;
   }
-  const [value, unit] = days < 365 ? [days / 30, "mo"] : [days / 365, "y"];
+  // Months that round to 12 read as a year, so "12 mo" never shows.
+  const months = days / 30;
+  const [value, unit] = Math.round(months) < 12 ? [months, "mo"] : [Math.max(1, days / 365), "y"];
   return `${value < 10 ? Number(value.toFixed(1)) : Math.round(value)} ${unit}`;
 }
 

@@ -11,7 +11,7 @@ describe("normalization", () => {
     ["hyphen", "sign-off", "sign off"],
     ["exact", "Good morning", "good morning"],
   ])("handles %s", (_name, input, expected) => {
-    const words = diffWords(input, input).map((part) => (part.kind === "correct" ? part.word : ""));
+    const words = diffWords(input, expected).map((part) => (part.kind === "correct" ? part.word : ""));
     expect(words.join(" ")).toBe(expected);
   });
 });
@@ -24,9 +24,20 @@ describe("diffWords", () => {
     ]);
   });
 
+  it("keeps the lesson's own word on reference entries and the normalized typed token", () => {
+    expect(diffWords("johns book", "“John's book.”")).toEqual([
+      { kind: "correct", word: "John's" },
+      { kind: "correct", word: "book" },
+    ]);
+    expect(diffWords("Its thor", "It’s there")).toEqual([
+      { kind: "correct", word: "It’s" },
+      { kind: "replaced", word: "there", typed: "thor" },
+    ]);
+  });
+
   it("normalizes case, punctuation and apostrophes away", () => {
     expect(diffWords("its a SIGN off", "It’s a sign-off!")).toEqual([
-      { kind: "correct", word: "its" },
+      { kind: "correct", word: "It’s" },
       { kind: "correct", word: "a" },
       { kind: "correct", word: "sign" },
       { kind: "correct", word: "off" },
@@ -59,7 +70,7 @@ describe("diffWords", () => {
 
   it("marks every reference word missed for empty input", () => {
     expect(diffWords("  ", "See you tomorrow.")).toEqual([
-      { kind: "missed", word: "see" },
+      { kind: "missed", word: "See" },
       { kind: "missed", word: "you" },
       { kind: "missed", word: "tomorrow" },
     ]);
@@ -210,12 +221,16 @@ describe("endingHints", () => {
   it.each([
     ["s", "I work here", "He works here", "works"],
     ["es", "She watch TV", "She watches TV", "watches"],
-    ["'s", "It is Lan book", "It is Lan's book", "lans"],
+    ["'s", "It is Lan book", "It is Lan's book", "Lan's"],
     ["d", "I live there", "I lived there", "lived"],
     ["ed", "I want tea", "I wanted tea", "wanted"],
     ["t", "I learn it", "I learnt it", "learnt"],
   ])("flags a dropped %s", (_ending, typed, reference, word) => {
     expect(endingHints(diffWords(typed, reference))).toEqual([word]);
+  });
+
+  it("names the word as the lesson writes it", () => {
+    expect(endingHints(diffWords("It is John book", "It is John's book."))).toEqual(["John's"]);
   });
 
   it("lists each flagged word once, in order", () => {

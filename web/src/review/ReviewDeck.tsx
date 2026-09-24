@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useReducer, useRef, useState, type KeyboardEvent } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -183,6 +183,16 @@ export function ReviewDeck({
   }, [focusTarget]);
 
   useEffect(() => stopListening, [cardTurn]);
+
+  // The interval labels count from now, so they re-render once a minute while the answer is shown.
+  const [, refreshIntervals] = useReducer((ticks: number) => ticks + 1, 0);
+  useEffect(() => {
+    if (!showAnswer) {
+      return;
+    }
+    const timer = setInterval(refreshIntervals, 60_000);
+    return () => clearInterval(timer);
+  }, [showAnswer]);
 
   if (loading) {
     return <Text as="p">Loading review deck...</Text>;

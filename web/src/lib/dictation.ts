@@ -9,6 +9,7 @@ function normalize(s: string): string {
     .trim();
 }
 
+// Reference entries carry the word as the lesson writes it; typed entries carry the normalized token.
 export type WordDiff =
   | { kind: "correct"; word: string }
   | { kind: "missed"; word: string }
@@ -45,10 +46,22 @@ function tokens(s: string): string[] {
   return n ? n.split(" ").flatMap((t) => (/^\d+$/.test(t) ? spellNumber(t).split(" ") : [t])) : [];
 }
 
+// The reference's tokens, each with the word the lesson writes for it: a word that is one token keeps
+// its own form ("John's"), trimmed of edge punctuation; a word of several tokens ("T-shirt", "7:00")
+// shows each token.
+function referenceWords(reference: string): { token: string; word: string }[] {
+  return reference.split(/\s+/).flatMap((chunk) => {
+    const parts = tokens(chunk);
+    const written = chunk.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    return parts.map((token) => ({ token, word: parts.length === 1 ? written : token }));
+  });
+}
+
 // Word-level edit distance (Levenshtein over normalize() tokens), walked
 // forward from a suffix table. Ties prefer match, then substitution.
 export function diffWords(typed: string, reference: string): WordDiff[] {
-  const ref = tokens(reference);
+  const words = referenceWords(reference);
+  const ref = words.map((entry) => entry.token);
   const got = tokens(typed);
   const cost = Array.from({ length: ref.length + 1 }, () =>
     new Array<number>(got.length + 1).fill(0),
@@ -75,8 +88,8 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
       if (cost[i][j] === cost[i + 1][j + 1] + (same ? 0 : 1)) {
         diff.push(
           same
-            ? { kind: "correct", word: ref[i] }
-            : { kind: "replaced", word: ref[i], typed: got[j] },
+            ? { kind: "correct", word: words[i].word }
+            : { kind: "replaced", word: words[i].word, typed: got[j] },
         );
         i++;
         j++;
@@ -84,7 +97,7 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
       }
     }
     if (i < ref.length && cost[i][j] === cost[i + 1][j] + 1) {
-      diff.push({ kind: "missed", word: ref[i] });
+      diff.push({ kind: "missed", word: words[i].word });
       i++;
     } else {
       diff.push({ kind: "extra", typed: got[j] });
@@ -139,7 +152,7 @@ const ENDINGS = ["s", "es", "d", "ed", "t"];
 // ("want" for "wanted"), each once, in order.
 export function endingHints(diff: WordDiff[]): string[] {
   const words = diff.flatMap((entry) =>
-    entry.kind === "replaced" && ENDINGS.some((ending) => entry.word === entry.typed + ending) ? [entry.word] : [],
+    entry.kind === "replaced" && ENDINGS.some((ending) => normalize(entry.word) === entry.typed + ending) ? [entry.word] : [],
   );
   return [...new Set(words)];
 }

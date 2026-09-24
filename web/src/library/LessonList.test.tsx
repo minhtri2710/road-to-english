@@ -8,6 +8,7 @@ import { createCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
 import { putCard } from "../lib/vocabStore";
 import {
+  blockStorage,
   buttonsNamed,
   click,
   fetchMock,
@@ -94,8 +95,7 @@ describe("LessonList", () => {
     const { container } = view;
     await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
     const strip = todayStrip(container)!;
-    expect(strip.textContent).toContain("0 cards due");
-    expect(strip.textContent).toContain("Next: Daily Routine");
+    expect(strip.textContent).toContain("0 cards due · Next: Daily Routine");
 
     await click(strip, "Start lesson");
     await waitForCondition(() => container.querySelector("main h1") !== null && h1Texts(container)[0] !== "Lesson library");
@@ -201,7 +201,7 @@ describe("LessonList", () => {
   };
 
   describe("level filter", () => {
-    it("filters only the library list, remembers the level, and keeps focus on the control", async () => {
+    it("filters only the library list, stores the level, and keeps focus on the control", async () => {
       await putUserLesson({ ...userLesson, level: "A1" });
       const { container } = await renderApp();
       await waitForCondition(hasText(container, "Daily Routine"));
@@ -315,6 +315,44 @@ describe("LessonList", () => {
       await waitForCondition(() => buttonsNamed(container, "Review 1 card").length === 1);
       expect(buttonsNamed(container, "Continue")).toHaveLength(0);
     });
+  });
+
+  describe("blocked storage", () => {
+    it("renders the library with defaults and keeps choices for the session", async () => {
+      blockStorage();
+      const { container } = await renderApp();
+      await waitForCondition(hasText(container, "Daily Routine"));
+      expect(container.textContent).toContain("Greetings & Basics");
+      expect(radio(container, "All")?.getAttribute("aria-checked")).toBe("true");
+
+      await click(container, "Skip");
+      await waitForCondition(() => todayStrip(container) !== null);
+      expect(todayStrip(container)!.textContent).toContain("0 of 10 practice actions today");
+      await click(todayStrip(container)!, "20 Intense");
+      expect(todayStrip(container)!.textContent).toContain("0 of 20 practice actions today");
+      await choose(container, "B1");
+      expect(container.textContent).not.toContain("Greetings & Basics");
+      expect(radio(container, "B1")?.getAttribute("aria-checked")).toBe("true");
+
+      await act(async () => {
+        Array.from(container.querySelectorAll("li button")).find((row) => row.textContent?.startsWith("Daily Routine"))
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 1);
+      await click(container, "Back to lessons");
+      await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
+      expect(todayStrip(container)!.textContent).toContain("Continue: Daily Routine");
+    });
+
+    for (const junk of ["not a route", "#/review", "#/lesson/%E0%A4", "#/lesson/no-such-lesson", "#/my/no-such-lesson"]) {
+      it(`shows no Continue for the junk last lesson ${junk}`, async () => {
+        localStorage.setItem("road-to-english.lastLesson", junk);
+        const { container } = await renderApp();
+        await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+        expect(buttonsNamed(container, "Continue")).toHaveLength(0);
+        expect(todayStrip(container)!.textContent).toContain("Next: Greetings & Basics");
+      });
+    }
   });
 
   describe("first-run welcome", () => {

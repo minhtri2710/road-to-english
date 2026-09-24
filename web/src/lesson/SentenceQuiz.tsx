@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -60,6 +60,27 @@ export function WordDiffResult({
   const matched = diff.filter((entry) => entry.kind === "correct").length;
   const endings = endingHints(diff);
   const canSpeak = speechSupported();
+  const wordContent = (entry: WordDiff) => {
+    if (entry.kind === "extra") {
+      return entry.typed;
+    }
+    if (!canSpeak || entry.kind === "correct") {
+      return entry.word;
+    }
+    return (
+      <Button
+        label={entry.word}
+        aria-label={`Hear ${entry.word}`}
+        size="sm"
+        variant="ghost"
+        xstyle={styles.hearWord}
+        onClick={() => {
+          stopMedia();
+          speak(entry.word, targetWpm, speed);
+        }}
+      />
+    );
+  };
   return (
     <VStack gap={1}>
       <Text as="p" weight="semibold">
@@ -77,23 +98,7 @@ export function WordDiffResult({
             xstyle={entry.kind === "correct" ? styles.wordCorrect : sharedStyles.error}
           >
             {index > 0 && " "}
-            {entry.kind === "extra" ? (
-              entry.typed
-            ) : canSpeak && entry.kind !== "correct" ? (
-              <Button
-                label={entry.word}
-                aria-label={`Hear ${entry.word}`}
-                size="sm"
-                variant="ghost"
-                xstyle={styles.hearWord}
-                onClick={() => {
-                  stopMedia();
-                  speak(entry.word, targetWpm, speed);
-                }}
-              />
-            ) : (
-              entry.word
-            )}
+            {wordContent(entry)}
             {wordNote(entry, verb)}
           </Text>
         ))}
@@ -192,6 +197,7 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
+  const hintId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const checkAnswer = () => {
@@ -223,9 +229,11 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
       <Button
         label={showHint ? "Hide hint" : "Show hint"}
         variant="ghost"
+        aria-expanded={showHint}
+        aria-controls={hintId}
         onClick={() => setShowHint((shown) => !shown)}
       />
-      {showHint && <Text as="p">Hint: {hintFor(text)}</Text>}
+      {showHint && <Text as="p" id={hintId}>Hint: {hintFor(text)}</Text>}
       <Status>
         {checked !== null && (
           <WordDiffResult

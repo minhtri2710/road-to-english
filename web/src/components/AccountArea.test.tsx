@@ -379,6 +379,18 @@ describe("AccountArea", () => {
       expect(announced()).not.toContain("59 s");
     });
 
+    it("ignores a programmatic submit while the countdown runs", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      const { container } = await renderOpen({ route: limited(30) });
+      await submit(container, "learner@example.com", "password");
+      await waitForCondition(hasText(container, "Too many attempts. Try again in 30 s"));
+      const attempts = callsTo("/login");
+
+      await pressEnter(container);
+      expect(callsTo("/login")).toBe(attempts);
+      expect(container.textContent).toContain("Too many attempts. Try again in 30 s");
+    });
+
     it("stops the countdown on mode switch", async () => {
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       const { container } = await renderOpen({ route: limited(30) });

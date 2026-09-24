@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { todayKey } from "../lib/progress";
 import { recordPractice } from "../lib/progressStore";
+import * as vocab from "../lib/vocab";
 import { createCard, Rating, State, type VocabCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
 import { getAllCards, putCard } from "../lib/vocabStore";
@@ -120,6 +121,38 @@ describe("ReviewDeck", () => {
       expect(button.getAttribute("aria-keyshortcuts")).toBe(key);
       expect(kbdKeys(button)).toEqual([key]);
     }
+  });
+
+  it("refreshes the intervals each minute while the answer is shown, and stops on rating and on leaving", async () => {
+    const { container } = await openReview("one", "two");
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const due = new Date(Date.now() + 10 * 60_000);
+    vi.spyOn(vocab, "previewIntervals").mockReturnValue({
+      [Rating.Again]: due,
+      [Rating.Hard]: due,
+      [Rating.Good]: due,
+      [Rating.Easy]: due,
+    });
+    const idle = vi.getTimerCount();
+    const againInterval = () =>
+      document.getElementById(buttonsNamed(container, "Again")[0]!.getAttribute("aria-describedby") ?? "")?.textContent;
+
+    await click(container, "Show answer");
+    expect(againInterval()).toBe("10 min");
+    expect(vi.getTimerCount()).toBe(idle + 1);
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(againInterval()).toBe("9 min");
+
+    await rate(container, "Good");
+    await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
+    expect(vi.getTimerCount()).toBe(idle);
+
+    await click(container, "Show answer");
+    expect(vi.getTimerCount()).toBe(idle + 1);
+    await click(container, "Library");
+    expect(vi.getTimerCount()).toBe(idle);
   });
 
   it("reveals with Space or Enter and rates with 1-4 only while focus is in the card", async () => {

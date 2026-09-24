@@ -123,6 +123,23 @@ func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
 	}
 }
 
+// Validation runs before Begin: on a closed pool, invalid input still returns ErrInvalidState, while valid input fails at Begin.
+func TestSyncStateValidatesBeforeBegin(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "closed-pool@example.com")
+	repo.pool.Close()
+
+	invalid := emptyState()
+	invalid.Cards = []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0))}
+	invalid.Cards[0].Source.Word = nil
+	if _, err := repo.SyncState(context.Background(), user.ID, invalid); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("SyncState(invalid) error = %v, want ErrInvalidState", err)
+	}
+	if _, err := repo.SyncState(context.Background(), user.ID, emptyState()); err == nil || errors.Is(err, ErrInvalidState) {
+		t.Fatalf("SyncState(valid) error = %v, want a begin error", err)
+	}
+}
+
 // Each invalid class is rejected with ErrInvalidState and writes nothing, even when it comes after valid items.
 func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 	repo := newTestRepo(t)

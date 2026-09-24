@@ -242,22 +242,19 @@ function TodayCard({
   onReview: () => void;
 }) {
   const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
+  // With no card due, the suggestion shares the due line: "0 cards due · Next: About Me".
+  const dueLine = [due !== null && `${cards(due)} due`, !due && suggestion?.text].filter(Boolean).join(" · ");
   const today = week.at(-1)?.key;
   return (
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
       <VStack gap={1}>
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
           <Heading level={2} tabIndex={-1} ref={headingRef}>Today</Heading>
-          {due !== null && <Text type="supporting">{cards(due)} due</Text>}
+          {dueLine && <Text type="supporting">{dueLine}</Text>}
           {due ? (
             <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
           ) : (
-            suggestion && (
-              <>
-                <Text type="supporting">{suggestion.text}</Text>
-                <Button label={suggestion.action} variant="primary" onClick={suggestion.onOpen} />
-              </>
-            )
+            suggestion && <Button label={suggestion.action} variant="primary" onClick={suggestion.onOpen} />
           )}
         </HStack>
         <ProgressBar

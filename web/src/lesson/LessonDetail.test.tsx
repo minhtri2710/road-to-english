@@ -6,6 +6,7 @@ import { getAllCards } from "../lib/vocabStore";
 import { listUserLessons } from "../lib/userLessons";
 import {
   actionsToday,
+  blockStorage,
   buttonsNamed,
   click,
   close,
@@ -1307,6 +1308,22 @@ describe("LessonDetail", () => {
         expect(speech.spoken.at(-1)?.rate).toBe(0.25);
       }
     });
+  });
+
+  it("keeps the hide-text switch for the visit when storage is blocked", async () => {
+    blockStorage();
+    installSpeechFakes();
+    const view = await openLesson();
+    const autoHide = () => view.container.querySelector<HTMLInputElement>('input[role="switch"]')!;
+    expect(autoHide().checked).toBe(false);
+    await act(async () => {
+      autoHide().click();
+    });
+    expect(autoHide().checked).toBe(true);
+    await act(async () => {
+      autoHide().click();
+    });
+    expect(autoHide().checked).toBe(false);
   });
 
   describe("hide text", () => {

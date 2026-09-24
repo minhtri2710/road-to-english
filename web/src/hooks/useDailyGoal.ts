@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
+import { readPref, writePref } from "../lib/prefs";
+
 export const DAILY_GOALS = ["5", "10", "20"] as const;
 export type DailyGoal = (typeof DAILY_GOALS)[number];
 const DAILY_GOAL_KEY = "road-to-english.dailyGoal";
 
 function readDailyGoal(): DailyGoal {
-  const stored = localStorage.getItem(DAILY_GOAL_KEY);
+  const stored = readPref(DAILY_GOAL_KEY);
   return DAILY_GOALS.find((goal) => goal === stored) ?? "10";
 }
 
@@ -35,7 +37,7 @@ export function useDailyGoal(actionsToday: number) {
 
   const chooseGoal = (goal: DailyGoal) => {
     goalArmed.current = true;
-    localStorage.setItem(DAILY_GOAL_KEY, goal);
+    writePref(DAILY_GOAL_KEY, goal);
     setDailyGoal(goal);
   };
 
