@@ -18,7 +18,7 @@ func (s State) validate() error {
 
 	cardIDs := make(map[string]struct{}, len(s.Cards))
 	for _, card := range s.Cards {
-		if !ValidText(card.ID) || !ValidText(card.Front) || !validTextOrEmpty(card.Back) || !ValidText(card.Source.LessonID) || !ValidText(card.Source.SentenceID) {
+		if !ValidKey(card.ID) || !ValidText(card.Front) || !validTextOrEmpty(card.Back) || !ValidKey(card.Source.LessonID) || !ValidKey(card.Source.SentenceID) {
 			return ErrInvalidState
 		}
 		if card.Source.Word == nil || !validCardWord(*card.Source.Word) {
@@ -54,7 +54,7 @@ func (s State) validate() error {
 		}
 	}
 	for _, completion := range s.LessonCompletion {
-		if !ValidText(completion.LessonID) {
+		if !ValidKey(completion.LessonID) {
 			return ErrInvalidState
 		}
 	}
@@ -72,6 +72,14 @@ func cardID(lessonID, sentenceID, word string) string {
 		return lessonID + ":" + sentenceID
 	}
 	return lessonID + ":" + sentenceID + ":" + word
+}
+
+// MaxKeyBytes caps an indexed value: Postgres refuses a btree index row over about 2704 bytes.
+const MaxKeyBytes = 1024
+
+// ValidKey reports valid text for an indexed column: at most MaxKeyBytes bytes.
+func ValidKey(value string) bool {
+	return len(value) <= MaxKeyBytes && ValidText(value)
 }
 
 // ValidText reports a non-empty string Postgres TEXT can store: it holds no NUL.

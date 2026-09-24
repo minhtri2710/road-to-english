@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { reviveSyncState } from "./backup";
+import { MAX_KEY_BYTES } from "./vocab";
 
 const fsrsFields = {
   stability: 2.5,
@@ -155,6 +156,22 @@ describe("sync state validation", () => {
   ] as const)("accepts fsrs %s = %s", (key, value) => {
     const fsrs = { ...fsrsFields, due: "2026-01-01T00:00:00Z", [key]: value };
     expect(() => reviveSyncState({ ...state(), cards: [{ ...state().cards[0], fsrs }] })).not.toThrow();
+  });
+
+  it("rejects a card whose id is over MAX_KEY_BYTES", () => {
+    const withLesson = (lessonId: string) => ({
+      ...state(),
+      cards: [{ ...state().cards[0], id: `${lessonId}:sentence-1`, source: { ...state().cards[0].source, lessonId } }],
+    });
+    const atCap = "l".repeat(MAX_KEY_BYTES - ":sentence-1".length);
+    expect(revives(withLesson(atCap))).toBe(true);
+    expect(revives(withLesson(`${atCap}l`))).toBe(false);
+  });
+
+  it("rejects a lesson completion whose lessonId is over MAX_KEY_BYTES", () => {
+    const atCap = "l".repeat(MAX_KEY_BYTES);
+    expect(revives(state({ lessonCompletion: [{ lessonId: atCap }] }))).toBe(true);
+    expect(revives(state({ lessonCompletion: [{ lessonId: `${atCap}l` }] }))).toBe(false);
   });
 
   it("accepts sentence and word cards", () => {

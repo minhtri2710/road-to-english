@@ -12,7 +12,7 @@ function readDailyGoal(): DailyGoal {
 }
 
 // The stored daily goal, whether today's practice meets it, and whether to announce that it was met.
-// armGoal marks the next count change as the user's practice action.
+// armGoal marks the next count change as the user's practice action; disarmGoal withdraws that after a failed save.
 export function useDailyGoal(actionsToday: number) {
   const [dailyGoal, setDailyGoal] = useState(readDailyGoal);
   const goalMet = actionsToday >= Number(dailyGoal);
@@ -35,11 +35,15 @@ export function useDailyGoal(actionsToday: number) {
     goalArmed.current = true;
   };
 
+  const disarmGoal = () => {
+    goalArmed.current = false;
+  };
+
   const chooseGoal = (goal: DailyGoal) => {
     goalArmed.current = true;
     writePref(DAILY_GOAL_KEY, goal);
     setDailyGoal(goal);
   };
 
-  return { dailyGoal, goalMet, goalAnnounced, armGoal, chooseGoal };
+  return { dailyGoal, goalMet, goalAnnounced, armGoal, disarmGoal, chooseGoal };
 }

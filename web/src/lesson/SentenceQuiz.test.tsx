@@ -319,6 +319,17 @@ describe("SentenceQuiz", () => {
       expect(input.value).toBe("Vietnam");
     });
 
+    it("shows a sentence with no word to blank as plain text", async () => {
+      installSpeechFakes();
+      const lesson = { ...a1Lesson, sentences: [...a1Lesson.sentences, { id: "about-me-9", text: "♪♪ ...", vi: "" }] };
+      const { container } = await openLesson(lesson);
+      await click(container, "Fill the blank");
+      const sentence = Array.from(container.querySelectorAll("p")).find((p) => p.textContent === "♪♪ ...");
+      expect(sentence).toBeDefined();
+      expect(container.querySelector("#blank-about-me-9")).toBeNull();
+      expect(bank(container, "about-me-1").length).toBeGreaterThan(0);
+    });
+
     it("offers no bank on other levels", async () => {
       installSpeechFakes();
       const { container } = await openLesson({ ...a1Lesson, level: "A2" });

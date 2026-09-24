@@ -33,7 +33,7 @@ func signupHandler(w http.ResponseWriter, r *http.Request, repo *storage.Reposit
 		return
 	}
 	credentials.Email = normalizeEmail(credentials.Email)
-	if !storage.ValidText(credentials.Email) {
+	if !storage.ValidKey(credentials.Email) {
 		writeError(w, http.StatusBadRequest, "invalid email")
 		return
 	}
@@ -140,7 +140,7 @@ func normalizeEmail(email string) string {
 }
 
 func validLoginCredentials(input credentials) bool {
-	return storage.ValidText(input.Email) && len(input.Password) > 0 && len(input.Password) <= auth.MaxPasswordBytes
+	return storage.ValidKey(input.Email) && len(input.Password) > 0 && len(input.Password) <= auth.MaxPasswordBytes
 }
 
 // writeUser encodes a map, whose sorted keys keep the body {"email":...,"id":...} byte for byte.

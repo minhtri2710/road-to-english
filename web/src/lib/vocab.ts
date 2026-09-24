@@ -83,14 +83,25 @@ export function splitCardBack(card: VocabCard): { sentence: string; vi: string }
   return { sentence: card.back.slice(0, split), vi: card.back.slice(split + CARD_BACK_SEPARATOR.length) };
 }
 
+// The api MaxKeyBytes: the longest card id, in UTF-8 bytes, that sync accepts.
+export const MAX_KEY_BYTES = 1024;
+
+export function isKeySize(value: string): boolean {
+  return new TextEncoder().encode(value).length <= MAX_KEY_BYTES;
+}
+
 const scheduler = fsrs(generatorParameters({ enable_fuzz: false }));
 
 export function createCard(input: NewCard, now: Date): VocabCard {
   if (input.source.word !== "" && !isCardWord(input.source.word)) {
     throw new Error(`Invalid card word: ${input.source.word}`);
   }
+  const id = cardId(input.source);
+  if (!isKeySize(id)) {
+    throw new Error("Card id too long");
+  }
   return {
-    id: cardId(input.source),
+    id,
     ...input,
     fsrs: createEmptyCard(now),
     updatedAt: now.toISOString(),

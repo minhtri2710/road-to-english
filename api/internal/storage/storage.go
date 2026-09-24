@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -286,6 +287,10 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 	if err := in.validate(); err != nil {
 		return State{}, err
 	}
+	// Upserts in key order, so concurrent syncs of one user lock shared rows in the same order and cannot deadlock.
+	slices.SortFunc(in.Cards, func(a, b Card) int { return strings.Compare(a.ID, b.ID) })
+	slices.SortFunc(in.PracticeDays, func(a, b PracticeDay) int { return strings.Compare(a.Date, b.Date) })
+	slices.SortFunc(in.LessonCompletion, func(a, b LessonCompletion) int { return strings.Compare(a.LessonID, b.LessonID) })
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return State{}, fmt.Errorf("begin sync transaction: %w", err)

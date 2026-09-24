@@ -266,11 +266,12 @@ export function SentenceBlank({
   const [correct, setCorrect] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { parts, index, answer } = blankFor(text);
-  const choices = lessonWords ? wordBank(parts[index], lessonWords, id) : [];
 
   if (index === -1) {
     return <Text as="p">{text}</Text>;
   }
+
+  const choices = lessonWords ? wordBank(parts[index], lessonWords, id) : [];
 
   const checkAnswer = () => {
     setCorrect(blankMatches(typed, answer));

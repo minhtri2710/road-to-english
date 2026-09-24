@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 
+import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -59,4 +60,26 @@ export function ErrorMessage({ error, subject }: { error: Error; subject: string
       Unable to load {subject}: {message}
     </Alert>
   );
+}
+
+// Replaces a crashed render with a way out; React still logs the error to the console.
+export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) {
+      return this.props.children;
+    }
+    return (
+      <VStack gap={1}>
+        <Heading level={1}>Something went wrong</Heading>
+        <Text as="p">Your progress on this device is kept.</Text>
+        <Button label="Reload" onClick={() => window.location.reload()} />
+      </VStack>
+    );
+  }
 }

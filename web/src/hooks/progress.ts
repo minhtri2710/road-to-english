@@ -42,15 +42,16 @@ export function useProgress() {
     void refresh();
   }, [refresh]);
 
-  // Practice is recorded in the background; a failed write surfaces as `error`, not a rejection.
+  // Practice is recorded in the background; a failed write surfaces as `error` and resolves false, not a rejection.
   const recordPractice = useCallback(async (options: { newCard: boolean }) => {
     try {
       await savePractice(todayKey(new Date()), options);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError : new Error("Unable to save progress"));
-      return;
+      return false;
     }
     await refresh();
+    return true;
   }, [refresh]);
 
   const markLessonComplete = useCallback(

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -598,5 +599,37 @@ func TestGetSessionRejectsSessionPast90Days(t *testing.T) {
 	insertSession(t, repo, user.ID, "past-cap", "91 days", "1 day")
 	if _, err := repo.GetSession(context.Background(), "past-cap"); !errors.Is(err, ErrSessionInvalid) {
 		t.Fatalf("GetSession() error = %v, want ErrSessionInvalid", err)
+	}
+}
+
+// Two syncs of one user with the same new keys in opposite orders must not deadlock.
+func TestSyncStateConcurrentOppositeOrders(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "concurrent@example.com")
+	for round := range 20 {
+		forward := emptyState()
+		for i := range 30 {
+			lessonID := "lesson-" + strconv.Itoa(round) + "-" + strconv.Itoa(i)
+			forward.Cards = append(forward.Cards, testCard(lessonID+":s", lessonID, "s", "front", "back", fsrs("2026-09-22T10:00:00Z", 0)))
+			forward.PracticeDays = append(forward.PracticeDays, PracticeDay{Date: time.Date(2000+round, 1, 1+i, 0, 0, 0, 0, time.UTC).Format("2006-01-02")})
+			forward.LessonCompletion = append(forward.LessonCompletion, LessonCompletion{LessonID: lessonID})
+		}
+		backward := State{Cards: slices.Clone(forward.Cards), PracticeDays: slices.Clone(forward.PracticeDays), LessonCompletion: slices.Clone(forward.LessonCompletion)}
+		slices.Reverse(backward.Cards)
+		slices.Reverse(backward.PracticeDays)
+		slices.Reverse(backward.LessonCompletion)
+
+		errs := make(chan error, 2)
+		for _, in := range []State{forward, backward} {
+			go func() {
+				_, err := repo.SyncState(context.Background(), user.ID, in)
+				errs <- err
+			}()
+		}
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Fatalf("round %d: SyncState() error = %v", round, err)
+			}
+		}
 	}
 }

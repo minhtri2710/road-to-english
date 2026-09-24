@@ -10,6 +10,7 @@ import {
   formatInterval,
   GRADES,
   isCardWord,
+  MAX_KEY_BYTES,
   previewIntervals,
   Rating,
   restoreCard,
@@ -61,6 +62,15 @@ describe("vocabulary cards", () => {
     for (const word of ["Hello", "a:b", "a b", "-a", "a--b"]) {
       expect(() => createCard({ ...input, source: { ...input.source, word } }, now)).toThrow();
     }
+  });
+
+  it("refuses a card whose id is over MAX_KEY_BYTES in UTF-8 bytes", () => {
+    const prefix = "lesson-1:sentence-1:";
+    const atCap = { ...input, source: { ...input.source, word: "a".repeat(MAX_KEY_BYTES - prefix.length) } };
+    expect(createCard(atCap, now).id).toHaveLength(MAX_KEY_BYTES);
+    expect(() => createCard({ ...input, source: { ...atCap.source, word: `${atCap.source.word}a` } }, now)).toThrow();
+    const multibyte = { ...input, source: { ...input.source, lessonId: "é".repeat(MAX_KEY_BYTES / 2) } };
+    expect(() => createCard(multibyte, now)).toThrow();
   });
 
   it("schedules a Good review after now", () => {

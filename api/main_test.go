@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -221,6 +223,33 @@ func TestSignupRejectsWhitespaceOnlyEmail(t *testing.T) {
 	}
 	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
 		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+// randomKey returns n bytes of random URL-safe base64: no repeats, so Postgres cannot compress it under its index limit.
+func randomKey(n int) string {
+	raw := make([]byte, n)
+	_, _ = rand.Read(raw)
+	return base64.RawURLEncoding.EncodeToString(raw)[:n]
+}
+
+func TestSignupRejectsOversizedEmail(t *testing.T) {
+	api := newTestAPI(t)
+	const domain = "@example.com"
+	for _, n := range []int{storage.MaxKeyBytes + 1, 4000} {
+		email := strings.ToLower(randomKey(n-len(domain))) + domain
+		for _, path := range []string{"/signup", "/login"} {
+			response := doJSON(api.handler, http.MethodPost, path, `{"email":"`+email+`","password":"password"}`)
+			want := map[string]string{"/signup": `{"error":"invalid email"}`, "/login": `{"error":"invalid credentials"}`}[path]
+			if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != want {
+				t.Fatalf("%s with %d-byte email: status = %d, body = %s, want 400 %s", path, n, response.Code, response.Body.String(), want)
+			}
+		}
+	}
+
+	atCap := strings.ToLower(randomKey(storage.MaxKeyBytes-len(domain))) + domain
+	if response := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"`+atCap+`","password":"password"}`); response.Code != http.StatusOK {
+		t.Fatalf("at-cap email status = %d, body = %s, want 200", response.Code, response.Body.String())
 	}
 }
 
@@ -911,5 +940,33 @@ func TestSyncRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 				t.Fatalf("state after rejected push = %s, want empty", empty.Body.String())
 			}
 		})
+	}
+}
+
+func TestSyncRejectsOversizedKeys(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-oversized-keys@example.com")
+	state := func(lessonID, sentenceID, completedLessonID string) string {
+		id := lessonID + ":" + sentenceID
+		return `{"cards":[{"id":"` + id + `","front":"front","back":"back","source":{"lessonId":"` + lessonID + `","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[{"lessonId":"` + completedLessonID + `"}]}`
+	}
+	for name, body := range map[string]string{
+		"card id over cap":              state(randomKey(storage.MaxKeyBytes-1), "s", "lesson-1"),
+		"long card lesson id":           state(randomKey(4000), "s", "lesson-1"),
+		"long card sentence id":         state("lesson-1", randomKey(4000), "lesson-1"),
+		"completion lesson id at cap+1": state("lesson-1", "s", randomKey(storage.MaxKeyBytes+1)),
+		"long completion lesson id":     state("lesson-1", "s", randomKey(4000)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := syncWithCookie(api.handler, body, cookie)
+			if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
+				t.Fatalf("status = %d, body = %s, want 400 invalid sync state", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	atCap := state(randomKey(storage.MaxKeyBytes-2), "s", randomKey(storage.MaxKeyBytes))
+	if response := syncWithCookie(api.handler, atCap, cookie); response.Code != http.StatusOK {
+		t.Fatalf("at-cap keys status = %d, body = %s, want 200", response.Code, response.Body.String())
 	}
 }

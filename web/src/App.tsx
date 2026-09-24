@@ -74,10 +74,12 @@ export function App() {
   const reviewDeck = capNewCards(deck.due, progress.newCardsToday);
   const storageError =
     deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
-  const { dailyGoal, goalMet, goalAnnounced, armGoal, chooseGoal } = useDailyGoal(progress.actionsToday);
-  const recordPractice = (options: { newCard: boolean }) => {
+  const { dailyGoal, goalMet, goalAnnounced, armGoal, disarmGoal, chooseGoal } = useDailyGoal(progress.actionsToday);
+  const recordPractice = async (options: { newCard: boolean }) => {
     armGoal();
-    return progress.recordPractice(options);
+    if (!(await progress.recordPractice(options))) {
+      disarmGoal();
+    }
   };
   const { levelFilter, chooseLevelFilter } = useLevelFilter();
   const auth = useAuth();

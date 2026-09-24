@@ -1408,5 +1408,38 @@ describe("App", () => {
       localStorage.removeItem("road-to-english.dailyGoal");
     });
 
+    it("does not announce the daily goal when a later reload meets it after a failed practice save", async () => {
+      localStorage.setItem("road-to-english.dailyGoal", "5");
+      for (let index = 0; index < 4; index += 1) {
+        await recordPractice(todayKey(new Date()), { newCard: false });
+      }
+      vi.stubGlobal("confirm", () => true);
+      const { container } = await openLesson();
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      await click(container, "Dictation");
+      vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
+      const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1")!;
+      await act(async () => {
+        setInputValue(input, "Good morning");
+        input.form?.requestSubmit();
+      });
+      await waitForCondition(hasText(container, "disk full. Reload to try again."));
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
+      // Another tab's practice lands in the store; the import reload picks it up with no practice here.
+      await recordPractice(todayKey(new Date()), { newCard: false });
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      await act(async () => {
+        Object.defineProperty(file, "files", {
+          configurable: true,
+          value: [new File([text], "backup.json", { type: "application/json" })],
+        });
+        file.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
+      expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
+      localStorage.removeItem("road-to-english.dailyGoal");
+    });
   });
 });

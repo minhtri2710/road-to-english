@@ -2,7 +2,7 @@ import type { Lesson } from "../api/lessons";
 import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
-import { cardId, isCardWord, isRecord, isText, type CardSource, type VocabCard } from "./vocab";
+import { cardId, isCardWord, isKeySize, isRecord, isText, type CardSource, type VocabCard } from "./vocab";
 
 // The /sync wire state. User lessons are local-only and never part of it.
 export interface SyncState {
@@ -129,6 +129,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
   const fsrs = value.fsrs;
   if (
     !isNonEmptyText(value.id) ||
+    !isKeySize(value.id) ||
     !isNonEmptyText(value.front) ||
     !isText(value.back) ||
     !isRecord(source) ||
@@ -176,7 +177,7 @@ function validateSyncState(value: unknown): asserts value is SerializedState {
   });
 
   value.lessonCompletion.forEach((completion, index) => {
-    if (!isRecord(completion) || !isNonEmptyText(completion.lessonId)) {
+    if (!isRecord(completion) || !isNonEmptyText(completion.lessonId) || !isKeySize(completion.lessonId)) {
       throw new Error(`Invalid lesson completion at index ${index}.`);
     }
   });
