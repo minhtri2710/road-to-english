@@ -30,14 +30,13 @@ export function useSayIt(cardTurn: string | null, showAnswer: boolean, stopListe
     setSayIt({ turn, state: { status: "listening" } });
     const recognition = recognizeOnce();
     recognitionRef.current = recognition;
+    // No stale guard: recognizeOnce settles an aborted or superseded recognition at once.
     recognition.result.then(
       (transcript) => {
-        if (recognitionRef.current !== recognition) return;
         recognitionRef.current = null;
         setSayIt({ turn, state: { status: "heard", transcript } });
       },
       (error: Error) => {
-        if (recognitionRef.current !== recognition) return;
         recognitionRef.current = null;
         setSayIt({ turn, state: error.name === "AbortError" ? { status: "idle" } : { status: "failed", message: error.message } });
       },

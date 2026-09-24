@@ -71,7 +71,6 @@ export function recognizeOnce(): { result: Promise<string>; abort(): void } {
     recognition.processLocally = true;
   }
 
-  let settled = false;
   let resolve!: (transcript: string) => void;
   let reject!: (error: Error) => void;
   const result = new Promise<string>((onResolve, onReject) => {
@@ -79,10 +78,6 @@ export function recognizeOnce(): { result: Promise<string>; abort(): void } {
     reject = onReject;
   });
   const settle = (outcome: string | Error) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
     if (active === handle) {
       active = null;
     }
