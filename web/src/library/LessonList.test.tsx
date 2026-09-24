@@ -11,6 +11,7 @@ import {
   blockStorage,
   buttonsNamed,
   click,
+  close,
   fetchMock,
   h1Texts,
   hasText,
@@ -342,6 +343,31 @@ describe("LessonList", () => {
       await click(container, "Back to lessons");
       await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
       expect(todayStrip(container)!.textContent).toContain("Continue: Daily Routine");
+    });
+
+    it("keeps a choice for the session when reads work but writes fail", async () => {
+      localStorage.setItem("road-to-english.levelFilter", "A2");
+      const stored = localStorage;
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: {
+          getItem: (key: string) => stored.getItem(key),
+          setItem: () => {
+            throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+          },
+        },
+      });
+      const view = await renderApp();
+      const { container } = view;
+      await waitForCondition(() => radio(container, "A2")?.getAttribute("aria-checked") === "true");
+      await choose(container, "B1");
+      expect(radio(container, "B1")?.getAttribute("aria-checked")).toBe("true");
+
+      expect(stored.getItem("road-to-english.levelFilter")).toBe("A2");
+      await close(view);
+      const remounted = await renderApp();
+      await waitForCondition(() => radio(remounted.container, "B1") !== undefined);
+      expect(radio(remounted.container, "B1")?.getAttribute("aria-checked")).toBe("true");
     });
 
     for (const junk of ["not a route", "#/review", "#/lesson/%E0%A4", "#/lesson/no-such-lesson", "#/my/no-such-lesson"]) {

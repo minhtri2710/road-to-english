@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
 import { App } from "../App";
+import { clearSessionPrefs } from "../lib/prefs";
 import { todayKey } from "../lib/progress";
 import { getDailyCount } from "../lib/progressStore";
 import { greetingsLesson, lessonSummaries } from "./fixtures";
@@ -65,7 +66,8 @@ export interface AppView {
 // React 19 act() scopes must not overlap: a scope that ends late or never nests every later act() and leaves
 // its updates unflushed, so the rest of the file fails. A test that times out keeps running in the background,
 // so every helper act belongs to the test that called the helper: resetApp ends that test and waits for its
-// act in flight, and a helper of an ended test throws instead of starting another act.
+// act in flight, and the polling helpers waitForCondition and waitForActions throw once their test has ended
+// instead of starting another act.
 const realSetTimeout = globalThis.setTimeout;
 let currentTest = 0;
 let actInFlight: Promise<unknown> = Promise.resolve();
@@ -264,6 +266,7 @@ export async function resetApp(): Promise<void> {
   window.history.replaceState(null, "", "/");
   restoreProperty(window, "localStorage", originalLocalStorage);
   localStorage.clear();
+  clearSessionPrefs();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
