@@ -59,3 +59,43 @@ test("save a hyphenated compound as one word and review it", async ({ page }) =>
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("T-shirt", { exact: true })).toBeVisible();
 });
+
+test("shadow one sentence at a time through to the last sentence and back", async ({ page }) => {
+  await openLibraryLesson(page, "Greetings & Basics");
+  const guided = page.getByRole("button", { name: "One at a time" });
+  await guided.click();
+  await expect(guided).toHaveAttribute("aria-pressed", "true");
+
+  const position = page.getByRole("heading", { level: 2 });
+  await expect(position).toHaveText("Sentence 1 of 9");
+  await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Previous" })).toHaveAttribute("aria-disabled", "true");
+
+  const next = page.getByRole("button", { name: "Next" });
+  await next.click();
+  await expect(position).toHaveText("Sentence 2 of 9");
+  await expect(position).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "Sentence 2 of 9" })).toHaveCount(1);
+  for (let sentence = 3; sentence <= 9; sentence += 1) {
+    await next.click();
+    await expect(position).toHaveText(`Sentence ${sentence} of 9`);
+  }
+  await expect(page.getByText("Long time no see. How have you been?")).toBeVisible();
+  await expect(next).toHaveAttribute("aria-disabled", "true");
+  await next.focus();
+  await page.keyboard.press("Enter");
+  await expect(position).toHaveText("Sentence 9 of 9");
+  await expect(next).toBeFocused();
+
+  const previous = page.getByRole("button", { name: "Previous" });
+  for (let sentence = 8; sentence >= 1; sentence -= 1) {
+    await previous.click();
+    await expect(position).toHaveText(`Sentence ${sentence} of 9`);
+  }
+  await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
+  await expect(previous).toHaveAttribute("aria-disabled", "true");
+
+  await guided.click();
+  await expect(position).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(9);
+});

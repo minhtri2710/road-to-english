@@ -234,6 +234,12 @@ async function openRecordingReady(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Compare" }).first()).toBeEnabled();
 }
 
+async function openGuided(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await page.getByRole("button", { name: "One at a time" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
+}
+
 async function signUpWithSync(page: Page, status: number): Promise<void> {
   await answerWithStatus(page, "/sync", status);
   await page.goto("/");
@@ -368,6 +374,32 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["recording ready with Compare", async (page, inspect) => {
     await openRecordingReady(page);
+    await inspect();
+  }],
+  ["guided shadowing with text shown", async (page, inspect) => {
+    await openGuided(page);
+    await inspect();
+  }],
+  ["guided shadowing with text hidden", async (page, inspect) => {
+    await openGuided(page);
+    const text = page.getByRole("button", { name: "Text", exact: true });
+    await text.click();
+    await expect(text).toHaveAttribute("aria-pressed", "false");
+    await inspect();
+  }],
+  ["guided shadowing with a recording ready", async (page, inspect) => {
+    await openGuided(page);
+    await page.getByRole("button", { name: "Record" }).click();
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect(page.getByRole("button", { name: "Compare" })).toBeEnabled();
+    await inspect();
+  }],
+  ["guided shadowing at the last sentence", async (page, inspect) => {
+    await openGuided(page);
+    for (let sentence = 2; sentence <= 9; sentence += 1) {
+      await page.getByRole("button", { name: "Next" }).click();
+      await expect(page.getByRole("heading", { level: 2, name: `Sentence ${sentence} of 9` })).toBeVisible();
+    }
     await inspect();
   }],
   ["pronunciation check unsupported", async (page, inspect) => {
@@ -532,6 +564,11 @@ test.describe("axe at 320px", () => {
     await page.getByRole("button", { name: LIBRARY_LESSON }).click();
     await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
     expect(await axeViolations(page), "lesson").toEqual([]);
+  });
+
+  test("guided shadowing", async ({ page }) => {
+    await openGuided(page);
+    expect(await axeViolations(page)).toEqual([]);
   });
 });
 

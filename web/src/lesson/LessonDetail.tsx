@@ -21,6 +21,7 @@ import { readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabCard } from "../lib/vocab";
+import { GuidedShadowing } from "./GuidedShadowing";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation, type PracticeMode } from "./SentenceQuiz";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
@@ -113,6 +114,8 @@ export function LessonDetail({
       else next.delete(sentenceId);
       return next;
     });
+  // The sentence shown one at a time, or null for the full list; per visit.
+  const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const pronunciationSupported = recognitionSupported();
   const [selectedWord, setSelectedWord] = useState<{
@@ -159,6 +162,147 @@ export function LessonDetail({
     if (first && autoHideText) {
       setTextHidden(sentenceId, true);
     }
+  };
+
+  // One sentence's card, shared by the list and the guided view.
+  const renderCard = (sentence: Lesson["sentences"][number]) => {
+    const textHidden = hiddenText.has(sentence.id);
+    const showText = showTranscript && !textHidden;
+    return (
+      // Keyed so a step to another sentence starts its practice afresh.
+      <Card key={sentence.id} padding={3} xstyle={sharedStyles.sentence}>
+        {sentence.cue && (
+          <Button
+            label="Play clip"
+            variant="secondary"
+            isDisabled={video.status !== "ready"}
+            onClick={() => {
+              const { cue } = sentence;
+              if (!cue) return;
+              stopMedia({ keepVideo: true });
+              video.playClip(cue, Number(speed));
+            }}
+          />
+        )}
+        {mode === "shadow" ? (
+          <VStack gap={1}>
+            <ToggleButton
+              label="Text"
+              isPressed={!textHidden}
+              xstyle={styles.modeToggle}
+              onPressedChange={(pressed) => setTextHidden(sentence.id, !pressed)}
+            />
+            {showText && (
+              <SentenceWords
+                text={sentence.text}
+                panelId={wordPanelId(sentence.id)}
+                selected={
+                  selectedWord?.sentenceId === sentence.id
+                    ? selectedWord.text
+                    : null
+                }
+                spokenChar={
+                  spokenWord?.sentenceId === sentence.id
+                    ? spokenWord.charIndex
+                    : null
+                }
+                onSelect={(text) =>
+                  setSelectedWord({ sentenceId: sentence.id, text })
+                }
+              />
+            )}
+            {showText && sentence.notes && (
+              <Text as="p" type="supporting">
+                {sentence.notes}
+              </Text>
+            )}
+            {showVietnamese && !textHidden && (
+              <Text as="p" type="supporting">
+                <span lang="vi">{sentence.vi}</span>
+              </Text>
+            )}
+            {showText && selectedWord?.sentenceId === sentence.id && (
+              <WordPanel
+                key={cardWord(selectedWord.text)}
+                id={wordPanelId(sentence.id)}
+                text={selectedWord.text}
+                card={{
+                  front: selectedWord.text,
+                  back: wordCardBack(sentence.text, sentence.vi),
+                  source: {
+                    lessonId: data.id,
+                    sentenceId: sentence.id,
+                    word: cardWord(selectedWord.text),
+                  },
+                }}
+                savedCardIds={savedCardIds}
+                addCard={addCard}
+                removeCard={removeCard}
+                undoRemove={undoRemove}
+                hear={() => {
+                  stopMedia();
+                  speak(selectedWord.text, data.targetWpm, Number(speed));
+                }}
+              />
+            )}
+            <SentenceShadowing
+              text={sentence.text}
+              targetWpm={data.targetWpm}
+              speed={Number(speed)}
+              looping={loopingSentenceId === sentence.id}
+              setLooping={(looping) =>
+                setLoopingSentenceId(looping ? sentence.id : null)
+              }
+              sentenceId={sentence.id}
+              setSpokenWord={setSpokenWord}
+              practice={(practiceMode) => shadowPractice(sentence.id, practiceMode)}
+              pronunciationCheck={pronunciationSupported && pronunciationCheck}
+              stopMedia={stopMedia}
+            />
+            <SaveToReview
+              card={sentenceCard(data.id, sentence)}
+              label="Save to review"
+              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
+              addCard={addCard}
+              removeCard={removeCard}
+              undoRemove={undoRemove}
+            />
+          </VStack>
+        ) : (
+          <VStack gap={1}>
+            {mode === "dictation" ? (
+              <SentenceDictation
+                id={sentence.id}
+                text={sentence.text}
+                notes={sentence.notes}
+                targetWpm={data.targetWpm}
+                speed={Number(speed)}
+                practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                stopMedia={stopMedia}
+              />
+            ) : (
+              <SentenceBlank
+                id={sentence.id}
+                text={sentence.text}
+                targetWpm={data.targetWpm}
+                speed={Number(speed)}
+                practice={(practiceMode) => practice(sentence.id, practiceMode)}
+                stopMedia={stopMedia}
+                lessonWords={bankWords}
+              />
+            )}
+            <SaveToReview
+              card={sentenceCard(data.id, sentence)}
+              label="Save to review"
+              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
+              addCard={addCard}
+              removeCard={removeCard}
+              undoRemove={undoRemove}
+            />
+          </VStack>
+        )}
+      </Card>
+      );
   };
 
   useEffect(() => {
@@ -226,6 +370,7 @@ export function LessonDetail({
         onChange={(nextMode) => {
           if (nextMode) {
             setMode(nextMode as LessonMode);
+            setGuidedIndex(null);
             stopMedia({ keepVideo: true });
           }
         }}
@@ -253,6 +398,14 @@ export function LessonDetail({
           <>
             <ToggleButton label="Transcript" isPressed={showTranscript} onPressedChange={setShowTranscript} />
             <ToggleButton label="Vietnamese" isPressed={showVietnamese} onPressedChange={setShowVietnamese} />
+            <ToggleButton
+              label="One at a time"
+              isPressed={guidedIndex !== null}
+              onPressedChange={(pressed) => {
+                stopMedia({ keepVideo: true });
+                setGuidedIndex(pressed ? 0 : null);
+              }}
+            />
             <ToggleButton
               ref={takeDisclosureFocus("toggle")}
               label="Pronunciation check"
@@ -318,148 +471,24 @@ export function LessonDetail({
           </VStack>
         </Card>
       )}
-      <VStack as="ol" gap={2} padding={0}>
-        {data.sentences.map((sentence) => {
-          const textHidden = hiddenText.has(sentence.id);
-          const showText = showTranscript && !textHidden;
-          return (
-          <li key={sentence.id}>
-            <Card padding={3} xstyle={sharedStyles.sentence}>
-              {sentence.cue && (
-                <Button
-                  label="Play clip"
-                  variant="secondary"
-                  isDisabled={video.status !== "ready"}
-                  onClick={() => {
-                    const { cue } = sentence;
-                    if (!cue) return;
-                    stopMedia({ keepVideo: true });
-                    video.playClip(cue, Number(speed));
-                  }}
-                />
-              )}
-              {mode === "shadow" ? (
-                <VStack gap={1}>
-                  <ToggleButton
-                    label="Text"
-                    isPressed={!textHidden}
-                    xstyle={styles.modeToggle}
-                    onPressedChange={(pressed) => setTextHidden(sentence.id, !pressed)}
-                  />
-                  {showText && (
-                    <SentenceWords
-                      text={sentence.text}
-                      panelId={wordPanelId(sentence.id)}
-                      selected={
-                        selectedWord?.sentenceId === sentence.id
-                          ? selectedWord.text
-                          : null
-                      }
-                      spokenChar={
-                        spokenWord?.sentenceId === sentence.id
-                          ? spokenWord.charIndex
-                          : null
-                      }
-                      onSelect={(text) =>
-                        setSelectedWord({ sentenceId: sentence.id, text })
-                      }
-                    />
-                  )}
-                  {showText && sentence.notes && (
-                    <Text as="p" type="supporting">
-                      {sentence.notes}
-                    </Text>
-                  )}
-                  {showVietnamese && !textHidden && (
-                    <Text as="p" type="supporting">
-                      <span lang="vi">{sentence.vi}</span>
-                    </Text>
-                  )}
-                  {showText && selectedWord?.sentenceId === sentence.id && (
-                    <WordPanel
-                      key={cardWord(selectedWord.text)}
-                      id={wordPanelId(sentence.id)}
-                      text={selectedWord.text}
-                      card={{
-                        front: selectedWord.text,
-                        back: wordCardBack(sentence.text, sentence.vi),
-                        source: {
-                          lessonId: data.id,
-                          sentenceId: sentence.id,
-                          word: cardWord(selectedWord.text),
-                        },
-                      }}
-                      savedCardIds={savedCardIds}
-                      addCard={addCard}
-                      removeCard={removeCard}
-                      undoRemove={undoRemove}
-                      hear={() => {
-                        stopMedia();
-                        speak(selectedWord.text, data.targetWpm, Number(speed));
-                      }}
-                    />
-                  )}
-                  <SentenceShadowing
-                    text={sentence.text}
-                    targetWpm={data.targetWpm}
-                    speed={Number(speed)}
-                    looping={loopingSentenceId === sentence.id}
-                    setLooping={(looping) =>
-                      setLoopingSentenceId(looping ? sentence.id : null)
-                    }
-                    sentenceId={sentence.id}
-                    setSpokenWord={setSpokenWord}
-                    practice={(practiceMode) => shadowPractice(sentence.id, practiceMode)}
-                    pronunciationCheck={pronunciationSupported && pronunciationCheck}
-                    stopMedia={stopMedia}
-                  />
-                  <SaveToReview
-                    card={sentenceCard(data.id, sentence)}
-                    label="Save to review"
-                    saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-                    addCard={addCard}
-                    removeCard={removeCard}
-                    undoRemove={undoRemove}
-                  />
-                </VStack>
-              ) : (
-                <VStack gap={1}>
-                  {mode === "dictation" ? (
-                    <SentenceDictation
-                      id={sentence.id}
-                      text={sentence.text}
-                      notes={sentence.notes}
-                      targetWpm={data.targetWpm}
-                      speed={Number(speed)}
-                      practice={(practiceMode) => practice(sentence.id, practiceMode)}
-                      stopMedia={stopMedia}
-                    />
-                  ) : (
-                    <SentenceBlank
-                      id={sentence.id}
-                      text={sentence.text}
-                      targetWpm={data.targetWpm}
-                      speed={Number(speed)}
-                      practice={(practiceMode) => practice(sentence.id, practiceMode)}
-                      stopMedia={stopMedia}
-                      lessonWords={bankWords}
-                    />
-                  )}
-                  <SaveToReview
-                    card={sentenceCard(data.id, sentence)}
-                    label="Save to review"
-                    saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-                    addCard={addCard}
-                    removeCard={removeCard}
-                    undoRemove={undoRemove}
-                  />
-                </VStack>
-              )}
-            </Card>
-          </li>
-          );
-        })}
-      </VStack>
+      {guidedIndex !== null ? (
+        <GuidedShadowing
+          index={guidedIndex}
+          count={data.sentences.length}
+          step={(index) => {
+            stopMedia();
+            setGuidedIndex(index);
+          }}
+        >
+          {renderCard(data.sentences[guidedIndex])}
+        </GuidedShadowing>
+      ) : (
+        <VStack as="ol" gap={2} padding={0}>
+          {data.sentences.map((sentence) => (
+            <li key={sentence.id}>{renderCard(sentence)}</li>
+          ))}
+        </VStack>
+      )}
     </VStack>
   );
 }

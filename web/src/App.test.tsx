@@ -58,8 +58,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 33 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(48);
+    // 34 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check and One at a time toggles and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(49);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
