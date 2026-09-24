@@ -14,7 +14,7 @@ describe("SentenceQuiz", () => {
   it("keeps dictation references hidden until checking and reveals the result", async () => {
     vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
     const sentence = greetingsLesson.sentences[0];
 
     await act(async () => {
@@ -51,17 +51,12 @@ describe("SentenceQuiz", () => {
     });
     expect(container.textContent).not.toContain(sentence.text);
     expect(input?.value).toBe("");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("marks missed and wrong words after checking dictation", async () => {
     vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
@@ -83,11 +78,6 @@ describe("SentenceQuiz", () => {
     );
     expect(container.textContent).not.toContain("(extra)");
     expect(container.textContent).toContain("Not quite");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("plays dictation and shows positive and negative results", async () => {
@@ -100,7 +90,7 @@ describe("SentenceQuiz", () => {
     }
     vi.stubGlobal("speechSynthesis", { speak, cancel });
     vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
@@ -146,10 +136,5 @@ describe("SentenceQuiz", () => {
       retryInput.form?.requestSubmit();
     });
     expect(container.textContent).toContain("Correct");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 });

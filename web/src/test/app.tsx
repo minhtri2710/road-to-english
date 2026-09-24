@@ -60,11 +60,15 @@ export interface AppView {
   unmount: () => Promise<void>;
 }
 
-export async function close({ container, root }: { container: HTMLElement; root: Root }): Promise<void> {
+// Every root renderApp mounted and close has not yet closed; resetApp closes the rest.
+const mounted = new Set<{ container: HTMLElement; root: Root }>();
+
+export async function close(view: { container: HTMLElement; root: Root }): Promise<void> {
+  mounted.delete(view);
   await act(async () => {
-    root.unmount();
+    view.root.unmount();
   });
-  container.remove();
+  view.container.remove();
 }
 
 // Renders the App as main.tsx does, in StrictMode, with fetch served by routeFetch.
@@ -80,7 +84,9 @@ export async function renderApp({ route, lesson }: { route?: FetchRoute; lesson?
       </StrictMode>,
     );
   });
-  return { container, root, unmount: () => close({ container, root }) };
+  const view: AppView = { container, root, unmount: () => close(view) };
+  mounted.add(view);
+  return view;
 }
 
 // Renders the App and opens the Greetings & Basics row, served as `lesson`.
@@ -93,6 +99,16 @@ export async function openLesson(lesson: Lesson = greetingsLesson): Promise<AppV
     button?.click();
   });
   return view;
+}
+
+// Opens the Greetings & Basics row once the library lists it.
+export async function reopenGreetings(container: HTMLElement): Promise<void> {
+  const row = () =>
+    Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Greetings & Basics"));
+  await waitForCondition(() => row() !== undefined);
+  await act(async () => {
+    row()?.click();
+  });
 }
 
 export const h1Texts = (container: HTMLElement) => Array.from(container.querySelectorAll("h1")).map((h1) => h1.textContent);
@@ -157,8 +173,11 @@ const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDe
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
 
-// Every App test file runs this after each test.
-export function resetApp(): void {
+// Every App test file runs this after each test; it first unmounts any App the test left mounted.
+export async function resetApp(): Promise<void> {
+  for (const view of [...mounted]) {
+    await close(view);
+  }
   window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

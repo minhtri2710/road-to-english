@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buttonsNamed,
   callsTo,
-  close,
   renderApp,
   resetApp,
   setInputValue,
@@ -28,7 +27,7 @@ describe("AccountArea", () => {
   }
 
   it("signs in and signs out without reloading", async () => {
-    const { container, root } = await renderApp({
+    const { container } = await renderApp({
       route: (path) => {
         if (path === "/me") return new Response(null, { status: 401 });
         if (path === "/login") {
@@ -63,15 +62,10 @@ describe("AccountArea", () => {
     await waitForCondition(() => container.textContent?.includes("Sign in") ?? false);
     expect(container.textContent).not.toContain("learner@example.com");
     expect(document.activeElement).toBe(container.querySelector('input[aria-label="Email"]'));
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("rejects a short sign-up password without sending a request", async () => {
-    const { container, root } = await renderApp();
+    const { container } = await renderApp();
 
     const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
     const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
@@ -88,13 +82,10 @@ describe("AccountArea", () => {
       "Password must be at least 8 characters (and at most 72 bytes).",
     );
     expect(callsTo("/signup")).toBe(0);
-
-    await act(async () => root.unmount());
-    container.remove();
   });
 
   it("shows the email and password message for a sign-up 400", async () => {
-    const { container, root } = await renderApp({
+    const { container } = await renderApp({
       route: (path) => {
         if (path === "/signup") return new Response(null, { status: 400 });
       },
@@ -117,13 +108,10 @@ describe("AccountArea", () => {
     expect(container.textContent).toContain(
       "Check your email address and password. Password must be at least 8 characters (and at most 72 bytes).",
     );
-
-    await act(async () => root.unmount());
-    container.remove();
   });
 
   it("shows an inline sign-in error and stays signed out", async () => {
-    const { container, root } = await renderApp({
+    const { container } = await renderApp({
       route: (path) => {
         if (path === "/me" || path === "/login") return new Response(null, { status: path === "/me" ? 401 : 401 });
       },
@@ -142,30 +130,21 @@ describe("AccountArea", () => {
     await waitForCondition(() => container.textContent?.includes("Invalid email or password.") ?? false);
     expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
     expect(container.textContent).not.toContain("learner@example.com");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("sends no sign-up request for an invalid email", async () => {
-    const { container, unmount } = await renderApp();
+    const { container } = await renderApp();
     await fillAccountForm(container, "not-an-email", "password", "Sign up");
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(callsTo("/signup")).toBe(0);
-
-    await unmount();
   });
 
   it("shows the too-many-attempts line for a 429", async () => {
-    const { container, unmount } = await renderApp({ route: (path) => (path === "/login" ? new Response(null, { status: 429 }) : undefined) });
+    const { container } = await renderApp({ route: (path) => (path === "/login" ? new Response(null, { status: 429 }) : undefined) });
     await fillAccountForm(container, "learner@example.com", "password", "Sign in");
     await waitForCondition(() => container.textContent?.includes("Too many attempts. Try again in a few minutes.") ?? false);
-
-    await unmount();
   });
 
   it("makes Enter's action, Sign in, the primary button and keeps Sign up on the keyboard", async () => {
@@ -180,6 +159,5 @@ describe("AccountArea", () => {
     expect(signUp?.type).toBe("button");
     expect(signUp?.disabled).toBe(false);
     expect(signUp?.tabIndex).toBe(0);
-    await close(view);
   });
 });

@@ -9,7 +9,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { Alert } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
-import { NEW_CARDS_PER_DAY, Rating, splitCardBack, State, type Grade, type VocabCard } from "../lib/vocab";
+import { CARD_BACK_SEPARATOR, NEW_CARDS_PER_DAY, Rating, splitCardBack, State, type Grade, type VocabCard } from "../lib/vocab";
 
 const styles = stylex.create({
   reviewCard: {
@@ -32,7 +32,7 @@ function CardBack({ card }: { card: VocabCard }) {
   }
   return (
     <>
-      {`${split.sentence} — `}
+      {`${split.sentence}${CARD_BACK_SEPARATOR}`}
       <span lang="vi">{split.vi}</span>
     </>
   );

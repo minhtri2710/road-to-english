@@ -63,7 +63,7 @@ describe("BackupControls", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       downloads.push(this.download);
     });
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
 
     await act(async () => {
       buttonsNamed(container, "Export CSV")[0]?.click();
@@ -74,11 +74,6 @@ describe("BackupControls", () => {
     expect(blobs[0]?.type).toBe("text/csv;charset=utf-8");
     expect(await blobs[0]?.text()).toBe(cardsCsv(await getAllCards()));
     expect(downloads).toEqual([`road-to-english-cards-${todayKey(new Date())}.csv`]);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("imports a backup through the UI and refreshes the deck and streak", async () => {
@@ -111,7 +106,7 @@ describe("BackupControls", () => {
       new Date(),
     );
     vi.stubGlobal("confirm", () => true);
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
     const input = container.querySelector<HTMLInputElement>(
       'input[type="file"]',
     );
@@ -137,25 +132,19 @@ describe("BackupControls", () => {
     expect(container.textContent).not.toContain("old card");
     expect(await getAllCards()).toHaveLength(1);
     expect(await getPracticeDays()).toHaveLength(1);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("clears a backup error on the next successful export", async () => {
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:backup") });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
-    const { container, unmount } = await renderApp();
+    const { container } = await renderApp();
     await click(container, "Export");
     await waitForCondition(hasText(container, "Backup error: export broke"));
     await click(container, "Export");
     await waitForCondition(() => !hasText(container, "Backup error")());
     await click(container, "Export CSV");
     expect(container.textContent).not.toContain("Backup error");
-    await unmount();
   });
 
   it("words the import confirm for signed-out and signed-in users", async () => {

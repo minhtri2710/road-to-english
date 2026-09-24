@@ -31,90 +31,14 @@ import {
   userResponse,
   waitForCondition,
 } from "./test/app";
+import { installSpeechFakes } from "./test/browser";
 import { greetingsLesson, userLesson } from "./test/fixtures";
-
-function installMediaDevices(getUserMedia: () => Promise<MediaStream>): void {
-  Object.defineProperty(navigator, "mediaDevices", {
-    configurable: true,
-    value: { getUserMedia },
-  });
-}
-
-function installObjectUrlFakes(): { revokeObjectURL: ReturnType<typeof vi.fn> } {
-  let nextUrl = 0;
-  const revokeObjectURL = vi.fn();
-  Object.defineProperty(URL, "createObjectURL", {
-    configurable: true,
-    value: vi.fn(() => `blob:recording-${++nextUrl}`),
-  });
-  Object.defineProperty(URL, "revokeObjectURL", {
-    configurable: true,
-    value: revokeObjectURL,
-  });
-  return { revokeObjectURL };
-}
-
-function removeBrowserGlobals(): void {
-  vi.stubGlobal("speechSynthesis", undefined);
-  vi.stubGlobal("SpeechSynthesisUtterance", undefined);
-  vi.stubGlobal("MediaRecorder", undefined);
-  delete (window as unknown as Record<string, unknown>).speechSynthesis;
-  delete (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance;
-  delete (navigator as unknown as Record<string, unknown>).mediaDevices;
-}
-
-async function reopenGreetings(container: HTMLElement): Promise<void> {
-  const row = () =>
-    Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Greetings & Basics"));
-  await waitForCondition(() => row() !== undefined);
-  await act(async () => {
-    row()?.click();
-  });
-}
-
-interface FakeSpokenUtterance {
-  text: string;
-  rate: number;
-  onend: (() => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onboundary: ((event: { name: string; charIndex: number }) => void) | null;
-}
-
-// Models the engine: speak queues, cancel drops the queue and fires each dropped
-// utterance's onend (the worst case for a stale restart), finish ends the head.
-function installSpeechFakes() {
-  const spoken: FakeSpokenUtterance[] = [];
-  let pending: FakeSpokenUtterance[] = [];
-  const speak = vi.fn((utterance: FakeSpokenUtterance) => {
-    spoken.push(utterance);
-    pending.push(utterance);
-  });
-  const cancel = vi.fn(() => {
-    const dropped = pending;
-    pending = [];
-    dropped.forEach((utterance) => utterance.onend?.());
-  });
-  class FakeUtterance {
-    lang = "";
-    rate = 1;
-    onend: (() => void) | null = null;
-    onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
-    constructor(readonly text: string) {}
-  }
-  vi.stubGlobal("speechSynthesis", { speak, cancel });
-  vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-  const finish = () => {
-    const utterance = pending.shift();
-    utterance?.onend?.();
-  };
-  return { spoken, speak, cancel, finish };
-}
 
 describe("App", () => {
   afterEach(resetApp);
 
   it("renders the lesson list and opens a lesson detail", async () => {
-    const { container, root } = await renderApp();
+    const { container } = await renderApp();
 
     expect(container.textContent).toContain("Greetings & Basics");
     expect(container.textContent).toContain("Daily Routine");
@@ -135,328 +59,10 @@ describe("App", () => {
     expect(container.textContent).toContain("Dictation");
     // 36 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV and the Pronunciation check toggle) plus one button per word in the three shown transcripts (6 + 6 + 3).
     expect(container.querySelectorAll("button")).toHaveLength(51);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("listens to a sentence at the clamped target speed", async () => {
-    const speak = vi.fn();
-    const cancel = vi.fn();
-    class FakeUtterance {
-      lang = "";
-      rate = 1;
-      constructor(readonly text: string) {}
-    }
-    vi.stubGlobal("speechSynthesis", { speak, cancel });
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    installMediaDevices(async () => {
-      throw new Error("recording not used");
-    });
-    vi.stubGlobal("MediaRecorder", class {});
-
-    const highWpmLesson = { ...greetingsLesson, targetWpm: 1000 };
-    const { container, root } = await openLesson(highWpmLesson);
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Listen")
-        ?.click();
-    });
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({
-      text: highWpmLesson.sentences[0].text,
-      rate: 2,
-      lang: "en-US",
-    }));
-    expect(cancel).toHaveBeenCalled();
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-
-    const lowWpmLesson = { ...greetingsLesson, targetWpm: 1 };
-    const low = await openLesson(lowWpmLesson);
-    await act(async () => {
-      Array.from(low.container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Listen")
-        ?.click();
-    });
-    expect(speak).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.4 }));
-    await act(async () => {
-      low.root.unmount();
-    });
-    low.container.remove();
-  });
-
-  it("records dictation practice and shows the streak witness", async () => {
-    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
-    vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Dictation"))
-        ?.click();
-    });
-
-    const input = container.querySelector<HTMLInputElement>(
-      `#dictation-${greetingsLesson.sentences[0].id}`,
-    );
-    if (!input) throw new Error("dictation input not found");
-    await act(async () => {
-      setInputValue(input, greetingsLesson.sentences[0].text);
-      input.form?.requestSubmit();
-    });
-    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
-
-    expect(await getPracticeDays()).toHaveLength(1);
-    expect(container.textContent).toContain("1 day streak");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("drills fill-the-blank: hides the word, checks, records, resets, and plays", async () => {
-    const speak = vi.fn();
-    class FakeUtterance {
-      lang = "";
-      rate = 1;
-      constructor(readonly text: string) {}
-    }
-    vi.stubGlobal("speechSynthesis", { speak, cancel: vi.fn() });
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    const { container, root } = await openLesson();
-    const [first, second] = greetingsLesson.sentences;
-    const button = (label: string) =>
-      Array.from(container.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.includes(label),
-      );
-    const submit = async (input: HTMLInputElement, value: string) => {
-      await act(async () => {
-        setInputValue(input, value);
-        input.form?.requestSubmit();
-      });
-    };
-
-    await act(async () => {
-      button("Fill the blank")?.click();
-    });
-    expect(container.textContent).toContain("Good ____, how are you today?");
-    expect(container.textContent).not.toContain("morning");
-    expect(container.querySelector(`label[for="blank-${first.id}"]`)).not.toBeNull();
-    expect(container.textContent).toContain("Goal 0/10");
-
-    await act(async () => {
-      button("Play")?.click();
-    });
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: first.text }));
-
-    const input = container.querySelector<HTMLInputElement>(`#blank-${first.id}`);
-    if (!input) throw new Error("blank input not found");
-    await submit(input, " MORNING! ");
-    expect(container.textContent).toContain("Correct");
-    await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
-
-    await act(async () => {
-      button("Try again")?.click();
-    });
-    expect(input.value).toBe("");
-    expect(container.textContent).not.toContain("Correct");
-
-    const secondInput = container.querySelector<HTMLInputElement>(`#blank-${second.id}`);
-    if (!secondInput) throw new Error("second blank input not found");
-    await submit(secondInput, "meet");
-    expect(container.textContent).toContain("Not quite — the word was nice");
-    await waitForCondition(() => container.textContent?.includes("Goal 2/10") ?? false);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("marks a lesson complete and shows its badge", async () => {
-    const { container, root } = await openLesson();
-
-    const completeButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Mark complete",
-    );
-    if (!completeButton) throw new Error("Mark complete button not found");
-    await act(async () => {
-      completeButton.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Completed") ?? false);
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Back to lessons"))
-        ?.click();
-    });
-    await waitForCondition(() => {
-      const lessonButton = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent?.includes("Greetings & Basics"),
-      );
-      return lessonButton?.textContent?.includes("Completed") ?? false;
-    });
-    expect(container.textContent).toContain("Completed");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("records, stops, replays, and releases the microphone", async () => {
-    const cancel = vi.fn();
-    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel });
-    vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    const trackStop = vi.fn();
-    const stream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
-    installMediaDevices(async () => stream);
-    const { revokeObjectURL } = installObjectUrlFakes();
-    class FakeMediaRecorder {
-      static instances: FakeMediaRecorder[] = [];
-      state = "inactive";
-      mimeType = "audio/webm";
-      ondataavailable: ((event: BlobEvent) => void) | null = null;
-      onstop: (() => void) | null = null;
-
-      constructor(readonly recordedStream: MediaStream) {
-        FakeMediaRecorder.instances.push(this);
-      }
-
-      start(): void {
-        this.state = "recording";
-      }
-
-      stop(): void {
-        this.state = "inactive";
-        this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
-        this.onstop?.();
-      }
-    }
-    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
-
-    const { container, root } = await openLesson();
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Record")
-        ?.click();
-    });
-    expect(container.textContent).toContain("Stop");
-
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Stop")
-        ?.click();
-    });
-    expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
-    expect(trackStop).toHaveBeenCalled();
-
-    await act(async () => {
-      root.unmount();
-    });
-    expect(cancel).toHaveBeenCalled();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:recording-1");
-    container.remove();
-  });
-
-  it("shows a visible message when microphone permission is denied", async () => {
-    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
-    vi.stubGlobal("SpeechSynthesisUtterance", class {});
-    installMediaDevices(async () => {
-      throw new DOMException("Permission denied", "NotAllowedError");
-    });
-    vi.stubGlobal("MediaRecorder", class {});
-
-    const { container, root } = await openLesson();
-    await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Record")
-        ?.click();
-    });
-    expect(container.textContent).toContain(
-      "Unable to access the microphone. Please allow microphone access to record.",
-    );
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("persists only one card when save is clicked twice synchronously", async () => {
-    const { container, root } = await openLesson();
-    const sentence = greetingsLesson.sentences[0];
-    const saveButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Save to review",
-    );
-    if (!saveButton) throw new Error("Save to review button not found");
-
-    await act(async () => {
-      saveButton.click();
-      saveButton.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Saved") ?? false);
-    await act(async () => {
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    });
-
-    const cards = await getAllCards();
-    expect(
-      cards.filter((card) => card.source.sentenceId === sentence.id),
-    ).toHaveLength(1);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("persists saved cards across an app remount", async () => {
-    const first = await openLesson();
-    const firstSave = Array.from(first.container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Save to review",
-    );
-
-    await act(async () => {
-      firstSave?.click();
-    });
-    await waitForCondition(() => first.container.textContent?.includes("Saved") ?? false);
-
-    await act(async () => {
-      first.root.unmount();
-    });
-    first.container.remove();
-
-    const { container: secondContainer, root: secondRoot } = await renderApp();
-    await act(async () => {
-      Array.from(secondContainer.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Review"))
-        ?.click();
-    });
-    await waitForCondition(
-      () => secondContainer.textContent?.includes(greetingsLesson.sentences[0].text) ?? false,
-    );
-
-    expect(secondContainer.textContent).toContain(
-      greetingsLesson.sentences[0].text,
-    );
-
-    await act(async () => {
-      secondRoot.unmount();
-    });
-    secondContainer.remove();
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
     const saveButtons = Array.from(container.querySelectorAll("button")).filter(
       (button) => button.textContent === "Save to review",
     );
@@ -518,15 +124,10 @@ describe("App", () => {
     );
     expect(container.textContent).toContain(greetingsLesson.sentences[1].text);
     expect(container.textContent).not.toContain(greetingsLesson.sentences[0].text);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it("moves focus to what replaced the control on lesson open, save, Back, show answer, and rating", async () => {
-    const { container, root } = await openLesson();
+    const { container } = await openLesson();
     await waitForCondition(() => container.querySelector("h1")?.textContent === "Greetings & Basics");
     expect(document.activeElement).toBe(container.querySelector("h1"));
 
@@ -573,89 +174,10 @@ describe("App", () => {
       buttonsNamed(container, "Good")[0]?.click();
     });
     await waitForCondition(() => document.activeElement?.textContent?.includes("All caught up") ?? false);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("explains when shadowing browser APIs are unsupported", async () => {
-    removeBrowserGlobals();
-    const { container, root } = await openLesson();
-
-    expect(container.textContent).toContain(
-      "Listen disabled: speech synthesis is not supported in this browser.",
-    );
-    expect(container.textContent).toContain(
-      "Recording disabled: microphone recording is not supported in this browser.",
-    );
-    expect(Array.from(container.querySelectorAll("button")).filter(
-      (button) => button.textContent === "Listen" || button.textContent === "Record",
-    ).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("syncs exactly once after sign-in", async () => {
-    const { container, root } = await renderApp({
-      route: (path) => {
-        if (path === "/me") return new Response(null, { status: 401 });
-        if (path === "/login") {
-          return new Response(JSON.stringify({ id: "user-1", email: "learner@example.com" }), { status: 200 });
-        }
-      },
-    });
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-in form not found");
-    await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "password");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign in")
-        ?.click();
-    });
-    await waitForCondition(() => callsTo("/sync") === 1);
-    expect(callsTo("/sync")).toBe(1);
-
-    await act(async () => root.unmount());
-    container.remove();
-  });
-
-  it("syncs exactly once after /me restores a user", async () => {
-    const { container, root } = await renderApp({
-      route: (path) => {
-        if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
-      },
-    });
-    await waitForCondition(() => callsTo("/sync") === 1);
-    expect(callsTo("/sync")).toBe(1);
-
-    await act(async () => root.unmount());
-    container.remove();
-  });
-
-  it("shows the owner mismatch message and sends no sync", async () => {
-    const { claimOwner } = await import("./lib/backupStore");
-    await claimOwner("another-user");
-    const { container, root } = await renderApp({
-      route: (path) => {
-        if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
-      },
-    });
-    await waitForCondition(() => container.textContent?.includes("This device's data belongs to another account") ?? false);
-    expect(callsTo("/sync")).toBe(0);
-
-    await act(async () => root.unmount());
-    container.remove();
   });
 
   it("restores a signed-in session from /me", async () => {
-    const { container, root } = await renderApp({
+    const { container } = await renderApp({
       route: (path) => {
         if (path === "/me") {
           return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), {
@@ -666,703 +188,6 @@ describe("App", () => {
     });
     await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
     expect(container.querySelector('input[aria-label="Email"]')).toBeNull();
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("stops reference speech on a lesson mode change", async () => {
-    const speech = installSpeechFakes();
-    const view = await openLesson();
-    await act(async () => {
-      buttonsNamed(view.container, "Listen")[0]?.click();
-    });
-    expect(speech.spoken).toHaveLength(1);
-    speech.cancel.mockClear();
-    await act(async () => {
-      buttonsNamed(view.container, "Dictation")[0]?.click();
-    });
-    expect(speech.cancel).toHaveBeenCalled();
-    await act(async () => {
-      view.root.unmount();
-    });
-    view.container.remove();
-  });
-
-  it("scales the clamped shadowing rate by the chosen speed", async () => {
-    const speech = installSpeechFakes();
-    const rateAt = async (container: HTMLElement, speed: string) => {
-      await act(async () => {
-        buttonsNamed(container, speed)[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Listen")[0]?.click();
-      });
-      return speech.spoken.at(-1)?.rate;
-    };
-
-    const a2 = await openLesson({ ...greetingsLesson, targetWpm: 90 });
-    expect(await rateAt(a2.container, "1x")).toBe(0.5);
-    expect(await rateAt(a2.container, "0.75x")).toBe(0.375);
-    expect(await rateAt(a2.container, "0.5x")).toBe(0.25);
-    await act(async () => {
-      a2.root.unmount();
-    });
-    a2.container.remove();
-
-    const a1 = await openLesson({ ...greetingsLesson, targetWpm: 80 });
-    expect(await rateAt(a1.container, "1x")).toBeCloseTo(80 / 180);
-    expect(await rateAt(a1.container, "0.5x")).toBeCloseTo(40 / 180);
-    await act(async () => {
-      a1.root.unmount();
-    });
-    a1.container.remove();
-
-    const low = await openLesson({ ...greetingsLesson, targetWpm: 1 });
-    expect(await rateAt(low.container, "1x")).toBe(0.4);
-    expect(await rateAt(low.container, "0.5x")).toBe(0.2);
-    await act(async () => {
-      low.root.unmount();
-    });
-    low.container.remove();
-
-    const high = await openLesson({ ...greetingsLesson, targetWpm: 1000 });
-    expect(await rateAt(high.container, "1x")).toBe(2);
-    expect(await rateAt(high.container, "0.5x")).toBe(1);
-    await act(async () => {
-      high.root.unmount();
-    });
-    high.container.remove();
-  });
-
-  it("highlights the spoken word of the playing sentence and clears it on end", async () => {
-    const speech = installSpeechFakes();
-    const { container, root } = await openLesson();
-    const spokenWords = () =>
-      Array.from(container.querySelectorAll('[aria-current="true"]')).map(
-        (element) => element.textContent,
-      );
-    const boundary = (charIndex: number) =>
-      act(async () => {
-        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex });
-      });
-
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
-    expect(spokenWords()).toEqual([]);
-    await boundary(0);
-    expect(spokenWords()).toEqual(["Good"]);
-    await boundary(4);
-    expect(spokenWords()).toEqual([]);
-    await boundary(14);
-    expect(spokenWords()).toEqual(["how"]);
-    await boundary(7);
-    expect(spokenWords()).toEqual(["morning"]);
-    await act(async () => {
-      speech.finish();
-    });
-    expect(spokenWords()).toEqual([]);
-
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
-    await act(async () => {
-      speech.finish();
-    });
-    expect(spokenWords()).toEqual([]);
-
-    await act(async () => {
-      buttonsNamed(container, "Listen")[0]?.click();
-    });
-    const first = speech.spoken.at(-1);
-    await boundary(0);
-    await act(async () => {
-      buttonsNamed(container, "Listen")[1]?.click();
-    });
-    expect(spokenWords()).toEqual([]);
-    await act(async () => {
-      first?.onboundary?.({ name: "word", charIndex: 5 });
-    });
-    expect(spokenWords()).toEqual([]);
-    await boundary(3);
-    expect(spokenWords()).toEqual(["is"]);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("loops a sentence until toggled off, another sentence starts, or unmount", async () => {
-    const speech = installSpeechFakes();
-    const { container, root } = await openLesson();
-    const first = greetingsLesson.sentences[0].text;
-
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
-    expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first]);
-    await act(async () => {
-      speech.finish();
-    });
-    await act(async () => {
-      speech.finish();
-    });
-    expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first, first, first]);
-
-    speech.cancel.mockClear();
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    expect(speech.cancel).toHaveBeenCalled();
-    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-    await act(async () => {
-      speech.spoken.at(-1)?.onend?.();
-    });
-    expect(speech.spoken).toHaveLength(3);
-
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Listen")[1]?.click();
-    });
-    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-    await act(async () => {
-      speech.finish();
-    });
-    expect(speech.spoken.map((utterance) => utterance.text).slice(3)).toEqual([
-      first,
-      greetingsLesson.sentences[1].text,
-    ]);
-
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    const lastLooped = speech.spoken.at(-1);
-    speech.cancel.mockClear();
-    await act(async () => {
-      root.unmount();
-    });
-    expect(speech.cancel).toHaveBeenCalled();
-    const spokenAtUnmount = speech.spoken.length;
-    lastLooped?.onend?.();
-    expect(speech.spoken).toHaveLength(spokenAtUnmount);
-    container.remove();
-  });
-
-  it("compares by playing the recording only after the reference ends, and explains a blocked play", async () => {
-    const speech = installSpeechFakes();
-    const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
-    installMediaDevices(async () => stream);
-    installObjectUrlFakes();
-    class FakeMediaRecorder {
-      state = "inactive";
-      mimeType = "audio/webm";
-      ondataavailable: ((event: BlobEvent) => void) | null = null;
-      onstop: (() => void) | null = null;
-
-      start(): void {
-        this.state = "recording";
-      }
-
-      stop(): void {
-        this.state = "inactive";
-        this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
-        this.onstop?.();
-      }
-    }
-    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
-    const play = vi
-      .spyOn(HTMLMediaElement.prototype, "play")
-      .mockResolvedValue(undefined);
-
-    const { container, root } = await openLesson();
-    expect(buttonsNamed(container, "Compare")[0]?.disabled).toBe(true);
-
-    await act(async () => {
-      buttonsNamed(container, "Record")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Stop")[0]?.click();
-    });
-    const compare = buttonsNamed(container, "Compare")[0];
-    expect(compare?.disabled).toBe(false);
-
-    await act(async () => {
-      compare?.click();
-    });
-    expect(speech.spoken.at(-1)?.text).toBe(greetingsLesson.sentences[0].text);
-    expect(play).not.toHaveBeenCalled();
-    await act(async () => {
-      speech.finish();
-    });
-    expect(play).toHaveBeenCalledTimes(1);
-    expect(play.mock.contexts[0]).toBe(container.querySelector("audio"));
-    expect(container.textContent).not.toContain("Press play to hear your recording.");
-
-    play.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
-    await act(async () => {
-      compare?.click();
-    });
-    await act(async () => {
-      speech.finish();
-    });
-    expect(container.textContent).toContain("Press play to hear your recording.");
-
-    await act(async () => {
-      compare?.click();
-    });
-    expect(container.textContent).not.toContain("Press play to hear your recording.");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("hides and restores the shadowing transcript", async () => {
-    installSpeechFakes();
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).not.toContain(sentence.text);
-    }
-    expect(container.textContent).not.toContain("casual sign-off");
-
-    await act(async () => {
-      buttonsNamed(container, "Show transcript")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).toContain(sentence.text);
-    }
-    expect(container.textContent).toContain("casual sign-off");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("toggles Vietnamese independently of the transcript", async () => {
-    installSpeechFakes();
-    const { container, root } = await openLesson();
-
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).not.toContain(sentence.vi);
-    }
-
-    await act(async () => {
-      buttonsNamed(container, "Show Vietnamese")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).toContain(sentence.vi);
-    }
-
-    await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).not.toContain(sentence.text);
-      expect(container.textContent).toContain(sentence.vi);
-    }
-
-    await act(async () => {
-      buttonsNamed(container, "Hide Vietnamese")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).not.toContain(sentence.vi);
-    }
-
-    await act(async () => {
-      buttonsNamed(container, "Show transcript")[0]?.click();
-    });
-    for (const sentence of greetingsLesson.sentences) {
-      expect(container.textContent).toContain(sentence.text);
-      expect(container.textContent).not.toContain(sentence.vi);
-    }
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("shows Hear and Save for a clicked word and speaks the word after stopping Loop", async () => {
-    const speech = installSpeechFakes();
-    const { container, root } = await openLesson();
-    const sentence = greetingsLesson.sentences[0];
-
-    expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
-    expect(container.textContent).toContain(sentence.text);
-    await act(async () => {
-      buttonsNamed(container, "Loop")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
-    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
-    expect(buttonsNamed(container, "Save word")).toHaveLength(1);
-
-    await act(async () => {
-      buttonsNamed(container, "Hear word")[0]?.click();
-    });
-    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-    expect(speech.spoken.at(-1)?.text).toBe("morning");
-    await act(async () => {
-      speech.finish();
-    });
-    expect(speech.spoken.at(-1)?.text).toBe("morning");
-
-    await act(async () => {
-      buttonsNamed(container, "nice")[0]?.click();
-    });
-    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
-    expect(container.textContent).not.toContain("morningHear word");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("saves one word card under a synchronous double click, keeps it Saved across a remount, and reviews it", async () => {
-    installSpeechFakes();
-    const { container, root } = await openLesson();
-    const sentence = greetingsLesson.sentences[0];
-
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
-    const save = buttonsNamed(container, "Save word")[0];
-    if (!save) throw new Error("Save word button not found");
-    // putCard is keyed by id, so a second write would not change the card count; count the writes.
-    const put = vi.spyOn(IDBObjectStore.prototype, "put");
-    await act(async () => {
-      save.click();
-      save.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    await act(async () => {
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    });
-
-    expect(put.mock.contexts.filter((store) => (store as IDBObjectStore).name === "cards")).toHaveLength(1);
-    put.mockRestore();
-    const cards = await getAllCards();
-    expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({
-      id: `greetings-basics:${sentence.id}:morning`,
-      front: "morning",
-      back: `${sentence.text} — ${sentence.vi}`,
-      source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "morning" },
-    });
-    expect(buttonsNamed(container, "Save to review")).toHaveLength(3);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-
-    const second = await openLesson();
-    await act(async () => {
-      buttonsNamed(second.container, "morning")[0]?.click();
-    });
-    await waitForCondition(() => buttonsNamed(second.container, "Saved").length === 1);
-    expect(buttonsNamed(second.container, "Save word")).toHaveLength(0);
-
-    await act(async () => {
-      buttonsNamed(second.container, "Review")[0]?.click();
-    });
-    await waitForCondition(() => second.container.textContent?.includes("Show answer") ?? false);
-    expect(second.container.textContent).toContain("morning");
-    await act(async () => {
-      buttonsNamed(second.container, "Show answer")[0]?.click();
-    });
-    expect(second.container.textContent).toContain(`${sentence.text} — ${sentence.vi}`);
-    await act(async () => {
-      buttonsNamed(second.container, "Good")[0]?.click();
-    });
-    await waitForCondition(() => second.container.textContent?.includes("All caught up") ?? false);
-    const [reviewed] = await getAllCards();
-    expect(reviewed?.fsrs.reps).toBe(1);
-
-    await act(async () => {
-      second.root.unmount();
-    });
-    second.container.remove();
-  });
-
-  it("renders a hyphenated compound as one word button and saves it as one card", async () => {
-    installSpeechFakes();
-    const sentence = {
-      id: "weather-and-clothes-9",
-      text: "I wear a T-shirt and shorts.",
-      vi: "Tôi mặc áo phông và quần soóc.",
-    };
-    const { container, root } = await openLesson({ ...greetingsLesson, sentences: [sentence] });
-
-    expect(buttonsNamed(container, "T-shirt")).toHaveLength(1);
-    expect(buttonsNamed(container, "T")).toHaveLength(0);
-    expect(buttonsNamed(container, "shirt")).toHaveLength(0);
-    await act(async () => {
-      buttonsNamed(container, "T-shirt")[0]?.click();
-    });
-    await act(async () => {
-      buttonsNamed(container, "Save word")[0]?.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    const [card] = await getAllCards();
-    expect(card?.id).toBe(`greetings-basics:${sentence.id}:t-shirt`);
-    expect(card?.source.word).toBe("t-shirt");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("removes a saved card with the Saved toggle, offers Undo that restores it, and re-saves it fresh", async () => {
-    const sentence = greetingsLesson.sentences[0];
-    const created = new Date("2026-01-01T00:00:00.000Z");
-    const original = createCard(
-      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
-      created,
-    );
-    await putCard(original);
-    const { container, root } = await openLesson();
-    const showView = async (name: "Review" | "Library") => {
-      await act(async () => {
-        buttonsNamed(container, name)[0]?.click();
-      });
-    };
-    // Library lists the lessons, so going back to the lesson reopens it from its row.
-    const reopenLesson = async () => {
-      await showView("Library");
-      await reopenGreetings(container);
-    };
-    const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
-    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
-
-    await showView("Review");
-    await waitForCondition(() => dueBadge() === "1");
-    await reopenLesson();
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    const toggle = buttonsNamed(container, "Saved")[0]!;
-    expect(toggle.getAttribute("aria-label")).toBe("Saved, remove from review deck");
-    toggle.focus();
-    await act(async () => {
-      toggle.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
-    expect(document.activeElement).toBe(toggle);
-    expect(toggle.getAttribute("aria-label")).toBeNull();
-    expect((await stored())?.deletedAt).not.toBeNull();
-    await waitForCondition(() => document.body.textContent?.includes("Removed from your review deck.") ?? false);
-    await showView("Review");
-    await waitForCondition(() => dueBadge() === "0");
-    await reopenLesson();
-
-    const undo = buttonsNamed(document.body, "Undo")[0];
-    if (!undo) throw new Error("Undo button not found");
-    await act(async () => {
-      undo.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    const restored = await stored();
-    expect(restored).toMatchObject({ fsrs: original.fsrs, deletedAt: null });
-    expect(Date.parse(restored!.updatedAt)).toBeGreaterThan(created.getTime());
-    await showView("Review");
-    await waitForCondition(() => dueBadge() === "1");
-    await reopenLesson();
-
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    await act(async () => {
-      buttonsNamed(container, "Saved")[0]!.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Save to review").length === 3);
-    await act(async () => {
-      buttonsNamed(container, "Save to review")[0]!.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    const resaved = await stored();
-    expect(resaved?.deletedAt).toBeNull();
-    expect(resaved?.fsrs.due.getTime()).toBeGreaterThan(created.getTime());
-    expect(await getAllCards()).toHaveLength(1);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  it("undoes nothing when the card was re-saved after the remove, keeping the fresh card", async () => {
-    const sentence = greetingsLesson.sentences[0];
-    const created = new Date("2026-01-01T00:00:00.000Z");
-    const original = createCard(
-      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
-      created,
-    );
-    await putCard(original);
-    const { container, root } = await openLesson();
-    const showView = async (name: "Review" | "Library") => {
-      await act(async () => {
-        buttonsNamed(container, name)[0]?.click();
-      });
-    };
-    // Library lists the lessons, so going back to the lesson reopens it from its row.
-    const reopenLesson = async () => {
-      await showView("Library");
-      await reopenGreetings(container);
-    };
-    const dueBadge = () => container.textContent?.match(/(\d+) due/)?.[1];
-    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
-
-    await showView("Review");
-    await waitForCondition(() => dueBadge() === "1");
-    await reopenLesson();
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    // Earlier tests can leave toasts in document.body; this test's toast is the newest Undo.
-    const undoCount = buttonsNamed(document.body, "Undo").length;
-    await act(async () => {
-      buttonsNamed(container, "Saved")[0]!.click();
-    });
-    await waitForCondition(() => buttonsNamed(document.body, "Undo").length === undoCount + 1);
-    await act(async () => {
-      buttonsNamed(container, "Save to review")[0]!.click();
-    });
-    await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-    const resaved = await stored();
-    expect(resaved?.deletedAt).toBeNull();
-    expect(resaved?.fsrs.due.getTime()).toBeGreaterThan(created.getTime());
-
-    const undo = buttonsNamed(document.body, "Undo").at(-1)!;
-    await act(async () => {
-      undo.click();
-    });
-    await waitForCondition(
-      () => document.body.textContent?.includes("Couldn't undo: this card changed since it was removed.") ?? false,
-    );
-    // happy-dom runs no CSS transitions; end the toast row's exit transition so a dismissed toast leaves the DOM.
-    await act(async () => {
-      for (let node = undo.parentElement; node; node = node.parentElement) {
-        const end = new Event("transitionend", { bubbles: true });
-        Object.defineProperty(end, "propertyName", { value: "grid-template-rows" });
-        node.dispatchEvent(end);
-      }
-    });
-    expect(undo.isConnected).toBe(false);
-    expect(await stored()).toEqual(resaved);
-    await showView("Review");
-    await waitForCondition(() => dueBadge() === "1");
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  describe("Undo after the Saved toggle unmounted", () => {
-    const sentence = greetingsLesson.sentences[0];
-    const created = new Date("2026-01-01T00:00:00.000Z");
-    const original = createCard(
-      { front: sentence.text, back: "", source: { lessonId: "greetings-basics", sentenceId: sentence.id, word: "" } },
-      created,
-    );
-    const stored = async () => (await getAllCards()).find(({ id }) => id === original.id);
-
-    // Removes the saved card, then leaves the lesson so SaveToReview unmounts while its Undo toast stays open.
-    async function removeThenLeave() {
-      await putCard(original);
-      const view = await openLesson();
-      const { container } = view;
-      await act(async () => {
-        buttonsNamed(container, "Review")[0]?.click();
-      });
-      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
-      await act(async () => {
-        buttonsNamed(container, "Library")[0]?.click();
-      });
-      await reopenGreetings(container);
-      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-      const earlier = new Set(buttonsNamed(document.body, "Undo"));
-      const newUndo = () => buttonsNamed(document.body, "Undo").find((button) => !earlier.has(button));
-      await act(async () => {
-        buttonsNamed(container, "Saved")[0]!.click();
-      });
-      await waitForCondition(() => newUndo() !== undefined);
-      await act(async () => {
-        buttonsNamed(container, "Back to lessons")[0]!.click();
-      });
-      await waitForCondition(() => buttonsNamed(container, "Back to lessons").length === 0);
-      expect(buttonsNamed(container, "Saved")).toHaveLength(0);
-      expect(buttonsNamed(container, "Save to review")).toHaveLength(0);
-      return { ...view, undo: newUndo()! };
-    }
-
-    const toastSays = (message: string) => document.body.textContent?.includes(message) ?? false;
-
-    it("shows the changed-card toast and keeps the stored card when the card changed after the remove", async () => {
-      const { container, root, undo } = await removeThenLeave();
-      const changed = { ...(await stored())!, updatedAt: new Date(Date.now() + 1000).toISOString() };
-      await putCard(changed);
-
-      await act(async () => {
-        undo.click();
-      });
-      await waitForCondition(() => toastSays("Couldn't undo: this card changed since it was removed."));
-      expect(await stored()).toEqual(changed);
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
-
-    it("restores the exact FSRS state from a clean tombstone", async () => {
-      const { container, root, undo } = await removeThenLeave();
-      await act(async () => {
-        buttonsNamed(container, "Review")[0]?.click();
-      });
-      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "0");
-
-      await act(async () => {
-        undo.click();
-      });
-      await waitForCondition(() => container.textContent?.match(/(\d+) due/)?.[1] === "1");
-      expect(await stored()).toMatchObject({ fsrs: original.fsrs, deletedAt: null });
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
-
-    it("shows a try-again toast when the restore throws", async () => {
-      const { container, root, undo } = await removeThenLeave();
-      const tombstone = await stored();
-      vi.spyOn(vocabStore, "restoreTombstone").mockRejectedValueOnce(new Error("quota"));
-
-      await act(async () => {
-        undo.click();
-      });
-      await waitForCondition(() => toastSays("Couldn't undo. Try again."));
-      expect(await stored()).toEqual(tombstone);
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
   });
 
   describe("due refresh on return", () => {
@@ -1397,7 +222,7 @@ describe("App", () => {
     }
 
     it("shows a card that became due when the tab becomes visible, not when it is hidden", async () => {
-      const { container, root, dueBadge } = await renderWithFutureCard();
+      const { dueBadge } = await renderWithFutureCard();
       await act(async () => {
         setVisibility("hidden");
       });
@@ -1409,22 +234,14 @@ describe("App", () => {
         setVisibility("visible");
       });
       await waitForCondition(() => dueBadge() === "1");
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
     });
 
     it("shows a card that became due when the window regains focus", async () => {
-      const { container, root, dueBadge } = await renderWithFutureCard();
+      const { dueBadge } = await renderWithFutureCard();
       await act(async () => {
         window.dispatchEvent(new Event("focus"));
       });
       await waitForCondition(() => dueBadge() === "1");
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
     });
   });
 
@@ -1482,7 +299,7 @@ describe("App", () => {
     it("re-saves a removed card with its stored FSRS state and history", async () => {
       const reviewed = reviewCard(newCard(sentence.text, ""), Rating.Good, new Date(Date.now() - 60_000));
       await putCard(reviewed);
-      const { container, root } = await openLesson();
+      const { container } = await openLesson();
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       await act(async () => {
         buttonsNamed(container, "Saved")[0]!.click();
@@ -1500,17 +317,12 @@ describe("App", () => {
       expect(resaved?.fsrs.reps).toBe(reviewed.fsrs.reps);
       expect(resaved?.fsrs).toEqual(reviewed.fsrs);
       expect(Date.parse(resaved!.updatedAt)).toBeGreaterThan(Date.parse(reviewed.updatedAt));
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
     });
 
     it("writes nothing, shows the latest card, and records no XP when the stored card changed", async () => {
       const card = newCard();
       await putCard(card);
-      const { container, unmount } = await openReview();
+      const { container } = await openReview();
       await press(container, "Show answer");
       const changed = { ...card, front: "Changed on another device", updatedAt: new Date(Date.now() + 1000).toISOString() };
       await putCard(changed);
@@ -1523,13 +335,12 @@ describe("App", () => {
       expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
       expect(recordPractice).not.toHaveBeenCalled();
       expect(await getPracticeDays()).toEqual([]);
-      await unmount();
     });
 
     it("does not resurrect a card tombstoned in IndexedDB by a rating", async () => {
       const card = newCard();
       await putCard(card);
-      const { container, unmount } = await openReview();
+      const { container } = await openReview();
       await press(container, "Show answer");
       const tombstone = deleteCard(card, new Date(Date.now() + 1000));
       await putCard(tombstone);
@@ -1540,13 +351,12 @@ describe("App", () => {
       expect(await getAllCards()).toEqual([tombstone]);
       expect(container.textContent).toContain("Nothing to review yet.");
       expect(recordPractice).not.toHaveBeenCalled();
-      await unmount();
     });
 
     it("renders the next card hidden from its first frame after a rating", async () => {
       await putCard(newCard(sentence.text, "answer one"));
       await putCard(newCard(greetingsLesson.sentences[1].text, "answer two", greetingsLesson.sentences[1].id));
-      const { container, unmount } = await openReview();
+      const { container } = await openReview();
       await press(container, "Show answer");
       expect(container.textContent).toContain("answer one");
       const added = addedText(container);
@@ -1556,12 +366,11 @@ describe("App", () => {
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
       expect(added().some((text) => text.includes("answer two"))).toBe(false);
       expect(container.textContent).not.toContain("answer two");
-      await unmount();
     });
 
     it("brings a card rated Again back in the session, hidden, when it becomes due", async () => {
       await putCard(newCard());
-      const { container, unmount } = await openReview();
+      const { container } = await openReview();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
       await press(container, "Show answer");
 
@@ -1575,12 +384,11 @@ describe("App", () => {
       expect(container.textContent).toContain(sentence.text);
       expect(added().some((text) => text.includes("answer one"))).toBe(false);
       expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
-      await unmount();
     });
 
     it("re-arms a refresh timer that fires before the card is due", async () => {
       await putCard(newCard());
-      const { container, unmount } = await openReview();
+      const { container } = await openReview();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
       await press(container, "Show answer");
 
@@ -1598,167 +406,6 @@ describe("App", () => {
       });
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
       expect(container.textContent).toContain(sentence.text);
-      await unmount();
-    });
-  });
-
-  it("removes word buttons and the word panel when the transcript is hidden", async () => {
-    installSpeechFakes();
-    const { container, root } = await openLesson();
-
-    await act(async () => {
-      buttonsNamed(container, "morning")[0]?.click();
-    });
-    expect(buttonsNamed(container, "Hear word")).toHaveLength(1);
-    await act(async () => {
-      buttonsNamed(container, "Hide transcript")[0]?.click();
-    });
-    expect(buttonsNamed(container, "morning")).toHaveLength(0);
-    expect(buttonsNamed(container, "Hear word")).toHaveLength(0);
-    expect(buttonsNamed(container, "Save word")).toHaveLength(0);
-
-    await act(async () => {
-      root.unmount();
-    });
-    container.remove();
-  });
-
-  describe("word dictionary", () => {
-    const dictionaryPrefix = "https://api.dictionaryapi.dev/";
-
-    function urlOf(input: Parameters<typeof fetch>[0]): string {
-      return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    }
-
-    function dictionaryCalls(): string[] {
-      return fetchMock.mock.calls.map(([input]) => urlOf(input)).filter((url) => url.startsWith(dictionaryPrefix));
-    }
-
-    // Routes dictionary requests to `dictionary`, everything else to the lesson API fake.
-    function routeDictionary(dictionary: (url: string) => Promise<Response>): void {
-      const api = fetchMock.getMockImplementation();
-      fetchMock.mockImplementation(async (input, init) => {
-        const url = urlOf(input);
-        return url.startsWith(dictionaryPrefix) ? dictionary(url) : api!(input, init);
-      });
-    }
-
-    function definitionFor(word: string): Response {
-      return new Response(
-        JSON.stringify([
-          {
-            word,
-            phonetic: `/${word}/`,
-            meanings: [{ partOfSpeech: "noun", definitions: [{ definition: `Meaning of ${word}.` }] }],
-          },
-        ]),
-        { status: 200 },
-      );
-    }
-
-    it("looks a word up only when Define is clicked", async () => {
-      installSpeechFakes();
-      const { container, root } = await openLesson();
-      routeDictionary(async (url) => definitionFor(url.split("/").at(-1)!));
-
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
-      expect(dictionaryCalls()).toHaveLength(0);
-
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
-      await waitForCondition(() => container.textContent?.includes("Meaning of morning.") ?? false);
-      expect(dictionaryCalls()).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/morning"]);
-      expect(container.textContent).toContain("/morning/");
-      expect(container.textContent).toContain("noun");
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
-
-    it("shows No definition when the lookup fails", async () => {
-      installSpeechFakes();
-      const { container, root } = await openLesson();
-      routeDictionary(async () => new Response(JSON.stringify({ title: "No Definitions Found" }), { status: 404 }));
-
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
-      await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
-
-    it("never shows a late definition for the previous word under a newly selected word", async () => {
-      installSpeechFakes();
-      const { container, root } = await openLesson();
-      let resolveMorning: (response: Response) => void = () => {};
-      routeDictionary(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveMorning = resolve;
-          }),
-      );
-
-      await act(async () => {
-        buttonsNamed(container, "morning")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(container, "Define")[0]?.click();
-      });
-      expect(container.textContent).toContain("Looking up…");
-
-      await act(async () => {
-        buttonsNamed(container, "how")[0]?.click();
-      });
-      expect(container.textContent).not.toContain("Looking up…");
-      await act(async () => {
-        resolveMorning(definitionFor("morning"));
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-      });
-      expect(container.textContent).not.toContain("Meaning of morning.");
-      expect(container.textContent).not.toContain("No definition");
-      expect(buttonsNamed(container, "Define")).toHaveLength(1);
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
-    });
-
-    it("links the normalized word to YouGlish in a new tab without a referrer", async () => {
-      installSpeechFakes();
-      const { container, root } = await openLesson();
-
-      await act(async () => {
-        buttonsNamed(container, "Good")[0]?.click();
-      });
-      const link = Array.from(container.querySelectorAll("a")).find(
-        (anchor) => anchor.textContent === "Hear it on YouGlish",
-      );
-      expect(link?.getAttribute("href")).toBe(
-        "https://youglish.com/pronounce/" + encodeURIComponent("good") + "/english",
-      );
-      expect(link?.getAttribute("target")).toBe("_blank");
-      expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
-      expect(dictionaryCalls()).toHaveLength(0);
-
-      await act(async () => {
-        root.unmount();
-      });
-      container.remove();
     });
   });
 
@@ -1795,7 +442,7 @@ describe("App", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(start);
       await seedNewCards(21);
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await openReview(container);
       await waitForCondition(hasText(container, "20 due"));
 
@@ -1810,7 +457,6 @@ describe("App", () => {
       const cards = await getAllCards();
       expect(cards.filter((card) => card.fsrs.state === State.New)).toHaveLength(20);
       expect(container.textContent).toContain("Goal 1/10");
-      await unmount();
     });
 
     it("restores the New-card cap on the next local day", async () => {
@@ -1833,7 +479,6 @@ describe("App", () => {
       await openReview(second.container);
       await waitForCondition(hasText(second.container, "20 due"));
       expect(second.container.textContent).toContain("Goal 0/10");
-      await second.unmount();
     });
 
     it("shows goal progress, switches the goal, and persists it", async () => {
@@ -1852,14 +497,13 @@ describe("App", () => {
 
       const remounted = await renderApp();
       await waitForCondition(hasText(remounted.container, "Goal 2/5"));
-      await remounted.unmount();
     });
 
     it("drops a count loaded before local midnight on the next render", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date(2026, 0, 5, 23, 59, 0));
       await recordPractice(todayKey(new Date()), { newCard: false });
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, "Goal 1/10"));
 
       vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
@@ -1869,7 +513,6 @@ describe("App", () => {
       });
 
       expect(container.textContent).toContain("Goal 0/5");
-      await unmount();
     });
 
     it("shows XP and held freezes from seeded practice", async () => {
@@ -1879,20 +522,18 @@ describe("App", () => {
         await recordPractice(todayKey(new Date(2026, 0, 5 - offset)), { newCard: false });
       }
       await recordPractice(todayKey(start), { newCard: false });
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, "80 XP"));
 
       expect(container.textContent).toContain("7 days streak");
       expect(container.textContent).toContain("Freezes 1/2");
-      await unmount();
     });
 
     it("reads a missing or invalid stored goal as 10", async () => {
       localStorage.setItem("road-to-english.dailyGoal", "7");
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
 
       expect(container.textContent).toContain("Goal 0/10");
-      await unmount();
     });
   });
 
@@ -1974,7 +615,6 @@ describe("App", () => {
       });
       expect(second.container.textContent).toContain("We drink it every morning.");
       expect(lessonFetches()).toEqual([]);
-      await close(second);
     });
 
     it("saves a word whose back is the sentence text only, then deletes the lesson and keeps the card", async () => {
@@ -2022,7 +662,6 @@ describe("App", () => {
       const remounted = await renderLibrary();
       expect(remounted.container.textContent).toContain("No lessons of your own yet.");
       expect(remounted.container.textContent).not.toContain("Tea talk");
-      await close(remounted);
     });
 
     it("creates only one lesson on a synchronous double submit", async () => {
@@ -2050,7 +689,6 @@ describe("App", () => {
         Array.from(second.container.querySelectorAll("button")).filter((button) => button.textContent?.includes("Tea talk")),
       ).toHaveLength(1);
       expect(await listUserLessons()).toHaveLength(1);
-      await close(second);
     });
 
     it.each([
@@ -2093,7 +731,6 @@ describe("App", () => {
       expect(view.container.textContent).toContain("Your lessons");
       expect(view.container.textContent).not.toContain("I like green tea.");
       expect(await listUserLessons()).toEqual([]);
-      await close(view);
     });
 
     it("runs dictation and the fill-the-blank drill on a user lesson", async () => {
@@ -2131,1120 +768,6 @@ describe("App", () => {
       });
       expect(view.container.textContent).toContain("Correct");
       expect(lessonFetches()).toEqual([]);
-      await close(view);
-    });
-  });
-
-  describe("video lessons", () => {
-    const transcript = "0:00\nI like green tea.\n0:02\nDo you like it?\n1:05\nWe drink it\nevery morning.";
-    const iframeApi = "https://www.youtube.com/iframe_api";
-
-    type PlayerOptions = {
-      videoId: string;
-      host: string;
-      width: string;
-      height: string;
-      playerVars: object;
-      events: { onReady: () => void; onError: () => void; onStateChange: (event: { data: number }) => void };
-    };
-    class FakePlayer {
-      static instances: FakePlayer[] = [];
-      calls: unknown[][] = [];
-      time = 0;
-      constructor(
-        readonly element: HTMLElement,
-        readonly options: PlayerOptions,
-      ) {
-        FakePlayer.instances.push(this);
-      }
-      playVideo() {
-        this.calls.push(["playVideo"]);
-      }
-      pauseVideo() {
-        this.calls.push(["pauseVideo"]);
-      }
-      seekTo(seconds: number, allowSeekAhead: boolean) {
-        this.calls.push(["seekTo", seconds, allowSeekAhead]);
-      }
-      setPlaybackRate(rate: number) {
-        this.calls.push(["setPlaybackRate", rate]);
-      }
-      getCurrentTime() {
-        return this.time;
-      }
-      destroy() {
-        this.calls.push(["destroy"]);
-      }
-    }
-
-    function installYouTube() {
-      FakePlayer.instances = [];
-      window.YT = { Player: FakePlayer };
-    }
-
-    afterEach(() => {
-      vi.useRealTimers();
-      delete window.YT;
-      delete window.onYouTubeIframeAPIReady;
-      document.querySelectorAll(`script[src="${iframeApi}"]`).forEach((script) => script.remove());
-    });
-
-    async function renderLibrary() {
-      const view = await renderApp();
-      await waitForCondition(hasText(view.container, "Your lessons"));
-      return view;
-    }
-
-    async function createLesson(container: HTMLElement, videoUrl: string, text: string) {
-      const titleInput = container.querySelector<HTMLInputElement>("#import-title");
-      const videoInput = container.querySelector<HTMLInputElement>("#import-video");
-      const textArea = container.querySelector<HTMLTextAreaElement>("#import-text");
-      if (!titleInput || !videoInput || !textArea) throw new Error("import form not found");
-      expect(container.querySelector('label[for="import-video"]')?.textContent).toBe("YouTube URL");
-      await act(async () => {
-        setInputValue(titleInput, "Tea video");
-        setInputValue(videoInput, videoUrl);
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, text);
-        textArea.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
-      });
-    }
-
-    async function openVideoLesson() {
-      installYouTube();
-      const view = await renderLibrary();
-      await createLesson(view.container, "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=5s", transcript);
-      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
-      await waitForCondition(() => FakePlayer.instances.length === 1);
-      const player = FakePlayer.instances[0]!;
-      await act(async () => {
-        player.options.events.onReady();
-      });
-      return { view, player };
-    }
-
-    it("creates a video lesson from a URL and a transcript and opens it in a nocookie player", async () => {
-      installYouTube();
-      const view = await renderLibrary();
-      expect(view.container.textContent).toContain(
-        "Paste the transcript from YouTube's Show transcript panel (timestamps included).",
-      );
-      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
-      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
-      await waitForCondition(() => FakePlayer.instances.length === 1);
-
-      const [player] = FakePlayer.instances;
-      expect(player?.options).toMatchObject({
-        videoId: "dQw4w9WgXcQ",
-        host: "https://www.youtube-nocookie.com",
-        playerVars: { playsinline: 1, rel: 0 },
-      });
-      expect(view.container.contains(player?.element ?? null)).toBe(true);
-      const back = buttonsNamed(view.container, "Back to lessons")[0]!;
-      const heading = Array.from(view.container.querySelectorAll("h1")).find((node) => node.textContent === "Tea video")!;
-      for (const header of [back, heading]) {
-        expect(header.compareDocumentPosition(player!.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      }
-      expect(view.container.textContent).toContain("Video from YouTube; playing it connects to YouTube.");
-      expect(view.container.textContent).toContain("We drink it every morning.");
-      expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
-      expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
-
-      await act(async () => {
-        player?.options.events.onReady();
-      });
-      expect(buttonsNamed(view.container, "Play clip").some((button) => button.disabled)).toBe(false);
-      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
-      const [stored] = await listUserLessons();
-      expect(stored).toMatchObject({
-        videoId: "dQw4w9WgXcQ",
-        sentences: [
-          { text: "I like green tea.", cue: { start: 0, end: 2 } },
-          { text: "Do you like it?", cue: { start: 2, end: 65 } },
-          { text: "We drink it every morning.", cue: { start: 65, end: null } },
-        ],
-      });
-      await close(view);
-    });
-
-    it.each([
-      ["a bad URL", "https://vimeo.com/1", transcript, "Enter a YouTube video URL."],
-      ["leading text", "https://youtu.be/dQw4w9WgXcQ", `Hi\n${transcript}`, "The transcript must start with a timestamp."],
-      ["non-increasing timestamps", "https://youtu.be/dQw4w9WgXcQ", "0:05\nOne.\n0:05\nTwo.", "Timestamps must increase"],
-    ])("shows an inline error and stores nothing for %s", async (_name, videoUrl, text, message) => {
-      installYouTube();
-      const view = await renderLibrary();
-      await createLesson(view.container, videoUrl, text);
-
-      expect(view.container.textContent).toContain(message);
-      expect(view.container.textContent).not.toContain("Back to lessons");
-      expect(await listUserLessons()).toEqual([]);
-      expect(FakePlayer.instances).toEqual([]);
-      await close(view);
-    });
-
-    it("plays a clip at the chosen speed and pauses when the time passes the cue end", async () => {
-      const { view, player } = await openVideoLesson();
-      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "0.75x")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[1]?.click();
-      });
-      expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 2, true], ["playVideo"]]);
-
-      player.time = 64.9;
-      vi.advanceTimersByTime(100);
-      expect(player.calls).not.toContainEqual(["pauseVideo"]);
-      player.time = 65;
-      vi.advanceTimersByTime(100);
-      expect(player.calls.filter(([name]) => name === "pauseVideo")).toHaveLength(1);
-      vi.advanceTimersByTime(1000);
-      expect(player.calls.filter(([name]) => name === "pauseVideo")).toHaveLength(1);
-
-      player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[2]?.click();
-      });
-      expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 65, true], ["playVideo"]]);
-      expect(vi.getTimerCount()).toBe(0);
-      await close(view);
-    });
-
-    it("cancels the older clip's poll when a newer clip starts", async () => {
-      const { view, player } = await openVideoLesson();
-      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[1]?.click();
-      });
-      expect(vi.getTimerCount()).toBe(1);
-
-      player.time = 3;
-      vi.advanceTimersByTime(500);
-      expect(player.calls).not.toContainEqual(["pauseVideo"]);
-      await close(view);
-    });
-
-    it("destroys the player and cancels the poll on unmount", async () => {
-      const { view, player } = await openVideoLesson();
-      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      await act(async () => {
-        buttonsNamed(view.container, "Back to lessons")[0]?.click();
-      });
-
-      expect(player.calls.filter(([name]) => name === "destroy")).toHaveLength(1);
-      expect(view.container.contains(player.element)).toBe(false);
-      expect(vi.getTimerCount()).toBe(0);
-      player.time = 100;
-      vi.advanceTimersByTime(500);
-      expect(player.calls).not.toContainEqual(["pauseVideo"]);
-      await close(view);
-    });
-
-    it("offers Play clip in the dictation and fill-the-blank modes", async () => {
-      const { view, player } = await openVideoLesson();
-      for (const mode of ["Dictation", "Fill the blank"]) {
-        await act(async () => {
-          buttonsNamed(view.container, mode)[0]?.click();
-        });
-        expect(buttonsNamed(view.container, "Play clip")).toHaveLength(3);
-        player.calls = [];
-        await act(async () => {
-          buttonsNamed(view.container, "Play clip")[0]?.click();
-        });
-        expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
-      }
-      expect(FakePlayer.instances).toHaveLength(1);
-      await close(view);
-    });
-
-    it("creates no player and injects no script for a plain lesson", async () => {
-      const view = await renderLibrary();
-      const titleInput = view.container.querySelector<HTMLInputElement>("#import-title");
-      const textArea = view.container.querySelector<HTMLTextAreaElement>("#import-text");
-      if (!titleInput || !textArea) throw new Error("import form not found");
-      await act(async () => {
-        setInputValue(titleInput, "Tea talk");
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textArea, "I like tea.");
-        textArea.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      await act(async () => {
-        titleInput.form?.requestSubmit();
-      });
-      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
-
-      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
-      expect(window.onYouTubeIframeAPIReady).toBeUndefined();
-      expect(buttonsNamed(view.container, "Play clip")).toEqual([]);
-      expect(view.container.textContent).not.toContain("Video from YouTube");
-      await close(view);
-    });
-
-    class ClipRecognition {
-      static instances: ClipRecognition[] = [];
-      lang = "";
-      continuous = true;
-      interimResults = true;
-      maxAlternatives = 5;
-      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
-      onerror: ((event: { error: string }) => void) | null = null;
-      onend: (() => void) | null = null;
-      start = vi.fn();
-      abort = vi.fn();
-      constructor() {
-        ClipRecognition.instances.push(this);
-      }
-    }
-
-    async function openVideoLessonWithCheck() {
-      localStorage.setItem("road-to-english.pronunciationCheck", "on");
-      ClipRecognition.instances = [];
-      vi.stubGlobal("webkitSpeechRecognition", ClipRecognition);
-      const opened = await openVideoLesson();
-      localStorage.removeItem("road-to-english.pronunciationCheck");
-      return opened;
-    }
-
-    it("pauses the playing clip and clears its poll when a pronunciation check starts", async () => {
-      const { view, player } = await openVideoLessonWithCheck();
-      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      expect(player.calls).toContainEqual(["playVideo"]);
-      player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
-      expect(player.calls).toEqual([["pauseVideo"]]);
-      expect(ClipRecognition.instances).toHaveLength(1);
-      player.time = 10;
-      vi.advanceTimersByTime(1000);
-      expect(player.calls).toEqual([["pauseVideo"]]);
-      await close(view);
-    });
-
-    it("aborts a listening check silently when Play clip starts", async () => {
-      const { view, player } = await openVideoLessonWithCheck();
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
-      const recognition = ClipRecognition.instances.at(-1)!;
-      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
-      player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Play clip")[0]?.click();
-      });
-      expect(recognition.abort).toHaveBeenCalledOnce();
-      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
-      expect(buttonsNamed(view.container, "Try again")).toHaveLength(0);
-      expect(view.container.textContent).not.toContain("aborted");
-      expect(player.calls).toEqual([["setPlaybackRate", 1], ["seekTo", 0, true], ["playVideo"]]);
-      await close(view);
-    });
-
-    // The stub fires the script's error event instead of letting happy-dom try the network, the same path as a blocked or offline load.
-    it("loads the API script once and shows the couldn't-load line when it fails, keeping the lesson usable", async () => {
-      const append = vi.spyOn(document.head, "append").mockImplementation((...nodes) => {
-        for (const node of nodes) {
-          setTimeout(() => (node as HTMLScriptElement).dispatchEvent(new Event("error")), 0);
-        }
-      });
-      const view = await renderLibrary();
-      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
-      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
-
-      await waitForCondition(
-        () => view.container.textContent?.includes("The video couldn't load. You can keep practising with Listen.") ?? false,
-      );
-      expect(view.container.textContent).not.toContain("Loading video…");
-      expect(append.mock.calls.map(([node]) => (node as HTMLScriptElement).src)).toEqual([iframeApi]);
-      expect(document.querySelector(`script[src="${iframeApi}"]`)).toBeNull();
-      expect(buttonsNamed(view.container, "Play clip").every((button) => button.disabled)).toBe(true);
-      await act(async () => {
-        buttonsNamed(view.container, "Dictation")[0]?.click();
-      });
-      expect(view.container.querySelector("#dictation-s1")).not.toBeNull();
-      await close(view);
-    });
-
-    it("sizes the player to fill a 16:9 column and shows Loading video… until ready", async () => {
-      installYouTube();
-      const view = await renderLibrary();
-      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
-      await waitForCondition(() => FakePlayer.instances.length === 1);
-      const player = FakePlayer.instances[0]!;
-      expect(player.options).toMatchObject({ width: "100%", height: "100%" });
-      expect(view.container.textContent).toContain("Loading video…");
-      await act(async () => {
-        player.options.events.onReady();
-      });
-      expect(view.container.textContent).not.toContain("Loading video…");
-      await close(view);
-    });
-
-    it("shows the couldn't-load line when the player is not ready after 15 s, keeps the lesson usable, and accepts a late ready", async () => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
-      installYouTube();
-      installSpeechFakes();
-      const view = await renderLibrary();
-      await createLesson(view.container, "https://youtu.be/dQw4w9WgXcQ", transcript);
-      await waitForCondition(() => FakePlayer.instances.length === 1);
-      const player = FakePlayer.instances[0]!;
-      const failed = "The video couldn't load. You can keep practising with Listen.";
-
-      await act(async () => {
-        vi.advanceTimersByTime(14_000);
-      });
-      expect(view.container.textContent).toContain("Loading video…");
-      expect(view.container.textContent).not.toContain(failed);
-      await act(async () => {
-        vi.advanceTimersByTime(1_100);
-      });
-      expect(view.container.textContent).toContain(failed);
-      expect(view.container.textContent).not.toContain("Loading video…");
-      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(false);
-
-      await act(async () => {
-        player.options.events.onReady();
-      });
-      expect(view.container.textContent).not.toContain(failed);
-      expect(buttonsNamed(view.container, "Play clip").every((button) => !button.disabled)).toBe(true);
-      await close(view);
-    });
-
-    it("stops speech and the loop when the video starts playing, and Listen pauses the video", async () => {
-      const speech = installSpeechFakes();
-      const { view, player } = await openVideoLesson();
-      await act(async () => {
-        buttonsNamed(view.container, "Loop")[0]?.click();
-      });
-      expect(player.calls).toContainEqual(["pauseVideo"]);
-      await act(async () => {
-        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
-      });
-      expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(1);
-      speech.cancel.mockClear();
-
-      // The player's own controls start playback: YT.PlayerState.PLAYING.
-      await act(async () => {
-        player.options.events.onStateChange({ data: 1 });
-      });
-      expect(speech.cancel).toHaveBeenCalled();
-      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-      expect(view.container.querySelectorAll('[aria-current="true"]')).toHaveLength(0);
-      const spoken = speech.spoken.length;
-      await act(async () => {
-        speech.finish();
-      });
-      expect(speech.spoken).toHaveLength(spoken);
-
-      player.calls = [];
-      await act(async () => {
-        buttonsNamed(view.container, "Listen")[1]?.click();
-      });
-      expect(player.calls).toEqual([["pauseVideo"]]);
-      await close(view);
-    });
-  });
-
-  describe("pronunciation check", () => {
-    class FakeRecognition {
-      static instances: FakeRecognition[] = [];
-      lang = "";
-      continuous = true;
-      interimResults = true;
-      maxAlternatives = 5;
-      processLocally = false;
-      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
-      onerror: ((event: { error: string }) => void) | null = null;
-      onend: (() => void) | null = null;
-      start = vi.fn();
-      abort = vi.fn();
-      constructor() {
-        FakeRecognition.instances.push(this);
-      }
-    }
-
-    async function openShadow() {
-      installSpeechFakes();
-      FakeRecognition.instances = [];
-      vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
-      return openLesson();
-    }
-
-    async function enable(container: HTMLElement) {
-      await click(container, "Pronunciation check");
-      await click(container, "Enable");
-    }
-
-    async function checkFirstSentence(container: HTMLElement) {
-      await click(container, "Check pronunciation");
-      const recognition = FakeRecognition.instances.at(-1);
-      if (!recognition) throw new Error("recognition not started");
-      return recognition;
-    }
-
-    afterEach(() => {
-      localStorage.clear();
-    });
-
-    it("is off by default with no Check buttons", async () => {
-      const view = await openShadow();
-      expect(buttonsNamed(view.container, "Pronunciation check")).toHaveLength(1);
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
-      await close(view);
-    });
-
-    it("shows the disclosure first, keeps it off on Cancel, and persists Enable", async () => {
-      const view = await openShadow();
-      await click(view.container, "Pronunciation check");
-      expect(view.container.textContent).toContain("speech recognition");
-      expect(view.container.textContent).toContain("sent to Google's servers");
-      expect(view.container.textContent).toContain("Nothing is sent to road-to-english.");
-      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-
-      await click(view.container, "Cancel");
-      expect(view.container.textContent).not.toContain("Nothing is sent to road-to-english.");
-      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-
-      await enable(view.container);
-      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBe("on");
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(3);
-      await close(view);
-
-      const remounted = await openShadow();
-      expect(buttonsNamed(remounted.container, "Check pronunciation")).toHaveLength(3);
-      await close(remounted);
-    });
-
-    it("shows what was said, the diff, and counts one practice", async () => {
-      const view = await openShadow();
-      await waitForCondition(hasText(view.container, "Goal 0/10"));
-      await enable(view.container);
-      await click(view.container, "Loop");
-      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
-      const recognition = await checkFirstSentence(view.container);
-      expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-      expect(recognition.processLocally).toBe(true);
-      expect(buttonsNamed(view.container, "Listening…")[0]?.getAttribute("aria-disabled")).toBe("true");
-
-      await act(async () => {
-        recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] });
-        recognition.onend?.();
-      });
-      expect(view.container.textContent).toContain("You said: good morning how are you today");
-      expect(view.container.textContent).toContain("Correct");
-      await waitForCondition(hasText(view.container, "Goal 1/10"));
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-      expect(view.container.textContent).toContain("Goal 1/10");
-
-      await click(view.container, "Try again");
-      expect(view.container.textContent).not.toContain("You said:");
-      await close(view);
-    });
-
-    it("labels a wrong word with what was said", async () => {
-      const view = await openShadow();
-      await enable(view.container);
-      const recognition = await checkFirstSentence(view.container);
-      await act(async () => {
-        recognition.onresult?.({ results: [[{ transcript: "good morning how are you tomorrow" }]] });
-      });
-      expect(view.container.textContent).toContain('today (you said "tomorrow")');
-      expect(view.container.textContent).toContain("Not quite");
-      await close(view);
-    });
-
-    it("shows a recognition error", async () => {
-      const view = await openShadow();
-      await enable(view.container);
-      const recognition = await checkFirstSentence(view.container);
-      await act(async () => {
-        recognition.onerror?.({ error: "language-not-supported" });
-        recognition.onend?.();
-      });
-      expect(view.container.textContent).toContain(
-        "On-device English recognition isn't available in this browser. Use Record and Compare to check yourself.",
-      );
-      expect(FakeRecognition.instances).toHaveLength(1);
-      await click(view.container, "Try again");
-      expect(view.container.textContent).not.toContain("On-device English recognition");
-      await close(view);
-    });
-
-    it("disables the toggle with a reason when recognition is unsupported", async () => {
-      localStorage.setItem("road-to-english.pronunciationCheck", "on");
-      installSpeechFakes();
-      const view = await openLesson();
-      expect(buttonsNamed(view.container, "Pronunciation check")[0]?.disabled).toBe(true);
-      expect(view.container.textContent).toContain(
-        "Pronunciation check disabled: speech recognition is not supported in this browser.",
-      );
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-      await close(view);
-    });
-
-    it("hides the Check buttons and aborts listening when turned off", async () => {
-      const view = await openShadow();
-      await enable(view.container);
-      const recognition = await checkFirstSentence(view.container);
-      await click(view.container, "Pronunciation check");
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(0);
-      expect(recognition.abort).toHaveBeenCalled();
-      expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
-      await close(view);
-    });
-
-    it("resets the first sentence without a message when another sentence starts a check", async () => {
-      const view = await openShadow();
-      await enable(view.container);
-      const first = await checkFirstSentence(view.container);
-      await act(async () => {
-        buttonsNamed(view.container, "Check pronunciation")[0]?.click();
-      });
-      expect(first.abort).toHaveBeenCalled();
-      expect(FakeRecognition.instances).toHaveLength(2);
-      expect(buttonsNamed(view.container, "Listening…")).toHaveLength(1);
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(2);
-      expect(view.container.textContent).not.toContain("aborted");
-      expect(buttonsNamed(view.container, "Try again")).toHaveLength(0);
-      await close(view);
-    });
-
-    it("disables Listen, Loop and Compare in the listening sentence and stops speech", async () => {
-      installMediaDevices(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream);
-      installObjectUrlFakes();
-      vi.stubGlobal(
-        "MediaRecorder",
-        class {
-          state = "inactive";
-          mimeType = "audio/webm";
-          ondataavailable: ((event: BlobEvent) => void) | null = null;
-          onstop: (() => void) | null = null;
-          start() {
-            this.state = "recording";
-          }
-          stop() {
-            this.state = "inactive";
-            this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
-            this.onstop?.();
-          }
-        },
-      );
-      const view = await openShadow();
-      await enable(view.container);
-      await click(view.container, "Record");
-      await click(view.container, "Stop");
-      expect(buttonsNamed(view.container, "Compare")[0]?.disabled).toBe(false);
-      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(false);
-      expect(buttonsNamed(view.container, "Loop")[0]?.disabled).toBe(false);
-      const speech = window.speechSynthesis as unknown as { cancel: ReturnType<typeof vi.fn> };
-      speech.cancel.mockClear();
-      await checkFirstSentence(view.container);
-      expect(speech.cancel).toHaveBeenCalled();
-      expect(buttonsNamed(view.container, "Listen")[0]?.disabled).toBe(true);
-      expect(buttonsNamed(view.container, "Loop")[0]?.disabled).toBe(true);
-      expect(buttonsNamed(view.container, "Compare")[0]?.disabled).toBe(true);
-      expect(buttonsNamed(view.container, "Listen")[1]?.disabled).toBe(false);
-      expect(buttonsNamed(view.container, "Loop")[1]?.disabled).toBe(false);
-      await close(view);
-    });
-
-    it.each([
-      ["result", (recognition: FakeRecognition) =>
-        recognition.onresult?.({ results: [[{ transcript: "good morning how are you today" }]] })],
-      ["error", (recognition: FakeRecognition) => recognition.onerror?.({ error: "network" })],
-    ])("ignores a late %s from a recognition dropped by turning the setting off", async (_name, settle) => {
-      const view = await openShadow();
-      await waitForCondition(hasText(view.container, "Goal 0/10"));
-      await enable(view.container);
-      const recognition = await checkFirstSentence(view.container);
-      // The recognition settles before the toggle, but its handler runs only after
-      // the toggle's cleanup has dropped this recognition.
-      settle(recognition);
-      act(() => {
-        buttonsNamed(view.container, "Pronunciation check")[0]?.click();
-      });
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-      expect(view.container.textContent).not.toContain("You said:");
-      expect(view.container.textContent).not.toContain("Speech recognition couldn't reach its service.");
-      expect(view.container.textContent).toContain("Goal 0/10");
-      await close(view);
-    });
-
-    it("keeps dictation wording as you typed with the setting on", async () => {
-      const view = await openShadow();
-      await enable(view.container);
-      await click(view.container, "Dictation");
-      const input = view.container.querySelector<HTMLInputElement>(
-        `#dictation-${greetingsLesson.sentences[0].id}`,
-      );
-      if (!input) throw new Error("dictation input not found");
-      await act(async () => {
-        setInputValue(input, "Good morning, how are you tomorrow?");
-        input.form?.requestSubmit();
-      });
-      expect(view.container.textContent).toContain("You typed: Good morning, how are you tomorrow?");
-      expect(view.container.textContent).toContain('today (you typed "tomorrow")');
-      expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
-      await close(view);
-    });
-  });
-
-  describe("practice robustness", () => {
-    class Recognition {
-      static instances: Recognition[] = [];
-      lang = "";
-      continuous = true;
-      interimResults = true;
-      maxAlternatives = 5;
-      processLocally = false;
-      onresult: ((event: { results: { transcript: string }[][] }) => void) | null = null;
-      onerror: ((event: { error: string }) => void) | null = null;
-      onend: (() => void) | null = null;
-      start = vi.fn();
-      abort = vi.fn();
-      constructor() {
-        Recognition.instances.push(this);
-      }
-    }
-
-    class Recorder {
-      static instances: Recorder[] = [];
-      state = "inactive";
-      mimeType = "audio/webm";
-      ondataavailable: ((event: BlobEvent) => void) | null = null;
-      onstop: (() => void) | null = null;
-      constructor() {
-        Recorder.instances.push(this);
-      }
-      start() {
-        this.state = "recording";
-      }
-      stop() {
-        this.state = "inactive";
-        this.ondataavailable?.({ data: new Blob(["audio"]) } as BlobEvent);
-        this.onstop?.();
-      }
-    }
-
-    // Speech, recognition (with the check on) and recording, all faked.
-    async function openPractice(lesson = greetingsLesson) {
-      const speech = installSpeechFakes();
-      Recognition.instances = [];
-      Recorder.instances = [];
-      vi.stubGlobal("webkitSpeechRecognition", Recognition);
-      installMediaDevices(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream);
-      installObjectUrlFakes();
-      vi.stubGlobal("MediaRecorder", Recorder);
-      localStorage.setItem("road-to-english.pronunciationCheck", "on");
-      const view = await openLesson(lesson);
-      localStorage.removeItem("road-to-english.pronunciationCheck");
-      return { ...view, speech };
-    }
-
-    const spokenWords = (container: HTMLElement) =>
-      Array.from(container.querySelectorAll('[aria-current="true"]')).map((element) => element.textContent);
-
-    const settle = () =>
-      act(async () => {
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-      });
-
-    afterEach(() => {
-      vi.useRealTimers();
-      localStorage.clear();
-    });
-
-    it("awards recording practice only for a clip of at least one second", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      const view = await openPractice();
-      const { container } = view;
-      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
-      await click(container, "Record");
-      vi.setSystemTime(Date.now() + 999);
-      await click(container, "Stop");
-      await settle();
-      expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
-      expect(container.textContent).toContain("Goal 0/10");
-
-      await click(container, "Record");
-      vi.setSystemTime(Date.now() + 1000);
-      await click(container, "Stop");
-      await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
-      await settle();
-      expect(container.textContent).toContain("Goal 1/10");
-      await close(view);
-    });
-
-    it("runs one practice medium at a time across sentences", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-
-      await click(container, "Listen");
-      await click(container, "Check pronunciation");
-      const firstCheck = Recognition.instances.at(-1)!;
-      expect(speech.cancel).toHaveBeenCalled();
-
-      // Record in sentence 2 stops the check in sentence 1 and any speech.
-      speech.cancel.mockClear();
-      await click(container, "Record", 1);
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      expect(firstCheck.abort).toHaveBeenCalledOnce();
-      expect(buttonsNamed(container, "Listening…")).toHaveLength(0);
-      expect(speech.cancel).toHaveBeenCalled();
-
-      // Check in sentence 1 stops the recording in sentence 2.
-      await click(container, "Check pronunciation");
-      expect(Recorder.instances[0]?.state).toBe("inactive");
-      expect(buttonsNamed(container, "Stop")).toHaveLength(0);
-      expect(container.querySelectorAll("audio")).toHaveLength(1);
-      const secondCheck = Recognition.instances.at(-1)!;
-
-      // Listen in sentence 3 stops the check in sentence 1.
-      await click(container, "Listen", 2);
-      expect(secondCheck.abort).toHaveBeenCalledOnce();
-      expect(speech.spoken.at(-1)?.text).toBe(greetingsLesson.sentences[2].text);
-
-      // Record stops a Loop in another sentence; Listen stops a recording.
-      await click(container, "Loop");
-      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
-      speech.cancel.mockClear();
-      await click(container, "Record", 2);
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-      expect(speech.cancel).toHaveBeenCalled();
-      await click(container, "Listen", 1);
-      expect(Recorder.instances.at(-1)?.state).toBe("inactive");
-      expect(buttonsNamed(container, "Stop")).toHaveLength(0);
-      await close(view);
-    });
-
-    it("pauses Compare's recording when Listen starts in another sentence", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
-
-      await click(container, "Record");
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      await click(container, "Stop");
-      await click(container, "Compare");
-      await act(async () => {
-        speech.finish();
-        speech.spoken.at(-1)?.onend?.();
-      });
-      expect(play).toHaveBeenCalledOnce();
-      pause.mockClear();
-
-      await click(container, "Listen", 1);
-      expect(pause).toHaveBeenCalled();
-      await close(view);
-    });
-
-    it("stops speech and Loop when the recording plays from its own controls", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
-
-      await click(container, "Record");
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      await click(container, "Stop");
-      await click(container, "Loop", 1);
-      expect(buttonsNamed(container, "Loop")[1]?.getAttribute("aria-pressed")).toBe("true");
-      speech.cancel.mockClear();
-      pause.mockClear();
-
-      await act(async () => {
-        container.querySelector("audio")?.dispatchEvent(new Event("play"));
-      });
-      expect(buttonsNamed(container, "Loop")[1]?.getAttribute("aria-pressed")).toBe("false");
-      expect(speech.cancel).toHaveBeenCalled();
-      expect(pause).not.toHaveBeenCalled();
-      await close(view);
-    });
-
-    it("turns Loop off on a speech error, plays the recording after a failed Compare reference, and explains a failed Listen once", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-      const message = "Couldn't play the sentence. Check your browser's speech settings.";
-      const occurrences = () => container.textContent?.split(message).length ?? 1;
-      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-
-      await click(container, "Loop");
-      await act(async () => {
-        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
-      });
-      expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
-      const spoken = speech.spoken.length;
-      await act(async () => {
-        speech.finish();
-        speech.spoken.at(-1)?.onend?.();
-      });
-      expect(speech.spoken).toHaveLength(spoken);
-
-      await click(container, "Listen");
-      expect(container.textContent).not.toContain(message);
-      await act(async () => {
-        speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
-      });
-      expect(spokenWords(container)).toEqual(["Good"]);
-      await act(async () => {
-        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
-        speech.spoken.at(-1)?.onerror?.({ error: "synthesis-failed" });
-      });
-      expect(occurrences()).toBe(2);
-      expect(spokenWords(container)).toEqual([]);
-
-      // Our own supersede is silent.
-      await click(container, "Listen", 1);
-      const superseded = speech.spoken.at(-1);
-      await click(container, "Listen", 2);
-      await act(async () => {
-        superseded?.onerror?.({ error: "interrupted" });
-      });
-      expect(container.textContent?.split(message).length).toBe(2);
-      expect(buttonsNamed(container, "Listen").map((_, index) => index)).toHaveLength(3);
-
-      await click(container, "Record");
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      await click(container, "Stop");
-      await click(container, "Compare");
-      expect(play).not.toHaveBeenCalled();
-      await act(async () => {
-        speech.spoken.at(-1)?.onerror?.({ error: "audio-busy" });
-      });
-      expect(play).toHaveBeenCalledOnce();
-      await close(view);
-    });
-
-    it("clears the spoken-word highlight when another medium starts or the sentence is left", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-      const highlight = async () => {
-        await click(container, "Listen");
-        await act(async () => {
-          speech.spoken.at(-1)?.onboundary?.({ name: "word", charIndex: 0 });
-        });
-        expect(spokenWords(container)).toEqual(["Good"]);
-      };
-
-      await highlight();
-      await click(container, "Record", 1);
-      await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-      expect(spokenWords(container)).toEqual([]);
-
-      await highlight();
-      await click(container, "Check pronunciation", 2);
-      expect(spokenWords(container)).toEqual([]);
-
-      await highlight();
-      await click(container, "morning");
-      await click(container, "Hear word");
-      expect(spokenWords(container)).toEqual([]);
-
-      await highlight();
-      await click(container, "Dictation");
-      await click(container, "Shadow");
-      expect(spokenWords(container)).toEqual([]);
-      await close(view);
-    });
-
-    it("counts each non-empty sentence check once per lesson visit", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      const view = await openPractice();
-      const { container } = view;
-      const first = greetingsLesson.sentences[0];
-      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
-      const submit = async (selector: string, value: string) => {
-        const input = container.querySelector<HTMLInputElement>(selector);
-        if (!input) throw new Error(`${selector} not found`);
-        await act(async () => {
-          setInputValue(input, value);
-          input.form?.requestSubmit();
-        });
-        await settle();
-      };
-      const goal = (count: number) => expect(container.textContent).toContain(`Goal ${count}/10`);
-
-      await click(container, "Check pronunciation");
-      await act(async () => {
-        Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "  " }]] });
-      });
-      await settle();
-      goal(0);
-      await click(container, "Try again");
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        await click(container, "Check pronunciation");
-        await act(async () => {
-          Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
-        });
-        await settle();
-        goal(1);
-        await click(container, "Try again");
-      }
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        await click(container, "Record");
-        await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
-        vi.setSystemTime(Date.now() + 1000);
-        await click(container, "Stop");
-        await settle();
-        goal(2);
-      }
-
-      await click(container, "Dictation");
-      await submit(`#dictation-${first.id}`, "   ");
-      goal(2);
-      await submit(`#dictation-${first.id}`, "good morning");
-      goal(3);
-      await click(container, "Try again");
-      await submit(`#dictation-${first.id}`, first.text);
-      goal(3);
-
-      await click(container, "Fill the blank");
-      await submit(`#blank-${first.id}`, "");
-      goal(3);
-      await submit(`#blank-${first.id}`, "evening");
-      goal(4);
-      await click(container, "Try again");
-      await submit(`#blank-${first.id}`, "morning");
-      goal(4);
-      await close(view);
-    });
-
-    it("looks up and links a word with its apostrophe but saves the normalised word", async () => {
-      const lesson = {
-        ...greetingsLesson,
-        sentences: [{ ...greetingsLesson.sentences[0], text: "Don’t worry about it." }, ...greetingsLesson.sentences.slice(1)],
-      };
-      const view = await openPractice(lesson);
-      const { container } = view;
-      const api = fetchMock.getMockImplementation()!;
-      const dictionaryUrls: string[] = [];
-      fetchMock.mockImplementation(async (input, init) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (url.startsWith("https://api.dictionaryapi.dev/")) {
-          dictionaryUrls.push(url);
-          return new Response("[]", { status: 404 });
-        }
-        return api(input, init);
-      });
-
-      await click(container, "Don’t");
-      await click(container, "Define");
-      await waitForCondition(() => container.textContent?.includes("No definition") ?? false);
-      expect(dictionaryUrls).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/don't"]);
-      const link = Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
-      expect(link?.getAttribute("href")).toBe("https://youglish.com/pronounce/don't/english");
-
-      await click(container, "Save word");
-      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
-      const [card] = await getAllCards();
-      expect(card?.source.word).toBe("dont");
-      await close(view);
-    });
-
-    it("looks up and links a word without its surrounding quote marks", async () => {
-      const lesson = {
-        ...greetingsLesson,
-        sentences: [
-          { ...greetingsLesson.sentences[0], text: "She said 'hello' to the students' teacher." },
-          ...greetingsLesson.sentences.slice(1),
-        ],
-      };
-      const view = await openPractice(lesson);
-      const { container } = view;
-      const api = fetchMock.getMockImplementation()!;
-      const dictionaryUrls: string[] = [];
-      fetchMock.mockImplementation(async (input, init) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (url.startsWith("https://api.dictionaryapi.dev/")) {
-          dictionaryUrls.push(url);
-          return new Response("[]", { status: 404 });
-        }
-        return api(input, init);
-      });
-      const youglish = () =>
-        Array.from(container.querySelectorAll("a")).find((anchor) => anchor.textContent === "Hear it on YouGlish");
-
-      for (const [token, word] of [["'hello'", "hello"], ["students'", "students"]]) {
-        await click(container, token);
-        await click(container, "Define");
-        await waitForCondition(() => dictionaryUrls.length > 0);
-        expect(dictionaryUrls.splice(0)).toEqual([`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`]);
-        expect(youglish()?.getAttribute("href")).toBe(`https://youglish.com/pronounce/${word}/english`);
-      }
-      await close(view);
-    });
-
-    it("says the dictionary is unreachable on a network failure", async () => {
-      const view = await openPractice();
-      const { container } = view;
-      const api = fetchMock.getMockImplementation()!;
-      fetchMock.mockImplementation(async (input, init) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (url.startsWith("https://api.dictionaryapi.dev/")) {
-          throw new TypeError("Failed to fetch");
-        }
-        return api(input, init);
-      });
-      await click(container, "morning");
-      await click(container, "Define");
-      await waitForCondition(
-        () => container.textContent?.includes("Couldn't reach the dictionary. Check your connection.") ?? false,
-      );
-      expect(container.textContent).not.toContain("No definition");
-      await close(view);
-    });
-
-    it("turns off autocomplete, autocorrect, autocapitalise and spellcheck on the answer inputs", async () => {
-      const view = await openPractice();
-      const { container } = view;
-      const id = greetingsLesson.sentences[0].id;
-      for (const [mode, selector] of [["Dictation", `#dictation-${id}`], ["Fill the blank", `#blank-${id}`]]) {
-        await click(container, mode);
-        const input = container.querySelector<HTMLInputElement>(selector);
-        expect(input?.getAttribute("autocomplete")).toBe("off");
-        expect(input?.getAttribute("autocorrect")).toBe("off");
-        expect(input?.getAttribute("autocapitalize")).toBe("off");
-        expect(input?.getAttribute("spellcheck")).toBe("false");
-      }
-      await close(view);
-    });
-
-    it("plays dictation and blank sentences at the selected speed", async () => {
-      const view = await openPractice();
-      const { container, speech } = view;
-      await click(container, "0.5x");
-      for (const mode of ["Dictation", "Fill the blank"]) {
-        await click(container, mode);
-        await click(container, "Play");
-        // 90 WPM is rate 0.5, halved by the 0.5x speed.
-        expect(speech.spoken.at(-1)?.rate).toBe(0.25);
-      }
-      await close(view);
     });
   });
 
@@ -3263,7 +786,7 @@ describe("App", () => {
 
     it("shows the storage line and no endless loading when the deck fails to load", async () => {
       vi.spyOn(vocabStore, "getAllCards").mockRejectedValue(new Error("IndexedDB is unavailable"));
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, storageLine));
       expect(container.textContent).toContain(`${storageLine}: IndexedDB is unavailable. Reload to try again.`);
 
@@ -3271,29 +794,26 @@ describe("App", () => {
       expect(container.textContent).not.toContain("Loading review deck...");
       expect(container.textContent).toContain("Your review deck couldn't be loaded.");
       expect(container.textContent).not.toContain("Nothing to review yet");
-      await unmount();
     });
 
     it("shows the storage line when progress fails to load", async () => {
       vi.spyOn(progressStore, "getPracticeDays").mockRejectedValue(new Error("progress store broke"));
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, `${storageLine}: progress store broke.`));
       expect(container.textContent).toContain("Greetings & Basics");
-      await unmount();
     });
 
     it("shows an error instead of loading forever when your lessons fail to load", async () => {
       vi.spyOn(userLessonsStore, "listUserLessons").mockRejectedValue(new Error("lessons store broke"));
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, "Unable to load your lessons: lessons store broke"));
       expect(container.textContent).not.toContain("Loading your lessons...");
       expect(container.textContent).toContain(`${storageLine}: lessons store broke.`);
-      await unmount();
     });
 
     it("recovers Save to review and Save word after a failed write", async () => {
       installSpeechFakes();
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await openGreetings(container);
       const saveCard = vi.spyOn(vocabStore, "saveCard").mockRejectedValueOnce(new Error("quota"));
 
@@ -3312,14 +832,13 @@ describe("App", () => {
       await click(container, "Save word");
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 2);
       expect(container.textContent).not.toContain("Couldn't save.");
-      await unmount();
     });
 
     it("recovers rating in Review after a failed write", async () => {
       await putCard(
         createCard({ front: "front", back: "back", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date()),
       );
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await click(container, "Review");
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
       await click(container, "Show answer");
@@ -3330,14 +849,13 @@ describe("App", () => {
       await click(container, "Good");
       await waitForCondition(hasText(container, "All caught up"));
       expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
-      await unmount();
     });
 
     it("reports a failed progress write after a saved rating in the header, not as a rating failure", async () => {
       await putCard(
         createCard({ front: "front", back: "back", source: { lessonId: "l", sentenceId: "s", word: "" } }, new Date()),
       );
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await click(container, "Review");
       await waitForCondition(() => buttonsNamed(container, "Show answer").length === 1);
       await click(container, "Show answer");
@@ -3347,11 +865,10 @@ describe("App", () => {
       await waitForCondition(hasText(container, "All caught up"));
       expect(container.textContent).not.toContain("Couldn't save.");
       expect((await getAllCards())[0]?.fsrs.reps).toBe(1);
-      await unmount();
     });
 
     it("shows the header line when a dictation practice write fails", async () => {
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await openGreetings(container);
       await click(container, "Dictation");
       vi.spyOn(progressStore, "recordPractice").mockRejectedValueOnce(new Error("disk full"));
@@ -3363,11 +880,10 @@ describe("App", () => {
       });
       await waitForCondition(hasText(container, `${storageLine}: disk full. Reload to try again.`));
       expect(container.textContent).toContain("Goal 0/10");
-      await unmount();
     });
 
     it("recovers Mark complete after a failed write", async () => {
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await openGreetings(container);
       vi.spyOn(progressStore, "markLessonComplete").mockRejectedValueOnce(new Error("quota"));
       await click(container, "Mark complete");
@@ -3375,13 +891,12 @@ describe("App", () => {
       await click(container, "Mark complete");
       await waitForCondition(() => buttonsNamed(container, "Completed").length === 1);
       expect(container.textContent).not.toContain("Couldn't save.");
-      await unmount();
     });
 
     it("recovers Delete lesson after a failed write", async () => {
       await putUserLesson(userLesson);
       vi.stubGlobal("confirm", () => true);
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(hasText(container, userLesson.title));
       vi.spyOn(userLessonsStore, "deleteUserLesson").mockRejectedValueOnce(new Error("quota"));
       const del = () => container.querySelector<HTMLButtonElement>(`button[aria-label="Delete ${userLesson.title}"]`);
@@ -3394,12 +909,11 @@ describe("App", () => {
       });
       await waitForCondition(hasText(container, "No lessons of your own yet."));
       expect(container.textContent).not.toContain("Couldn't delete.");
-      await unmount();
     });
 
     it("keeps the Create error line when saving a lesson fails", async () => {
       vi.spyOn(userLessonsStore, "putUserLesson").mockRejectedValueOnce(new Error("quota exceeded"));
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       const title = container.querySelector<HTMLInputElement>("#import-title");
       const text = container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!title || !text) throw new Error("import form not found");
@@ -3413,25 +927,23 @@ describe("App", () => {
       await waitForCondition(hasText(container, "quota exceeded"));
       await click(container, "Create");
       await waitForCondition(() => container.querySelector("h1")?.textContent === "Mine");
-      await unmount();
     });
 
     it("never paints Lesson unavailable while a library lesson loads", async () => {
       const seen: string[] = [];
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       const observer = new MutationObserver(() => seen.push(container.textContent ?? ""));
       observer.observe(container, { childList: true, subtree: true, characterData: true });
       await openGreetings(container);
       observer.disconnect();
       expect(seen.some((text) => text.includes("Loading lesson..."))).toBe(true);
       expect(seen.some((text) => text.includes("Lesson unavailable"))).toBe(false);
-      await unmount();
     });
 
     it("drops a pending return focus when the view changes before the rows mount", async () => {
       let release: () => void = () => undefined;
       let lessonsCalls = 0;
-      const { container, unmount } = await renderApp({ route: async (path) => {
+      const { container } = await renderApp({ route: async (path) => {
         if (path === "/lessons" && ++lessonsCalls > 2) {
           await new Promise<void>((resolve) => {
             release = resolve;
@@ -3450,7 +962,6 @@ describe("App", () => {
       });
       await waitForCondition(hasText(container, "Daily Routine"));
       expect(document.activeElement).toBe(libraryToggle);
-      await unmount();
     });
   });
 
@@ -3461,59 +972,9 @@ describe("App", () => {
       restoreProperty(navigator, "storage", originalStorage);
     });
 
-    const syncFailed = "Couldn't sync. Your changes are saved on this device and will sync when you're back online.";
-
-    it("shows a failed sync and clears it when an online event re-syncs", async () => {
-      let offline = true;
-      const { container, unmount } = await renderApp({ route: (path) => {
-        if (path === "/me") return userResponse();
-        if (path === "/sync" && offline) throw new TypeError("Failed to fetch");
-        return undefined;
-      } });
-      await waitForCondition(() => container.textContent?.includes(syncFailed) ?? false);
-      expect(container.textContent).toContain("restored@example.com");
-
-      offline = false;
-      const before = callsTo("/sync");
-      await act(async () => {
-        window.dispatchEvent(new Event("online"));
-      });
-      await waitForCondition(() => !(container.textContent?.includes(syncFailed) ?? true));
-      expect(callsTo("/sync")).toBe(before + 1);
-
-      await unmount();
-    });
-
-    it("re-syncs when the window gains focus", async () => {
-      const { container, unmount } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
-      await waitForCondition(() => callsTo("/sync") === 1);
-
-      await act(async () => {
-        window.dispatchEvent(new Event("focus"));
-      });
-      await waitForCondition(() => callsTo("/sync") === 2);
-      expect(container.textContent).toContain("restored@example.com");
-
-      await unmount();
-    });
-
-    it("signs the user out with a message when sync returns 401", async () => {
-      const { container, unmount } = await renderApp({ route: (path) => {
-        if (path === "/me") return userResponse();
-        if (path === "/sync") return new Response(null, { status: 401 });
-        return undefined;
-      } });
-      await waitForCondition(() => container.textContent?.includes("You were signed out. Sign in again to sync.") ?? false);
-      expect(container.textContent).not.toContain("restored@example.com");
-      expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
-      expect(container.textContent).not.toContain(syncFailed);
-
-      await unmount();
-    });
-
     it("shows a friendly line when /me is offline and signs in when an online event retries it", async () => {
       let offline = true;
-      const { container, unmount } = await renderApp({ route: (path) => {
+      const { container } = await renderApp({ route: (path) => {
         if (path === "/me") {
           if (offline) throw new TypeError("Failed to fetch");
           return userResponse();
@@ -3529,12 +990,10 @@ describe("App", () => {
       });
       await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
       expect(container.textContent).not.toContain("Can't reach the server");
-
-      await unmount();
     });
 
     it("does not retry /me on online after a server error", async () => {
-      const { container, unmount } = await renderApp({ route: (path) => (path === "/me" ? new Response(null, { status: 500 }) : undefined) });
+      const { container } = await renderApp({ route: (path) => (path === "/me" ? new Response(null, { status: 500 }) : undefined) });
       await waitForCondition(() => container.textContent?.includes("Unable to complete account request. Please try again.") ?? false);
       const before = callsTo("/me");
 
@@ -3542,8 +1001,6 @@ describe("App", () => {
         window.dispatchEvent(new Event("online"));
       });
       expect(callsTo("/me")).toBe(before);
-
-      await unmount();
     });
 
     const kept = "Storage: kept on this device.";
@@ -3560,14 +1017,12 @@ describe("App", () => {
         configurable: true,
         value: persistMock ? { persist: persistMock } : undefined,
       });
-      const { container, unmount } = await renderApp();
+      const { container } = await renderApp();
       await waitForCondition(() => container.textContent?.includes(expected) ?? false);
       if (persistMock) {
         expect(persistMock).toHaveBeenCalledTimes(1);
       }
       expect(container.textContent).not.toContain("blocked");
-
-      await unmount();
     });
   });
 
@@ -3614,7 +1069,6 @@ describe("App", () => {
       expect(h1Texts(container)).toEqual(["Greetings & Basics"]);
       expect(document.activeElement).toBe(container.querySelector("main h1"));
       expectNoSkippedLevels(container);
-      await close(view);
     });
 
     it("announces results in polite regions mounted before them, and errors as alerts", async () => {
@@ -3655,7 +1109,6 @@ describe("App", () => {
       await waitForCondition(() => container.textContent?.includes("Backup error: export broke") ?? false);
       const error = Array.from(container.querySelectorAll("p")).find((p) => p.textContent === "Backup error: export broke");
       expect(error?.getAttribute("role")).toBe("alert");
-      await close(view);
     });
 
     it("marks Vietnamese lang=vi in the lesson and in a word card's answer", async () => {
@@ -3683,7 +1136,6 @@ describe("App", () => {
       expect(Array.from(container.querySelectorAll("[lang]")).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual([
         ["vi", sentence.vi],
       ]);
-      await close(view);
     });
 
     it("returns focus from a toast's Undo to the Saved toggle it undid", async () => {
@@ -3704,7 +1156,6 @@ describe("App", () => {
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       await waitForCondition(() => document.activeElement === toggle);
-      await close(view);
     });
 
     it("moves focus to the card after a rating that fails to save", async () => {
@@ -3722,29 +1173,6 @@ describe("App", () => {
       await click(container, "Good");
       await waitForCondition(() => container.textContent?.includes("Couldn't save. Try again.") ?? false);
       await waitForCondition(() => document.activeElement?.textContent === "front");
-      await close(view);
-    });
-
-    it("keeps focus on Mark complete and moves it through the pronunciation disclosure", async () => {
-      vi.stubGlobal("webkitSpeechRecognition", class {});
-      const view = await openLesson();
-      const { container } = view;
-      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-
-      const complete = buttonsNamed(container, "Mark complete")[0]!;
-      complete.focus();
-      await click(container, "Mark complete");
-      await waitForCondition(() => buttonsNamed(container, "Completed").length === 1);
-      expect(document.activeElement).toBe(buttonsNamed(container, "Completed")[0]);
-      expect(document.activeElement?.getAttribute("aria-disabled")).toBe("true");
-
-      const toggle = buttonsNamed(container, "Pronunciation check")[0]!;
-      toggle.focus();
-      await click(container, "Pronunciation check");
-      expect(document.activeElement).toBe(buttonsNamed(container, "Enable")[0]);
-      await click(container, "Cancel");
-      expect(document.activeElement).toBe(buttonsNamed(container, "Pronunciation check")[0]);
-      await close(view);
     });
 
     it("restores the view from the route on load without taking focus", async () => {
@@ -3760,7 +1188,6 @@ describe("App", () => {
       expect(h1Texts(review.container)).toEqual(["Review deck"]);
       expect(document.title).toBe("Review deck · Road to English");
       expect(document.activeElement).toBe(document.body);
-      await close(review);
     });
 
     it("focuses the library heading on Back to lessons from an unknown lesson id", async () => {
@@ -3777,7 +1204,6 @@ describe("App", () => {
       await waitForCondition(() => h1Texts(view.container)[0] === "Lesson library");
       await waitForCondition(() => document.activeElement?.tagName === "H1");
       expect(document.activeElement?.textContent).toBe("Lesson library");
-      await close(view);
     });
 
     it("focuses the library heading once your lessons load last after Back from an unknown lesson id", async () => {
@@ -3801,7 +1227,6 @@ describe("App", () => {
       });
       await waitForCondition(() => document.activeElement?.tagName === "H1");
       expect(document.activeElement?.textContent).toBe("Lesson library");
-      await close(view);
     });
 
     it("falls back to the library with replaceState for a malformed route or an unknown user lesson", async () => {
@@ -3828,7 +1253,6 @@ describe("App", () => {
       expect(window.history.length).toBe(length + 1);
       await waitForCondition(() => document.activeElement?.textContent?.includes("Greetings & Basics") ?? false);
       expect(document.activeElement?.tagName).toBe("BUTTON");
-      await close(view);
     });
 
     it("pushes a history entry per view change and follows browser Back and Forward", async () => {
@@ -3866,7 +1290,6 @@ describe("App", () => {
       });
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       expect(document.activeElement).toBe(container.querySelector("main h1"));
-      await close(view);
     });
 
     it("leaves focus where the user moved it while an Undo was saving", async () => {
@@ -3889,7 +1312,6 @@ describe("App", () => {
       });
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       expect(document.activeElement).toBe(elsewhere);
-      await close(view);
     });
 
     it("does not announce a daily goal that was already met when the page loads", async () => {
@@ -3901,7 +1323,6 @@ describe("App", () => {
       await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 12/10") ?? false);
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
-      await close(view);
     });
 
     it("announces the daily goal only when it becomes met, not on each practice action", async () => {
@@ -3928,7 +1349,6 @@ describe("App", () => {
       await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
       expect(goal.textContent).toBe("Daily goal met.");
       localStorage.removeItem("road-to-english.dailyGoal");
-      await close(view);
     });
 
     it("does not announce the daily goal when a reload after practice meets it", async () => {
@@ -3961,7 +1381,6 @@ describe("App", () => {
       await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
       localStorage.removeItem("road-to-english.dailyGoal");
-      await close(view);
     });
 
   });

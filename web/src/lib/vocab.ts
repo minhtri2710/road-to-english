@@ -65,7 +65,7 @@ export function sentenceCard(
   };
 }
 
-const CARD_BACK_SEPARATOR = " — ";
+export const CARD_BACK_SEPARATOR = " — ";
 
 // A word card's back: its sentence, then the Vietnamese when the lesson has it.
 export function wordCardBack(sentence: string, vi: string): string {

@@ -8,7 +8,6 @@ import { putCard } from "../lib/vocabStore";
 import {
   buttonsNamed,
   click,
-  close,
   fetchMock,
   h1Texts,
   hasText,
@@ -27,7 +26,7 @@ describe("LessonList", () => {
   it("Retry re-fetches the library after a failure", async () => {
     let fail = true;
     let release: () => void = () => undefined;
-    const { container, unmount } = await renderApp({ route: async (path) => {
+    const { container } = await renderApp({ route: async (path) => {
       if (path === "/lessons" && fail) {
         return new Response("boom", { status: 500 });
       }
@@ -49,12 +48,11 @@ describe("LessonList", () => {
     });
     await waitForCondition(hasText(container, "Greetings & Basics"));
     expect(container.textContent).not.toContain("Unable to load lessons");
-    await unmount();
   });
 
   it("moves focus from Retry to the library h1 before Retry unmounts into the loading line", async () => {
     let fail = true;
-    const { container, unmount } = await renderApp({ route: (path) =>
+    const { container } = await renderApp({ route: (path) =>
       path === "/lessons" && fail ? new Response("boom", { status: 500 }) : responseFor(path),
     });
     await waitForCondition(hasText(container, "Unable to load lessons"));
@@ -64,7 +62,6 @@ describe("LessonList", () => {
     expect(document.activeElement).toBe(container.querySelector("main h1"));
     await waitForCondition(hasText(container, "Greetings & Basics"));
     expect(document.activeElement).toBe(container.querySelector("main h1"));
-    await unmount();
   });
 
   it("shows cards due, today's goal and Review as the next action when cards are due", async () => {
@@ -86,7 +83,6 @@ describe("LessonList", () => {
     await click(strip, "Review 2 cards");
     expect(h1Texts(container)).toEqual(["Review deck"]);
     expect(document.activeElement).toBe(container.querySelector("h1"));
-    await close(view);
   });
 
   it("offers the first lesson not yet completed when no cards are due", async () => {
@@ -101,7 +97,6 @@ describe("LessonList", () => {
     await click(strip, "Start lesson");
     await waitForCondition(() => container.querySelector("main h1") !== null && h1Texts(container)[0] !== "Lesson library");
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/lessons/daily-routine"))).toBe(true);
-    await close(view);
   });
 
   it("shows no due count in the Today strip while the deck is loading", async () => {
@@ -111,6 +106,5 @@ describe("LessonList", () => {
     const strip = todayStrip(view.container)!;
     expect(strip.textContent).toContain("Goal 0/10");
     expect(strip.textContent).not.toContain("due");
-    await close(view);
   });
 });

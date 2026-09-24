@@ -10,6 +10,7 @@ import {
   markLessonComplete,
   recordPractice,
 } from "./progressStore";
+import { setSyncTrigger } from "./syncEvents";
 
 describe("progress store", () => {
   it("round-trips practice days and completed lessons", async () => {
@@ -19,6 +20,28 @@ describe("progress store", () => {
 
     expect(await getPracticeDays()).toEqual(["2026-01-05"]);
     expect(await getCompletedLessons()).toEqual(["lesson-1"]);
+  });
+
+  it("notifies a local mutation only after the practice transaction commits", async () => {
+    const committed: boolean[] = [];
+    let open = 0;
+    const transaction = IDBDatabase.prototype.transaction;
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (this: IDBDatabase, ...args) {
+      const tx = transaction.apply(this, args);
+      open += 1;
+      tx.addEventListener("complete", () => {
+        open -= 1;
+      });
+      return tx;
+    });
+    setSyncTrigger(() => committed.push(open === 0));
+    try {
+      await recordPractice("2026-01-05", { newCard: false });
+    } finally {
+      setSyncTrigger(undefined);
+    }
+
+    expect(committed).toEqual([true]);
   });
 
   afterEach(() => {
