@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { streakState, todayKey, xp } from "./progress";
+import { streakState, todayKey, weekView, xp } from "./progress";
 
 // Day keys for consecutive calendar days starting at 2026-01-01.
 function run(start: number, length: number): string[] {
@@ -67,5 +67,31 @@ describe("progress logic", () => {
 
   it("formats a local calendar date with padding", () => {
     expect(todayKey(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+
+  it("lists the last 7 local days ending today with weekday labels and practice", () => {
+    // 2026-01-05 is a Monday.
+    expect(weekView(["2026-01-05", "2026-01-01", "2025-12-29", "2026-01-06"], "2026-01-05")).toEqual([
+      { key: "2025-12-30", label: "Tue", practiced: false },
+      { key: "2025-12-31", label: "Wed", practiced: false },
+      { key: "2026-01-01", label: "Thu", practiced: true },
+      { key: "2026-01-02", label: "Fri", practiced: false },
+      { key: "2026-01-03", label: "Sat", practiced: false },
+      { key: "2026-01-04", label: "Sun", practiced: false },
+      { key: "2026-01-05", label: "Mon", practiced: true },
+    ]);
+  });
+
+  it("crosses a month boundary, including a leap-year February", () => {
+    expect(weekView([], "2024-03-02").map(({ key }) => key)).toEqual([
+      "2024-02-25",
+      "2024-02-26",
+      "2024-02-27",
+      "2024-02-28",
+      "2024-02-29",
+      "2024-03-01",
+      "2024-03-02",
+    ]);
+    expect(weekView([], "2026-10-03").map(({ key }) => key)[0]).toBe("2026-09-27");
   });
 });

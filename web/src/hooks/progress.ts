@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { DailyCount } from "../lib/db";
-import { streakState, todayKey, xp } from "../lib/progress";
+import { streakState, todayKey, weekView, xp } from "../lib/progress";
 import {
   getAllDailyCounts,
   getCompletedLessons,
@@ -72,7 +72,7 @@ export function useProgress() {
     freezes,
     // XP is local-only: dailyCounts is not synced.
     xp: xp(allCounts),
-    practicedToday: practiceDays.includes(today),
+    week: weekView(practiceDays, today),
     completedLessons,
     error,
     recordPractice,

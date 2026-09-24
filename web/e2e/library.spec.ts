@@ -51,3 +51,35 @@ test("the own-lessons empty state's Create a lesson moves focus to the Title fie
   await page.getByRole("button", { name: "Create a lesson" }).click();
   await expect(page.getByLabel("Title")).toBeFocused();
 });
+
+test("the Today card's goal picker survives a reload", async ({ page }) => {
+  await page.goto("/");
+  const today = page.getByRole("heading", { name: "Today" }).locator("xpath=../..");
+  await expect(today.getByText("0 of 10 practice actions today")).toBeVisible();
+  await today.getByRole("button", { name: "20 Intense" }).click();
+  await expect(today.getByRole("progressbar", { name: "0 of 20 practice actions today" })).toHaveAttribute("aria-valuemax", "20");
+
+  await page.reload();
+  await expect(today.getByText("0 of 20 practice actions today")).toBeVisible();
+  await expect(today.getByRole("button", { name: "20 Intense" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the week view marks today as practised after a practice action", async ({ page }) => {
+  await page.goto("/");
+  const today = page.getByRole("heading", { name: "Today" }).locator("xpath=../..");
+  const todayMark = today.getByRole("list", { name: "This week" }).locator('li[aria-current="date"]');
+  await expect(today.getByText("Start a new streak today")).toBeVisible();
+  await expect(todayMark).toContainText("not practised");
+
+  await page.getByRole("button", { name: "Greetings & Basics" }).click();
+  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByLabel("What did you hear?").first().fill("Good morning");
+  await page.getByRole("button", { name: "Check" }).first().click();
+  await expect(page.getByText(/^Reference:/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+
+  await expect(today.getByText("1-day streak")).toBeVisible();
+  await expect(todayMark).toContainText("✓");
+  await expect(todayMark).not.toContainText("not practised");
+  await expect(today.getByText("1 of 10 practice actions today")).toBeVisible();
+});

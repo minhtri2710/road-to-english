@@ -23,6 +23,7 @@ import {
   openLesson,
   pathOf,
   renderApp,
+  reopenGreetings,
   resetApp,
   responseFor,
   restoreProperty,
@@ -57,8 +58,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 38 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV, the collapsed Sign in disclosure, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(53);
+    // 33 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(48);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -423,6 +424,12 @@ describe("App", () => {
       });
     }
 
+    async function openLibrary(container: HTMLElement) {
+      await act(async () => {
+        buttonsNamed(container, "Library")[0]?.click();
+      });
+    }
+
     afterEach(() => {
       vi.useRealTimers();
       localStorage.clear();
@@ -446,7 +453,8 @@ describe("App", () => {
 
       const cards = await getAllCards();
       expect(cards.filter((card) => card.fsrs.state === State.New)).toHaveLength(20);
-      expect(container.textContent).toContain("Goal 1/10");
+      await openLibrary(container);
+      expect(container.textContent).toContain("1 of 10 practice actions today");
     });
 
     it("restores the New-card cap on the next local day", async () => {
@@ -468,25 +476,26 @@ describe("App", () => {
       const second = await renderApp();
       await openReview(second.container);
       await waitForCondition(hasText(second.container, "20 due"));
-      expect(second.container.textContent).toContain("Goal 0/10");
+      await openLibrary(second.container);
+      expect(second.container.textContent).toContain("0 of 10 practice actions today");
     });
 
     it("shows goal progress, switches the goal, and persists it", async () => {
       await recordPractice(todayKey(new Date()), { newCard: false });
       await recordPractice(todayKey(new Date()), { newCard: false });
       const { container, unmount } = await renderApp();
-      await waitForCondition(hasText(container, "Goal 2/10"));
+      await waitForCondition(hasText(container, "2 of 10 practice actions today"));
 
       await act(async () => {
-        buttonsNamed(container, "5")[0]?.click();
+        buttonsNamed(container, "5 Light")[0]?.click();
       });
 
-      expect(container.textContent).toContain("Goal 2/5");
+      expect(container.textContent).toContain("2 of 5 practice actions today");
       expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("5");
       await unmount();
 
       const remounted = await renderApp();
-      await waitForCondition(hasText(remounted.container, "Goal 2/5"));
+      await waitForCondition(hasText(remounted.container, "2 of 5 practice actions today"));
     });
 
     it("drops a count loaded before local midnight on the next render", async () => {
@@ -494,15 +503,15 @@ describe("App", () => {
       vi.setSystemTime(new Date(2026, 0, 5, 23, 59, 0));
       await recordPractice(todayKey(new Date()), { newCard: false });
       const { container } = await renderApp();
-      await waitForCondition(hasText(container, "Goal 1/10"));
+      await waitForCondition(hasText(container, "1 of 10 practice actions today"));
 
       vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
       // Changing the goal re-renders without reloading the counts.
       await act(async () => {
-        buttonsNamed(container, "5")[0]?.click();
+        buttonsNamed(container, "5 Light")[0]?.click();
       });
 
-      expect(container.textContent).toContain("Goal 0/5");
+      expect(container.textContent).toContain("0 of 5 practice actions today");
     });
 
     it("shows XP and held freezes from seeded practice", async () => {
@@ -515,15 +524,15 @@ describe("App", () => {
       const { container } = await renderApp();
       await waitForCondition(hasText(container, "80 XP"));
 
-      expect(container.textContent).toContain("7 days streak");
-      expect(container.textContent).toContain("Freezes 1/2");
+      expect(container.textContent).toContain("7-day streak");
+      expect(container.textContent).toContain("Freezes 1 of 2");
     });
 
     it("reads a missing or invalid stored goal as 10", async () => {
       localStorage.setItem("road-to-english.dailyGoal", "7");
       const { container } = await renderApp();
 
-      expect(container.textContent).toContain("Goal 0/10");
+      expect(container.textContent).toContain("0 of 10 practice actions today");
     });
   });
 
@@ -697,32 +706,6 @@ describe("App", () => {
       await close(view);
     });
 
-    it("returns to the library after importing a backup while a user lesson is open", async () => {
-      const view = await renderLibrary();
-      await createLesson(view.container, "Tea talk", pasted);
-      await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
-      const text = exportData(
-        { cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] },
-        new Date(),
-      );
-      vi.stubGlobal("confirm", () => true);
-      const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
-      if (!input) throw new Error("backup file input not found");
-      await act(async () => {
-        Object.defineProperty(input, "files", {
-          configurable: true,
-          value: [new File([text], "backup.json", { type: "application/json" })],
-        });
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await waitForCondition(() => !(view.container.textContent?.includes("Back to lessons") ?? true));
-      expect(window.location.hash).toBe("#/");
-      expect(document.activeElement).toBe(view.container.querySelector("main h1"));
-      expect(view.container.textContent).toContain("Your lessons");
-      expect(view.container.textContent).not.toContain("I like green tea.");
-      expect(await listUserLessons()).toEqual([]);
-    });
-
     it("runs dictation and the fill-the-blank drill on a user lesson", async () => {
       vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
       vi.stubGlobal("SpeechSynthesisUtterance", class {});
@@ -869,7 +852,8 @@ describe("App", () => {
         input.form?.requestSubmit();
       });
       await waitForCondition(hasText(container, `${storageLine}: disk full. Reload to try again.`));
-      expect(container.textContent).toContain("Goal 0/10");
+      await click(container, "Back to lessons");
+      expect(container.textContent).toContain("0 of 10 practice actions today");
     });
 
     it("recovers Mark complete after a failed write", async () => {
@@ -994,25 +978,72 @@ describe("App", () => {
     });
 
     const kept = "Storage: kept on this device.";
-    const mayClear = "Storage: the browser may clear this data when space is low. Export a backup or sign in to keep it.";
+    const mayClear = "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it.";
+    const banner = "Progress saved only in this browser";
+    const yourData = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Your data")!;
 
     it.each([
-      ["granted", () => Promise.resolve(true), kept],
-      ["denied", () => Promise.resolve(false), mayClear],
-      ["rejected", () => Promise.reject(new Error("blocked")), mayClear],
-      ["absent", undefined, mayClear],
-    ] as const)("shows the storage line when persistence is %s", async (_name, persist, expected) => {
+      ["granted", () => Promise.resolve(true), true],
+      ["denied", () => Promise.resolve(false), false],
+      ["rejected", () => Promise.reject(new Error("blocked")), false],
+      ["absent", undefined, false],
+    ] as const)("shows where storage stands when persistence is %s", async (_name, persist, granted) => {
       const persistMock = persist && vi.fn(persist);
       Object.defineProperty(navigator, "storage", {
         configurable: true,
         value: persistMock ? { persist: persistMock } : undefined,
       });
       const { container } = await renderApp();
-      await waitForCondition(() => container.textContent?.includes(expected) ?? false);
+      await waitForCondition(() => container.textContent?.includes(granted ? kept : mayClear) ?? false);
+      const header = container.querySelector("header")!;
+      const section = yourData(container).parentElement!;
+      if (granted) {
+        expect(header.textContent).not.toContain(banner);
+        expect(section.textContent).toContain(kept);
+      } else {
+        expect(header.textContent).toContain(banner);
+        expect(header.textContent).not.toContain(mayClear);
+        expect(section.textContent).toContain(mayClear);
+        expect(container.textContent).not.toContain(kept);
+        expect(header.querySelector('[role="alert"]')).toBeNull();
+      }
       if (persistMock) {
         expect(persistMock).toHaveBeenCalledTimes(1);
       }
       expect(container.textContent).not.toContain("blocked");
+    });
+
+    it("moves focus from the storage banner to Your data, from the library and from a lesson", async () => {
+      Object.defineProperty(navigator, "storage", { configurable: true, value: undefined });
+      const view = await openLesson();
+      const { container } = view;
+      await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+      await click(container.querySelector("header")!, "Back up");
+      expect(h1Texts(container)).toEqual(["Lesson library"]);
+      expect(document.activeElement).toBe(yourData(container));
+
+      buttonsNamed(container, "Review")[0]!.focus();
+      await click(container.querySelector("header")!, "Back up");
+      expect(document.activeElement).toBe(yourData(container));
+    });
+
+    it("keeps only announcements, errors, sync and the account in the header, and backups in Your data", async () => {
+      const { container } = await renderApp();
+      await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      const header = container.querySelector("header")!;
+      expect(header.textContent).not.toMatch(/streak|XP|Freezes|practice actions|Practiced/);
+      expect(header.querySelector('[role="group"]')).toBeNull();
+      expect(buttonsNamed(header, "Export")).toHaveLength(0);
+
+      const headings = Array.from(container.querySelectorAll("main h2")).map((heading) => heading.textContent);
+      expect(headings.at(-1)).toBe("Your data");
+      expect(headings.indexOf("Import text")).toBe(headings.length - 2);
+      const section = yourData(container).parentElement!;
+      expect(["Export", "Export CSV", "Import"].map((name) => buttonsNamed(section, name).length)).toEqual([1, 1, 1]);
+      expect(section.textContent).toContain(
+        "Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a spreadsheet. Import replaces the data on this device with a backup file.",
+      );
     });
   });
 
@@ -1066,10 +1097,9 @@ describe("App", () => {
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       // Astryx buttons carry their own empty aria-live status spans; the app's regions are the others.
-      // The goal region stays quiet on practice; the Goal badge sits outside it.
+      // The goal region stays quiet on practice; the goal count sits in the library's Today card.
       const goal = container.querySelector('header [role="status"]:not([aria-live])');
       expect(goal?.textContent).toBe("");
-      expect(container.querySelector("header")?.textContent).toContain("Goal 0/10");
 
       await click(container, "Dictation");
       const input = container.querySelector<HTMLInputElement>("#dictation-greetings-basics-1");
@@ -1086,13 +1116,14 @@ describe("App", () => {
       expect(card.querySelector('[role="status"]:not([aria-live])')).toBe(region);
       expect(region?.textContent).toContain("Not quite");
       expect(region?.querySelector("button")).toBeNull();
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 1/10") ?? false);
-      expect(container.querySelector('header [role="status"]:not([aria-live])')).toBe(goal);
-      expect(goal?.textContent).toBe("");
-
       await click(card, "Try again");
       expect(region?.textContent).toBe("");
       expect(document.activeElement).toBe(input);
+
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "1 of 10 practice actions today"));
+      expect(container.querySelector('header [role="status"]:not([aria-live])')).toBe(goal);
+      expect(goal?.textContent).toBe("");
 
       vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
       await click(container, "Export");
@@ -1310,7 +1341,7 @@ describe("App", () => {
       }
       const view = await renderApp();
       const { container } = view;
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 12/10") ?? false);
+      await waitForCondition(hasText(container, "12 of 10 practice actions today"));
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
     });
@@ -1333,11 +1364,14 @@ describe("App", () => {
         });
       };
       await submit("greetings-basics-1");
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 4/5") ?? false);
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
       expect(goal.textContent).toBe("");
-      await submit("greetings-basics-2");
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
-      expect(goal.textContent).toBe("Daily goal met.");
+      await reopenGreetings(container);
+      await waitForCondition(() => buttonsNamed(container, "Dictation").length === 1);
+      await click(container, "Dictation");
+      await submit("greetings-basics-1");
+      await waitForCondition(() => goal.textContent === "Daily goal met.");
       localStorage.removeItem("road-to-english.dailyGoal");
     });
 
@@ -1356,7 +1390,8 @@ describe("App", () => {
         setInputValue(input, "Good morning");
         input.form?.requestSubmit();
       });
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 4/5") ?? false);
+      await click(container, "Back to lessons");
+      await waitForCondition(hasText(container, "4 of 5 practice actions today"));
       // Another tab's practice lands in the store; the import reload picks it up with no practice here.
       await recordPractice(todayKey(new Date()), { newCard: false });
       const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
@@ -1368,7 +1403,7 @@ describe("App", () => {
         });
         file.dispatchEvent(new Event("change", { bubbles: true }));
       });
-      await waitForCondition(() => container.querySelector("header")?.textContent?.includes("Goal 5/5") ?? false);
+      await waitForCondition(hasText(container, "5 of 5 practice actions today"));
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
       localStorage.removeItem("road-to-english.dailyGoal");
     });

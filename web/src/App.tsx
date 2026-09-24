@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
 import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -19,7 +20,7 @@ import { sharedStyles } from "./components/styles";
 import { useAuth } from "./hooks/auth";
 import { useUserLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
-import { DAILY_GOALS, useDailyGoal, type DailyGoal } from "./hooks/useDailyGoal";
+import { useDailyGoal } from "./hooks/useDailyGoal";
 import { useLastLesson } from "./hooks/useLastLesson";
 import { useLevelFilter } from "./hooks/useLevelFilter";
 import { useSync } from "./hooks/useSync";
@@ -36,10 +37,14 @@ import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import "@astryxdesign/theme-neutral/theme.css";
 
+// The return-focus id the Your data heading takes, like a lesson row takes its lesson id.
+const YOUR_DATA = "your-data";
+
 const appStyles = stylex.create({
   page: {
     minHeight: "100vh",
-    padding: "2rem",
+    // Narrow screens give the spacing back to the first screen of lessons.
+    padding: { default: "2rem", "@media (max-width: 480px)": "1rem" },
     backgroundColor: "var(--color-background-body)",
     color: "var(--color-text-primary)",
   },
@@ -49,7 +54,7 @@ const appStyles = stylex.create({
     marginInline: "auto",
   },
   header: {
-    marginBottom: "2rem",
+    marginBottom: { default: "2rem", "@media (max-width: 480px)": 0 },
   },
 });
 
@@ -193,10 +198,6 @@ export function App() {
 
   const reloadAfterImport = async () => {
     await Promise.all([deck.reload(), progress.reload(), reloadUserLessons()]);
-    // The open lesson may be gone or replaced, so the view goes to the library.
-    if (lessonId(shownRoute.current) !== null) {
-      navigate({ view: "library" });
-    }
   };
 
   const userLesson =
@@ -235,46 +236,18 @@ export function App() {
         <div className={stylex.props(appStyles.content).className}>
           <VStack gap={4}>
             <VStack as="header" gap={1} xstyle={appStyles.header}>
-              <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-                <Badge
-                  label={`${progress.streak} day${progress.streak === 1 ? "" : "s"} streak`}
-                  variant="info"
-                />
-                <Badge label={`${progress.xp} XP`} variant="info" />
-                <Badge
-                  label={`Goal ${progress.actionsToday}/${dailyGoal}`}
-                  variant={goalMet ? "success" : "info"}
-                />
-                <Badge label={`Freezes ${progress.freezes}/2`} variant="info" />
-                <Badge
-                  label={progress.practicedToday ? "Practiced today" : "Not practiced today"}
-                  variant={progress.practicedToday ? "success" : "info"}
-                />
-                <ToggleButtonGroup
-                  label="Daily goal: practice actions per day"
-                  value={dailyGoal}
-                  onChange={(nextGoal) => {
-                    if (nextGoal) {
-                      chooseGoal(nextGoal as DailyGoal);
-                    }
-                  }}
-                >
-                  {DAILY_GOALS.map((value) => (
-                    <ToggleButton key={value} value={value} label={value} />
-                  ))}
-                </ToggleButtonGroup>
-              </HStack>
-              {/* The badges change on every practice action; only reaching the goal is announced. */}
+              {/* Only reaching the goal is announced; the count lives in the library's Today card. */}
               <Status>
                 {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
               </Status>
-              <BackupControls signedIn={auth.user !== null} setError={setBackupError} onImported={reloadAfterImport} />
-              {storageKept !== null && (
-                <Text type="supporting">
-                  {storageKept
-                    ? "Storage: kept on this device."
-                    : "Storage: the browser may clear this data when space is low. Export a backup or sign in to keep it."}
-                </Text>
+              {storageKept === false && (
+                <Banner
+                  status="info"
+                  title="Progress saved only in this browser"
+                  endContent={
+                    <Button label="Back up" variant="secondary" onClick={() => navigate({ view: "library" }, YOUR_DATA)} />
+                  }
+                />
               )}
               {storageError && (
                 <Alert>
@@ -357,6 +330,12 @@ export function App() {
                       due: deck.error === null && !deck.loading ? reviewDeck.length : null,
                       actionsToday: progress.actionsToday,
                       dailyGoal,
+                      goalMet,
+                      chooseGoal,
+                      streak: progress.streak,
+                      freezes: progress.freezes,
+                      xp: progress.xp,
+                      week: progress.week,
                       onReview: () => navigate({ view: "review" }),
                     }}
                   />
@@ -373,6 +352,32 @@ export function App() {
                     />
                   </VStack>
                   <ImportTextForm onCreate={createLesson} levelFilter={levelFilter} />
+                  <VStack as="section" gap={2} aria-labelledby={YOUR_DATA}>
+                    <Heading
+                      id={YOUR_DATA}
+                      level={2}
+                      tabIndex={-1}
+                      ref={(heading) => {
+                        if (heading && takeReturnFocus(YOUR_DATA)) {
+                          heading.focus();
+                        }
+                      }}
+                    >
+                      Your data
+                    </Heading>
+                    <Text as="p" type="supporting">
+                      Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a
+                      spreadsheet. Import replaces the data on this device with a backup file.
+                    </Text>
+                    <BackupControls signedIn={auth.user !== null} setError={setBackupError} onImported={reloadAfterImport} />
+                    {storageKept !== null && (
+                      <Text as="p" type="supporting">
+                        {storageKept
+                          ? "Storage: kept on this device."
+                          : "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it."}
+                      </Text>
+                    )}
+                  </VStack>
                 </VStack>
               ) : route.view === "lesson" ? (
                 <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />

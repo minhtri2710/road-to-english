@@ -12,7 +12,6 @@ import {
   buttonsNamed,
   click,
   hasText,
-  openLesson,
   renderApp,
   resetApp,
   userResponse,
@@ -63,7 +62,7 @@ describe("BackupControls", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       downloads.push(this.download);
     });
-    const { container } = await openLesson();
+    const { container } = await renderApp();
 
     await act(async () => {
       buttonsNamed(container, "Export CSV")[0]?.click();
@@ -106,7 +105,7 @@ describe("BackupControls", () => {
       new Date(),
     );
     vi.stubGlobal("confirm", () => true);
-    const { container } = await openLesson();
+    const { container } = await renderApp();
     const input = container.querySelector<HTMLInputElement>(
       'input[type="file"]',
     );
@@ -119,9 +118,9 @@ describe("BackupControls", () => {
       });
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
+    await waitForCondition(() => container.textContent?.includes("1-day streak") ?? false);
 
-    expect(container.textContent).toContain("1 day streak");
+    expect(container.textContent).toContain("1-day streak");
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
         .find((button) => button.textContent?.includes("Review"))

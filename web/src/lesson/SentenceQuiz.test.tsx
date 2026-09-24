@@ -3,13 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
 import {
+  actionsToday,
   buttonsNamed,
   click,
-  hasText,
   openLesson,
   resetApp,
   setInputValue,
-  waitForCondition,
 } from "../test/app";
 import { installSpeechFakes, removeBrowserGlobals } from "../test/browser";
 import { greetingsLesson } from "../test/fixtures";
@@ -202,7 +201,7 @@ describe("SentenceQuiz", () => {
   it("shows a first-letter hint that resets on Try again and counts no practice", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
-    await waitForCondition(hasText(container, "Goal 0/10"));
+    expect(await actionsToday()).toBe(0);
     await click(container, "Dictation");
     const hint = "G___ m______, h__ a__ y__ t____?";
     expect(container.textContent).not.toContain(hint);
@@ -213,7 +212,7 @@ describe("SentenceQuiz", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(container.textContent).toContain("Goal 0/10");
+    expect(await actionsToday()).toBe(0);
 
     await submitDictation(container, greetingsLesson.sentences[0].id, "Good morning");
     await click(container, "Try again");
@@ -265,7 +264,7 @@ describe("SentenceQuiz", () => {
     it("offers the answer and lesson words that fill the input on an A1 lesson", async () => {
       installSpeechFakes();
       const { container } = await openLesson(a1Lesson);
-      await waitForCondition(hasText(container, "Goal 0/10"));
+      expect(await actionsToday()).toBe(0);
       await click(container, "Fill the blank");
 
       const choices = bank(container, "about-me-1");
@@ -277,7 +276,7 @@ describe("SentenceQuiz", () => {
       expect(input?.value).toBe("name");
       expect(document.activeElement).toBe(input);
       expect(container.textContent).not.toContain("Correct");
-      expect(container.textContent).toContain("Goal 0/10");
+      expect(await actionsToday()).toBe(0);
 
       await act(async () => {
         input?.form?.requestSubmit();

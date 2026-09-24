@@ -5,6 +5,7 @@ import { getPracticeDays } from "../lib/progressStore";
 import { getAllCards } from "../lib/vocabStore";
 import { listUserLessons } from "../lib/userLessons";
 import {
+  actionsToday,
   buttonsNamed,
   click,
   close,
@@ -15,6 +16,7 @@ import {
   renderApp,
   resetApp,
   setInputValue,
+  waitForActions,
   waitForCondition,
 } from "../test/app";
 import {
@@ -46,10 +48,11 @@ describe("LessonDetail", () => {
       setInputValue(input, greetingsLesson.sentences[0].text);
       input.form?.requestSubmit();
     });
-    await waitForCondition(() => container.textContent?.includes("1 day streak") ?? false);
+    await waitForActions(1);
 
     expect(await getPracticeDays()).toHaveLength(1);
-    expect(container.textContent).toContain("1 day streak");
+    await click(container, "Back to lessons");
+    await waitForCondition(hasText(container, "1-day streak"));
   });
 
   it("drills fill-the-blank: hides the word, checks, records, resets, and plays", async () => {
@@ -81,7 +84,7 @@ describe("LessonDetail", () => {
     expect(container.textContent).toContain("Good ____blank, how are you today?");
     expect(container.textContent).not.toContain("morning");
     expect(container.querySelector(`label[for="blank-${first.id}"]`)).not.toBeNull();
-    expect(container.textContent).toContain("Goal 0/10");
+    expect(await actionsToday()).toBe(0);
 
     await act(async () => {
       button("Play")?.click();
@@ -92,7 +95,7 @@ describe("LessonDetail", () => {
     if (!input) throw new Error("blank input not found");
     await submit(input, " MORNING! ");
     expect(container.textContent).toContain("Correct");
-    await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
+    await waitForActions(1);
 
     await act(async () => {
       button("Try again")?.click();
@@ -104,7 +107,7 @@ describe("LessonDetail", () => {
     if (!secondInput) throw new Error("second blank input not found");
     await submit(secondInput, "meet");
     expect(container.textContent).toContain("Not quite — the word was nice");
-    await waitForCondition(() => container.textContent?.includes("Goal 2/10") ?? false);
+    await waitForActions(2);
   });
 
   it("marks a lesson complete and shows its badge", async () => {
@@ -712,7 +715,7 @@ describe("LessonDetail", () => {
 
     it("shows the word count, the diff, and counts one practice", async () => {
       const view = await openShadow();
-      await waitForCondition(hasText(view.container, "Goal 0/10"));
+      expect(await actionsToday()).toBe(0);
       await enable(view.container);
       await click(view.container, "Loop");
       expect(buttonsNamed(view.container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
@@ -726,11 +729,11 @@ describe("LessonDetail", () => {
         recognition.onend?.();
       });
       expect(view.container.textContent).toContain("Correct: 6 of 6 words");
-      await waitForCondition(hasText(view.container, "Goal 1/10"));
+      await waitForActions(1);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
-      expect(view.container.textContent).toContain("Goal 1/10");
+      expect(await actionsToday()).toBe(1);
 
       await click(view.container, "Try again");
       expect(view.container.textContent).not.toContain("Reference:");
@@ -844,7 +847,7 @@ describe("LessonDetail", () => {
       ["error", (recognition: FakeRecognition) => recognition.onerror?.({ error: "network" })],
     ])("ignores a late %s from a recognition dropped by turning the setting off", async (_name, settle) => {
       const view = await openShadow();
-      await waitForCondition(hasText(view.container, "Goal 0/10"));
+      expect(await actionsToday()).toBe(0);
       await enable(view.container);
       const recognition = await checkFirstSentence(view.container);
       // The recognition settles before the toggle, but its handler runs only after
@@ -858,7 +861,7 @@ describe("LessonDetail", () => {
       });
       expect(view.container.textContent).not.toContain("Reference:");
       expect(view.container.textContent).not.toContain("Speech recognition couldn't reach its service.");
-      expect(view.container.textContent).toContain("Goal 0/10");
+      expect(await actionsToday()).toBe(0);
       await close(view);
     });
 
@@ -951,20 +954,20 @@ describe("LessonDetail", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const view = await openPractice();
       const { container } = view;
-      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
+      expect(await actionsToday()).toBe(0);
       await click(container, "Record");
       vi.setSystemTime(Date.now() + 999);
       await click(container, "Stop");
       await settle();
       expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
-      expect(container.textContent).toContain("Goal 0/10");
+      expect(await actionsToday()).toBe(0);
 
       await click(container, "Record");
       vi.setSystemTime(Date.now() + 1000);
       await click(container, "Stop");
-      await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
+      await waitForActions(1);
       await settle();
-      expect(container.textContent).toContain("Goal 1/10");
+      expect(await actionsToday()).toBe(1);
     });
 
     it("runs one practice medium at a time across sentences", async () => {
@@ -1140,7 +1143,7 @@ describe("LessonDetail", () => {
       const view = await openPractice();
       const { container } = view;
       const first = greetingsLesson.sentences[0];
-      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
+      expect(await actionsToday()).toBe(0);
       const submit = async (selector: string, value: string) => {
         const input = container.querySelector<HTMLInputElement>(selector);
         if (!input) throw new Error(`${selector} not found`);
@@ -1150,14 +1153,14 @@ describe("LessonDetail", () => {
         });
         await settle();
       };
-      const goal = (count: number) => expect(container.textContent).toContain(`Goal ${count}/10`);
+      const goal = async (count: number) => expect(await actionsToday()).toBe(count);
 
       await click(container, "Check pronunciation");
       await act(async () => {
         Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "  " }]] });
       });
       await settle();
-      goal(0);
+      await goal(0);
       await click(container, "Try again");
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await click(container, "Check pronunciation");
@@ -1165,7 +1168,7 @@ describe("LessonDetail", () => {
           Recognition.instances.at(-1)?.onresult?.({ results: [[{ transcript: "good morning" }]] });
         });
         await settle();
-        goal(1);
+        await goal(1);
         await click(container, "Try again");
       }
 
@@ -1175,26 +1178,26 @@ describe("LessonDetail", () => {
         vi.setSystemTime(Date.now() + 1000);
         await click(container, "Stop");
         await settle();
-        goal(2);
+        await goal(2);
       }
 
       await click(container, "Dictation");
       await submit(`#dictation-${first.id}`, "   ");
-      goal(2);
+      await goal(2);
       await submit(`#dictation-${first.id}`, "good morning");
-      goal(3);
+      await goal(3);
       await click(container, "Try again");
       await submit(`#dictation-${first.id}`, first.text);
-      goal(3);
+      await goal(3);
 
       await click(container, "Fill the blank");
       await submit(`#blank-${first.id}`, "");
-      goal(3);
+      await goal(3);
       await submit(`#blank-${first.id}`, "evening");
-      goal(4);
+      await goal(4);
       await click(container, "Try again");
       await submit(`#blank-${first.id}`, "morning");
-      goal(4);
+      await goal(4);
     });
 
     it("looks up and links a word with its apostrophe but saves the normalised word", async () => {

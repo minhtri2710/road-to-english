@@ -2,6 +2,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as progressStore from "../lib/progressStore";
+import { todayKey } from "../lib/progress";
 import { putUserLesson } from "../lib/userLessons";
 import { createCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
@@ -20,10 +21,13 @@ import {
 import { userLesson } from "../test/fixtures";
 
 describe("LessonList", () => {
-  afterEach(resetApp);
+  afterEach(async () => {
+    vi.useRealTimers();
+    await resetApp();
+  });
 
   const todayStrip = (container: HTMLElement) =>
-    Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Today")?.parentElement ?? null;
+    Array.from(container.querySelectorAll("h2")).find((heading) => heading.textContent === "Today")?.parentElement?.parentElement ?? null;
 
   it("Retry re-fetches the library after a failure", async () => {
     let fail = true;
@@ -76,11 +80,8 @@ describe("LessonList", () => {
     const { container } = view;
     await waitForCondition(() => todayStrip(container)?.textContent?.includes("2 cards due") ?? false);
     const strip = todayStrip(container)!;
-    expect(strip.textContent).toContain("2 cards due · Goal 0/10");
+    expect(strip.textContent).toContain("2 cards due");
     expect(buttonsNamed(strip, "Start lesson")).toHaveLength(0);
-    expect(container.querySelector('[role="group"][aria-label^="Daily goal"]')?.getAttribute("aria-label")).toBe(
-      "Daily goal: practice actions per day",
-    );
 
     await click(strip, "Review 2 cards");
     expect(h1Texts(container)).toEqual(["Review deck"]);
@@ -93,7 +94,7 @@ describe("LessonList", () => {
     const { container } = view;
     await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
     const strip = todayStrip(container)!;
-    expect(strip.textContent).toContain("0 cards due · Goal 0/10");
+    expect(strip.textContent).toContain("0 cards due");
     expect(strip.textContent).toContain("Next: Daily Routine");
 
     await click(strip, "Start lesson");
@@ -106,8 +107,85 @@ describe("LessonList", () => {
     const view = await renderApp();
     await waitForCondition(() => buttonsNamed(view.container, "Start lesson").length === 1);
     const strip = todayStrip(view.container)!;
-    expect(strip.textContent).toContain("Goal 0/10");
+    expect(strip.textContent).toContain("0 of 10 practice actions today");
     expect(strip.textContent).not.toContain("due");
+  });
+
+  const progressBar = (strip: HTMLElement) => strip.querySelector<HTMLElement>('[role="progressbar"]')!;
+  const dayMarks = (strip: HTMLElement) => Array.from(strip.querySelectorAll<HTMLElement>('[aria-label="This week"] li'));
+
+  it("shows the daily goal, the goal picker, a fresh streak, the week, freezes and XP in the Today card", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 8, 12));
+    const { container } = await renderApp();
+    await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+    const strip = todayStrip(container)!;
+
+    const bar = progressBar(strip);
+    expect(strip.textContent).toContain("0 of 10 practice actions today");
+    expect(bar.getAttribute("aria-valuenow")).toBe("0");
+    expect(bar.getAttribute("aria-valuemax")).toBe("10");
+    expect(strip.textContent).not.toContain("Daily goal met");
+    const picker = strip.querySelector<HTMLElement>('[role="group"][aria-label="Daily goal"]')!;
+    expect(["5 Light", "10 Regular", "20 Intense"].map((name) => buttonsNamed(picker, name).length)).toEqual([1, 1, 1]);
+
+    expect(strip.textContent).toContain("Start a new streak today");
+    expect(strip.textContent).not.toMatch(/lost|broke|missed/i);
+    const marks = dayMarks(strip);
+    expect(marks.map((mark) => mark.textContent)).toEqual(
+      ["Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu"].map((label) => expect.stringContaining(label)),
+    );
+    expect(marks.every((mark) => mark.textContent?.includes("not practised"))).toBe(true);
+    expect(marks.map((mark) => mark.getAttribute("aria-current"))).toEqual([null, null, null, null, null, null, "date"]);
+
+    expect(strip.textContent).toContain("Freezes 0 of 2");
+    expect(strip.textContent).toContain("0 XP");
+    // The order the card reads in: action row, goal, picker, streak, XP.
+    const text = strip.textContent!;
+    const order = ["Today", "practice actions today", "5 Light", "Start a new streak today", "Freezes", "0 XP"].map((part) =>
+      text.indexOf(part),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("marks practised days, counts the streak, explains freezes, and says when the goal is met", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 8, 12));
+    for (let day = 1; day <= 7; day += 1) {
+      await progressStore.recordPractice(todayKey(new Date(2026, 0, day)), { newCard: false });
+    }
+    localStorage.setItem("road-to-english.dailyGoal", "5");
+    for (let index = 0; index < 5; index += 1) {
+      await progressStore.recordPractice(todayKey(new Date(2026, 0, 8)), { newCard: false });
+    }
+    const { container } = await renderApp();
+    await waitForCondition(() => todayStrip(container)?.textContent?.includes("8-day streak") ?? false);
+    const strip = todayStrip(container)!;
+
+    expect(strip.textContent).toContain("5 of 5 practice actions today");
+    expect(strip.textContent).toContain("Daily goal met");
+    expect(progressBar(strip).getAttribute("aria-valuenow")).toBe("5");
+    expect(dayMarks(strip).every((mark) => mark.textContent?.includes("practised") && !mark.textContent.includes("not practised"))).toBe(
+      true,
+    );
+    expect(strip.textContent).toContain("120 XP");
+
+    const freezes = Array.from(strip.querySelectorAll<HTMLElement>("[tabindex='0']")).find(
+      (el) => el.textContent === "Freezes 1 of 2",
+    )!;
+    const tip = document.getElementById(freezes.getAttribute("aria-describedby")!.split(" ")[0]!);
+    expect(tip?.textContent).toBe(
+      "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to 2.",
+    );
+  });
+
+  it("switches the goal from the Today card and keeps the stored values", async () => {
+    const { container } = await renderApp();
+    await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+    const strip = todayStrip(container)!;
+    await click(strip, "20 Intense");
+    expect(strip.textContent).toContain("0 of 20 practice actions today");
+    expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("20");
   });
 
   const radio = (container: HTMLElement, name: string) =>
@@ -157,7 +235,8 @@ describe("LessonList", () => {
       await putUserLesson(userLesson);
       const { container } = await renderApp();
       await waitForCondition(hasText(container, "1 of 2 completed"));
-      const bar = container.querySelector('[role="progressbar"]')!;
+      // The Today card's goal bar comes first; the level's bar follows the Level control.
+      const bar = container.querySelectorAll('[role="progressbar"]')[1]!;
       expect(bar.getAttribute("aria-valuenow")).toBe("1");
       expect(bar.getAttribute("aria-valuemax")).toBe("2");
       expect(bar.getAttribute("aria-labelledby")).not.toBeNull();

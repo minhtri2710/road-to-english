@@ -32,7 +32,22 @@ function previousDay(dayKey: string): string {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-const MAX_FREEZES = 2;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// The last 7 local days ending today, oldest first.
+export function weekView(days: string[], today: string): { key: string; label: string; practiced: boolean }[] {
+  const practiced = new Set(days);
+  const keys = [today];
+  while (keys.length < 7) {
+    keys.unshift(previousDay(keys[0]));
+  }
+  return keys.map((key) => {
+    const [year, month, day] = key.split("-").map(Number);
+    return { key, label: WEEKDAYS[new Date(year, month - 1, day).getDay()], practiced: practiced.has(key) };
+  });
+}
+
+export const MAX_FREEZES = 2;
 
 // Walks sorted unique days: every 7th consecutive day earns a freeze (max 2 held);
 // a single missed day spends one freeze and keeps the streak.

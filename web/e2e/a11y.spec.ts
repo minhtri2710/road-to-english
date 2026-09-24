@@ -116,6 +116,61 @@ async function showAccountCountdown(page: Page): Promise<void> {
   await expect(page.locator("p:not([role=alert])", { hasText: "Too many attempts. Try again in 2 min" })).toBeVisible();
 }
 
+const FREEZE_HELP = "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to 2.";
+const STORAGE_BANNER = "Progress saved only in this browser";
+const STORAGE_MAY_CLEAR = "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it.";
+
+// Fixes what navigator.storage.persist() answers, so both storage states are reachable in one browser.
+async function grantPersistence(page: Page, granted: boolean): Promise<void> {
+  await page.addInitScript((kept) => {
+    Object.defineProperty(navigator.storage, "persist", { configurable: true, value: () => Promise.resolve(kept) });
+  }, granted);
+}
+
+function todayCard(page: Page) {
+  return page.getByRole("heading", { name: "Today" }).locator("xpath=../..");
+}
+
+async function practiseOnce(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByLabel("What did you hear?").first().fill("Good morning");
+  await page.getByRole("button", { name: "Check" }).first().click();
+  await expect(page.getByText(/^Reference:/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+  await expect(todayCard(page).getByText("1-day streak")).toBeVisible();
+}
+
+async function showLibraryTop(page: Page): Promise<void> {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
+  await expect(todayCard(page).getByText("Start a new streak today")).toBeVisible();
+}
+
+async function openFreezeTooltip(page: Page): Promise<void> {
+  await practiseOnce(page);
+  // From the top, Tab reaches the Today card before the Level control and its keyboard hint.
+  await page.reload();
+  await expect(todayCard(page).getByText("1-day streak")).toBeVisible();
+  await tabTo(page, page.getByText("Freezes 0 of 2"));
+  await expect(page.getByRole("tooltip")).toHaveText(FREEZE_HELP);
+}
+
+async function showStorageBanner(page: Page): Promise<void> {
+  await grantPersistence(page, false);
+  await page.goto("/");
+  await expect(page.locator("header").getByText(STORAGE_BANNER)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your data" }).getByText(STORAGE_MAY_CLEAR)).toHaveCount(1);
+}
+
+async function showYourData(page: Page): Promise<void> {
+  await grantPersistence(page, true);
+  await page.goto("/");
+  const yourData = page.getByRole("region", { name: "Your data" });
+  await expect(yourData.getByText("Storage: kept on this device.")).toBeVisible();
+  await yourData.scrollIntoViewIfNeeded();
+}
+
 async function showSyncLine(page: Page): Promise<void> {
   await page.goto("/");
   await submitAccount(page, "Create account", uniqueEmail(), ACCOUNT_PASSWORD);
@@ -135,6 +190,18 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText("B1: 0 of 4 completed")).toBeVisible();
     await expect(page.getByText("Continue: Daily Routine")).toBeVisible();
     await expect(page.getByRole("heading", { name: "No lessons of your own yet" })).toBeVisible();
+    await inspect();
+  }],
+  ["Today card with a streak and the freezes tooltip open", async (page, inspect) => {
+    await openFreezeTooltip(page);
+    await inspect();
+  }],
+  ["storage banner", async (page, inspect) => {
+    await showStorageBanner(page);
+    await inspect();
+  }],
+  ["Your data with storage kept", async (page, inspect) => {
+    await showYourData(page);
     await inspect();
   }],
   ["shadow mode with a word selected", async (page, inspect) => {
@@ -317,6 +384,20 @@ test.describe("keyboard", () => {
     await expect.poll(() => focusedName(page)).toContain("All caught up");
   });
 
+  test("the freezes tooltip opens from the keyboard", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
+    await tabTo(page, page.getByText("Freezes 0 of 2"));
+    await expect(page.getByRole("tooltip")).toHaveText(FREEZE_HELP);
+  });
+
+  test("the storage banner moves focus to Your data", async ({ page }) => {
+    await showStorageBanner(page);
+    await tabTo(page, page.getByRole("button", { name: "Back up" }));
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 2, name: "Your data" })).toBeFocused();
+  });
+
   test("Back returns focus to the lesson row that opened the lesson", async ({ page }) => {
     await page.goto("/");
     const row = page.getByRole("button", { name: LIBRARY_LESSON });
@@ -415,6 +496,17 @@ test.describe("mobile 375x667", () => {
     expect(box?.y).toBeLessThan(667);
   });
 
+  for (const granted of [true, false]) {
+    test(`the first lesson stays inside the first screen when persistence is ${granted ? "granted" : "not granted"}`, async ({ page }) => {
+      await grantPersistence(page, granted);
+      await page.goto("/");
+      await expect(page.getByText(STORAGE_BANNER)).toHaveCount(granted ? 0 : 1);
+      const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
+      console.log(`first row y at 375x667, persistence ${granted ? "granted" : "not granted"}: ${box?.y}`);
+      expect(box?.y).toBeLessThan(667);
+    });
+  }
+
   test("lesson rows keep their text unclipped and Delete at least 24x24", async ({ page }) => {
     await createUserLesson(page);
     for (const title of [LIBRARY_LESSON, USER_LESSON]) {
@@ -440,6 +532,32 @@ for (const width of [320, 360]) {
       test(name, async ({ page }, testInfo) => {
         await reach(page);
         await page.screenshot({ path: testInfo.outputPath(`${width}.png`), fullPage: true });
+        expect(await layoutProblems(page)).toEqual([]);
+      });
+    }
+  });
+}
+
+const LIBRARY_STATES: [string, (page: Page) => Promise<void>][] = [
+  ["top-streak-0", showLibraryTop],
+  ["top-storage-kept", async (page) => {
+    await grantPersistence(page, true);
+    await showLibraryTop(page);
+  }],
+  ["top-streak", practiseOnce],
+  ["tooltip", openFreezeTooltip],
+  ["banner", showStorageBanner],
+  ["your-data", showYourData],
+];
+
+for (const width of [320, 360]) {
+  test.describe(`library at ${width}px`, () => {
+    test.use({ viewport: { width, height: 740 } });
+
+    for (const [name, reach] of LIBRARY_STATES) {
+      test(name, async ({ page }, testInfo) => {
+        await reach(page);
+        await page.screenshot({ path: testInfo.outputPath(`library-${name}-${width}.png`) });
         expect(await layoutProblems(page)).toEqual([]);
       });
     }

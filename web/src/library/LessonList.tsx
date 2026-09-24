@@ -8,6 +8,9 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
+import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
@@ -15,9 +18,10 @@ import type { Lesson, Level } from "../api/lessons";
 import { ErrorMessage } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLessons } from "../hooks/lessons";
-import type { DailyGoal } from "../hooks/useDailyGoal";
+import { DAILY_GOALS, type DailyGoal } from "../hooks/useDailyGoal";
 import type { LessonRoute } from "../hooks/useLastLesson";
 import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
+import { MAX_FREEZES } from "../lib/progress";
 
 const styles = stylex.create({
   lessonButton: {
@@ -31,6 +35,37 @@ const styles = stylex.create({
   },
   lessonRowContent: {
     flexWrap: "wrap",
+  },
+  todayCard: {
+    padding: "0.75rem",
+  },
+  // One line down to 320px: the longest streak text and the freezes fit at this size.
+  streakRow: {
+    fontSize: "0.8125rem",
+  },
+  // Only the streak text: the freezes tooltip renders inside its row and must still wrap.
+  nowrap: {
+    whiteSpace: "nowrap",
+  },
+  // Seven equal columns fit a 320px screen without scrolling.
+  week: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+    gap: "0.25rem",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  day: {
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    fontSize: "0.8125rem",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-element)",
+  },
+  today: {
+    borderColor: "var(--color-border)",
+    fontWeight: 600,
   },
 });
 
@@ -79,38 +114,104 @@ export function LessonRow({
   );
 }
 
-function TodayStrip({
+const GOAL_NAMES: Record<DailyGoal, string> = { "5": "Light", "10": "Regular", "20": "Intense" };
+const WEEKDAY_NAMES: Record<string, string> = {
+  Sun: "Sunday",
+  Mon: "Monday",
+  Tue: "Tuesday",
+  Wed: "Wednesday",
+  Thu: "Thursday",
+  Fri: "Friday",
+  Sat: "Saturday",
+};
+const FREEZE_HELP = `A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to ${MAX_FREEZES}.`;
+
+function TodayCard({
   due,
   actionsToday,
   dailyGoal,
+  goalMet,
+  chooseGoal,
+  streak,
+  freezes,
+  xp,
+  week,
   suggestion,
   onReview,
 }: {
   due: number | null;
   actionsToday: number;
   dailyGoal: DailyGoal;
+  goalMet: boolean;
+  chooseGoal: (goal: DailyGoal) => void;
+  streak: number;
+  freezes: number;
+  xp: number;
+  week: { key: string; label: string; practiced: boolean }[];
   suggestion: { text: string; action: string; onOpen: () => void } | undefined;
   onReview: () => void;
 }) {
   const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
+  const today = week.at(-1)?.key;
   return (
-    <Card padding={2} xstyle={sharedStyles.sentence}>
-      <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-        <Heading level={2}>Today</Heading>
-        <Text type="supporting">
-          {due !== null && `${cards(due)} due · `}Goal {actionsToday}/{dailyGoal}
-        </Text>
-        {due ? (
-          <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
-        ) : (
-          suggestion && (
-            <>
-              <Text type="supporting">{suggestion.text}</Text>
-              <Button label={suggestion.action} variant="primary" onClick={suggestion.onOpen} />
-            </>
-          )
-        )}
-      </HStack>
+    <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
+      <VStack gap={1}>
+        <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
+          <Heading level={2}>Today</Heading>
+          {due !== null && <Text type="supporting">{cards(due)} due</Text>}
+          {due ? (
+            <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
+          ) : (
+            suggestion && (
+              <>
+                <Text type="supporting">{suggestion.text}</Text>
+                <Button label={suggestion.action} variant="primary" onClick={suggestion.onOpen} />
+              </>
+            )
+          )}
+        </HStack>
+        <ProgressBar
+          label={`${actionsToday} of ${dailyGoal} practice actions today${goalMet ? " · Daily goal met" : ""}`}
+          value={Math.min(actionsToday, Number(dailyGoal))}
+          max={Number(dailyGoal)}
+        />
+        <ToggleButtonGroup
+          label="Daily goal"
+          value={dailyGoal}
+          onChange={(nextGoal) => {
+            if (nextGoal) {
+              chooseGoal(nextGoal as DailyGoal);
+            }
+          }}
+        >
+          {DAILY_GOALS.map((value) => (
+            <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} />
+          ))}
+        </ToggleButtonGroup>
+        <HStack gap={1} align="center" xstyle={styles.streakRow}>
+          <Text weight="semibold" xstyle={styles.nowrap}>{streak > 0 ? `${streak}-day streak` : "Start a new streak today"}</Text>
+          <Text type="supporting">
+            <Tooltip content={FREEZE_HELP}>{`Freezes ${freezes} of ${MAX_FREEZES}`}</Tooltip>
+          </Text>
+        </HStack>
+        <ul aria-label="This week" className={stylex.props(styles.week).className}>
+          {week.map((day) => (
+            <li
+              key={day.key}
+              aria-current={day.key === today ? "date" : undefined}
+              className={stylex.props(styles.day, day.key === today && styles.today).className}
+            >
+              <span aria-hidden="true">
+                {day.label.slice(0, 2)} {day.practiced ? "✓" : "·"}
+              </span>
+              <VisuallyHidden>
+                {WEEKDAY_NAMES[day.label]} {day.practiced ? "practised" : "not practised"}
+              </VisuallyHidden>
+            </li>
+          ))}
+        </ul>
+        <Text type="supporting">{xp} XP</Text>
+      </VStack>
     </Card>
   );
 }
@@ -138,7 +239,7 @@ export function LessonList({
   lastLesson: LessonRoute | null;
   ownLessons: Lesson[];
   onContinue: () => void;
-  today: Omit<Parameters<typeof TodayStrip>[0], "suggestion">;
+  today: Omit<Parameters<typeof TodayCard>[0], "suggestion">;
 }) {
   const { data, loading, error, retry } = useLessons();
   // Rows take the return focus as they mount, so this runs after any row could have taken it.
@@ -205,7 +306,7 @@ export function LessonList({
 
   return (
     <VStack gap={4}>
-      <TodayStrip {...today} suggestion={suggestion} />
+      <TodayCard {...today} suggestion={suggestion} />
       <VStack gap={2}>
         <SegmentedControl
           label="Level"

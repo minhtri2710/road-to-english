@@ -26,8 +26,8 @@ function downloadText(text: string, type: string, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-// Export, Export CSV and Import. The parent shows the error line, which sits below the storage
-// lines, and reloads its data in onImported; a failing onImported reports as an import error.
+// Export, Export CSV and Import. The parent shows the error line in the header and reloads its
+// data in onImported; a failing onImported reports as an import error.
 export function BackupControls({
   signedIn,
   setError,

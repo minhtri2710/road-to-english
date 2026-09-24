@@ -4,6 +4,8 @@ import { vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
 import { App } from "../App";
+import { todayKey } from "../lib/progress";
+import { getDailyCount } from "../lib/progressStore";
 import { greetingsLesson, lessonSummaries } from "./fixtures";
 
 // The App test harness: a fetch that serves the api, a StrictMode App, and DOM helpers.
@@ -173,6 +175,24 @@ export async function waitForCondition(condition: () => boolean): Promise<void> 
   }
 
   throw new Error("Timed out waiting for condition");
+}
+
+// Today's practice actions as stored; lesson views show no count, the library's Today card does.
+export async function actionsToday(): Promise<number> {
+  return (await getDailyCount(todayKey(new Date())))?.actions ?? 0;
+}
+
+export async function waitForActions(count: number): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if ((await actionsToday()) === count) {
+      return;
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  throw new Error(`Timed out waiting for ${count} practice actions`);
 }
 
 export function setInputValue(input: HTMLInputElement, value: string): void {
