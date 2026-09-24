@@ -556,6 +556,19 @@ describe("ReviewDeck", () => {
       expect(onLeave.abort).toHaveBeenCalledOnce();
     });
 
+    it("stops the card's speech before listening", async () => {
+      consent();
+      const speech = installSpeechFakes();
+      const { container } = await openReview("alpha");
+      await click(container, "Listen");
+      expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha"]);
+      speech.cancel.mockClear();
+
+      await click(container, "Say it");
+      expect(speech.cancel).toHaveBeenCalledOnce();
+      expect(FakeRecognition.instances).toHaveLength(1);
+    });
+
     // PINNED: Say it informs only.
     it("never changes the card's schedule, due date or rating count, or the day's practice and XP", async () => {
       consent();
