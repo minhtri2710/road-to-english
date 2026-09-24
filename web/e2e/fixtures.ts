@@ -118,5 +118,46 @@ export async function createLesson(
     await page.getByLabel("YouTube URL").fill(videoUrl);
   }
   await page.getByLabel("Text", { exact: true }).fill(text);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+}
+
+export const ACCOUNT_PASSWORD = "correct horse battery";
+
+// A fresh address per call, so reruns against the same database never collide.
+export function uniqueEmail(): string {
+  return `learner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
+export const accountDisclosure = (page: Page) => page.locator("button[aria-controls][aria-expanded]", { hasText: "Sign in" });
+
+// Expands the signed-out account form if it is collapsed.
+export async function openAccountForm(page: Page): Promise<void> {
+  const disclosure = accountDisclosure(page);
+  if ((await disclosure.getAttribute("aria-expanded")) !== "true") {
+    await disclosure.click();
+  }
+  await expect(page.getByLabel("Email")).toBeFocused();
+}
+
+export const accountModes = (page: Page) => page.getByRole("group", { name: "Sign in or create an account" });
+export const accountSubmit = (page: Page) => page.locator('form:has(input[type="email"]) button[type="submit"]');
+
+// Fills and submits the account form in the given mode.
+export async function submitAccount(page: Page, mode: "Sign in" | "Create account", email: string, password: string): Promise<void> {
+  await openAccountForm(page);
+  await accountModes(page).getByRole("button", { name: mode }).click();
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await accountSubmit(page).click();
+}
+
+// The real /login answers, then its status becomes 429 with this Retry-After; the api's own CORS headers stay.
+export async function limitLogin(page: Page, retryAfter: string): Promise<void> {
+  await page.route("**/login", async (route) => {
+    if (route.request().method() !== "POST") {
+      return route.continue();
+    }
+    const response = await route.fetch();
+    return route.fulfill({ response, status: 429, headers: { ...response.headers(), "retry-after": retryAfter } });
+  });
 }

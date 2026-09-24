@@ -81,3 +81,12 @@ export function createSyncScheduler(
     },
   };
 }
+
+// The sync line for a run that finished at syncedAt (ms), read at now (ms).
+export function syncedAgo(syncedAt: number, now: number): string {
+  const minutes = Math.floor((now - syncedAt) / 60_000);
+  if (minutes < 1) {
+    return "Synced just now";
+  }
+  return minutes < 60 ? `Synced ${minutes} min ago` : `Synced ${Math.floor(minutes / 60)} h ago`;
+}

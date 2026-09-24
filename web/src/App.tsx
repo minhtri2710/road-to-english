@@ -6,6 +6,7 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
@@ -72,7 +73,7 @@ export function App() {
     return progress.recordPractice(options);
   };
   const auth = useAuth();
-  const syncMessage = useSync(auth, deck, progress);
+  const syncLine = useSync(auth, deck, progress);
   const returnFocusId = useRef<string | null>(null);
   const headingFocus = useRef(false);
   const [, setHeadingFocusRequest] = useState(0);
@@ -277,13 +278,17 @@ export function App() {
                 </Alert>
               )}
               {backupError && <Alert>Backup error: {backupError}</Alert>}
+              {/* The synced line changes every minute, so the live region carries only problems and one "Synced." after a failure. */}
               <Status>
-                {syncMessage && (
+                {syncLine?.status === "failed" && <Text as="p" type="supporting">{syncLine.text}</Text>}
+                {syncLine?.status === "ownerMismatch" && (
                   <Text as="p" color="primary" xstyle={sharedStyles.error}>
-                    {syncMessage}
+                    {syncLine.text}
                   </Text>
                 )}
+                {syncLine?.recovered && <VisuallyHidden>Synced.</VisuallyHidden>}
               </Status>
+              {syncLine?.status === "synced" && <Text as="p" type="supporting">{syncLine.text}</Text>}
               <AccountArea auth={auth} />
             </VStack>
             <nav aria-label="Views" className={stylex.props(sharedStyles.viewToggle).className}>

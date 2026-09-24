@@ -132,6 +132,33 @@ export async function click(container: HTMLElement, name: string, index = 0): Pr
   return button;
 }
 
+// The input a visible <label> with exactly this text names; a missing one fails the test.
+export function inputLabelled(container: HTMLElement, text: string): HTMLInputElement {
+  const label = Array.from(container.querySelectorAll("label")).find((candidate) => candidate.textContent === text);
+  const input = label?.control;
+  if (!(input instanceof HTMLInputElement)) throw new Error(`${text} input not found`);
+  return input;
+}
+
+// The signed-out header's "Sign in" disclosure; a missing one fails the test.
+export function accountDisclosure(container: HTMLElement): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")).find(
+    (candidate) => candidate.textContent === "Sign in",
+  );
+  if (!button) throw new Error("Sign in disclosure not found");
+  return button;
+}
+
+// Expands the signed-out account form if it is collapsed.
+export async function openAccountForm(container: HTMLElement): Promise<void> {
+  const disclosure = accountDisclosure(container);
+  if (disclosure.getAttribute("aria-expanded") !== "true") {
+    await act(async () => {
+      disclosure.click();
+    });
+  }
+}
+
 export const hasText = (container: HTMLElement, text: string) => () =>
   container.textContent?.includes(text) ?? false;
 

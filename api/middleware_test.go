@@ -125,3 +125,29 @@ func TestCORSForeignPreflightIsNotACORSResponse(t *testing.T) {
 		})
 	}
 }
+
+// The web app reads Retry-After on a cross-origin 429, so non-preflight CORS responses expose it; nothing else does.
+func TestCORSExposesRetryAfter(t *testing.T) {
+	api := newTestAPI(t)
+	for _, test := range []struct {
+		name, method, origin string
+		want                 string
+	}{
+		{name: "matching GET", method: http.MethodGet, origin: defaultCORSOrigin, want: "Retry-After"},
+		{name: "matching preflight", method: http.MethodOptions, origin: defaultCORSOrigin},
+		{name: "foreign GET", method: http.MethodGet, origin: "https://evil.example"},
+		{name: "no origin GET", method: http.MethodGet},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, "/lessons", nil)
+			if test.origin != "" {
+				req.Header.Set("Origin", test.origin)
+			}
+			recorder := httptest.NewRecorder()
+			api.handler.ServeHTTP(recorder, req)
+			if got := recorder.Header().Get("Access-Control-Expose-Headers"); got != test.want {
+				t.Fatalf("Access-Control-Expose-Headers = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

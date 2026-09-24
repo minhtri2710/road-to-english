@@ -57,8 +57,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 39 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(54);
+    // 38 controls (Shadow/Dictation/Fill the blank mode toggle, incl. the 5/10/20 daily-goal toggle, Export CSV, the collapsed Sign in disclosure, the Pronunciation check toggle and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(53);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -177,7 +177,7 @@ describe("App", () => {
       },
     });
     await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
-    expect(container.querySelector('input[aria-label="Email"]')).toBeNull();
+    expect(container.querySelector('input[type="email"]')).toBeNull();
   });
 
   describe("due refresh on return", () => {

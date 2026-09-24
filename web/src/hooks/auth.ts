@@ -24,6 +24,7 @@ export interface AuthState {
   signUp: AuthActions;
   signOut: () => Promise<void>;
   expire: () => void;
+  clearError: () => void;
 }
 
 export function useAuth(): AuthState {
@@ -133,5 +134,7 @@ export function useAuth(): AuthState {
     setExpired(true);
   }, []);
 
-  return { user, loading, error, expired, signIn, signUp, signOut, expire };
+  const clearError = useCallback(() => setError(null), []);
+
+  return { user, loading, error, expired, signIn, signUp, signOut, expire, clearError };
 }

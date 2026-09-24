@@ -1,7 +1,20 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
-import { createLesson, expect, openLibraryLesson, test, TRANSCRIPT } from "./fixtures";
+import {
+  ACCOUNT_PASSWORD,
+  accountDisclosure,
+  accountModes,
+  createLesson,
+  expect,
+  limitLogin,
+  openAccountForm,
+  openLibraryLesson,
+  submitAccount,
+  test,
+  TRANSCRIPT,
+  uniqueEmail,
+} from "./fixtures";
 
 const LIBRARY_LESSON = "Greetings & Basics";
 const USER_LESSON = "My pasted text";
@@ -40,7 +53,7 @@ async function openReviewWithDueCard(page: Page): Promise<void> {
 async function showImportError(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByText(/^Title must be/)).toBeVisible();
 }
 
@@ -72,6 +85,41 @@ async function openVideoLesson(page: Page): Promise<void> {
     videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   });
   await expect(page.getByRole("button", { name: "Play clip" }).first()).toBeEnabled();
+}
+
+async function showCollapsedAccount(page: Page): Promise<void> {
+  await page.goto("/");
+  await expect(accountDisclosure(page)).toHaveAttribute("aria-expanded", "false");
+}
+
+async function openSignIn(page: Page): Promise<void> {
+  await showCollapsedAccount(page);
+  await openAccountForm(page);
+}
+
+async function openCreateAccount(page: Page): Promise<void> {
+  await openSignIn(page);
+  await accountModes(page).getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("At least 8 characters.")).toBeVisible();
+}
+
+async function showAccountFieldError(page: Page): Promise<void> {
+  await page.goto("/");
+  await submitAccount(page, "Create account", uniqueEmail(), "short");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("aria-invalid", "true");
+}
+
+async function showAccountCountdown(page: Page): Promise<void> {
+  await limitLogin(page, "90");
+  await page.goto("/");
+  await submitAccount(page, "Sign in", uniqueEmail(), ACCOUNT_PASSWORD);
+  await expect(page.locator("p:not([role=alert])", { hasText: "Too many attempts. Try again in 2 min" })).toBeVisible();
+}
+
+async function showSyncLine(page: Page): Promise<void> {
+  await page.goto("/");
+  await submitAccount(page, "Create account", uniqueEmail(), ACCOUNT_PASSWORD);
+  await expect(page.getByText("Synced just now")).toBeVisible();
 }
 
 // Each state is reached through the UI and yields once so the caller can inspect it.
@@ -140,6 +188,30 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["video lesson", async (page, inspect) => {
     await openVideoLesson(page);
+    await inspect();
+  }],
+  ["account Sign in disclosure collapsed", async (page, inspect) => {
+    await showCollapsedAccount(page);
+    await inspect();
+  }],
+  ["account form in Sign in mode", async (page, inspect) => {
+    await openSignIn(page);
+    await inspect();
+  }],
+  ["account form in Create account mode", async (page, inspect) => {
+    await openCreateAccount(page);
+    await inspect();
+  }],
+  ["account form with an inline field error", async (page, inspect) => {
+    await showAccountFieldError(page);
+    await inspect();
+  }],
+  ["account form during a 429 countdown", async (page, inspect) => {
+    await showAccountCountdown(page);
+    await inspect();
+  }],
+  ["signed in with the sync line", async (page, inspect) => {
+    await showSyncLine(page);
     await inspect();
   }],
 ];
@@ -359,6 +431,29 @@ for (const width of [320, 360]) {
       test(name, async ({ page }, testInfo) => {
         await reach(page);
         await page.screenshot({ path: testInfo.outputPath(`${width}.png`), fullPage: true });
+        expect(await layoutProblems(page)).toEqual([]);
+      });
+    }
+  });
+}
+
+const ACCOUNT_STATES: [string, (page: Page) => Promise<void>][] = [
+  ["collapsed", showCollapsedAccount],
+  ["sign-in", openSignIn],
+  ["create-account", openCreateAccount],
+  ["field-error", showAccountFieldError],
+  ["countdown", showAccountCountdown],
+  ["sync-line", showSyncLine],
+];
+
+for (const width of [320, 360]) {
+  test.describe(`account area at ${width}px`, () => {
+    test.use({ viewport: { width, height: 740 } });
+
+    for (const [name, reach] of ACCOUNT_STATES) {
+      test(name, async ({ page }, testInfo) => {
+        await reach(page);
+        await page.screenshot({ path: testInfo.outputPath(`account-${name}-${width}.png`), fullPage: true });
         expect(await layoutProblems(page)).toEqual([]);
       });
     }

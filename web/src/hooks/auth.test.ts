@@ -138,4 +138,19 @@ describe("useAuth", () => {
     });
     expect(fetchMe).toHaveBeenCalledTimes(1);
   });
+
+  it("clears the current error on request", async () => {
+    vi.mocked(fetchMe).mockResolvedValue(null);
+    await mount();
+    vi.mocked(signIn).mockRejectedValueOnce(new Error("rejected"));
+    await act(async () => {
+      await state.signIn(user.email, "wrong password").catch(() => undefined);
+    });
+    expect(state.error?.message).toBe("rejected");
+
+    await act(async () => {
+      state.clearError();
+    });
+    expect(state.error).toBeNull();
+  });
 });

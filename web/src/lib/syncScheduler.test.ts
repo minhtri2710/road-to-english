@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
 import { syncState } from "../api/sync";
-import { createSyncScheduler, type SyncStatus } from "./syncScheduler";
+import { createSyncScheduler, syncedAgo, type SyncStatus } from "./syncScheduler";
 import { getAllCards } from "./vocabStore";
 import { putCard } from "./vocabStore";
 import { setSyncTrigger } from "./syncEvents";
@@ -130,7 +130,7 @@ describe("sync scheduler", () => {
   it("reports a failed sync, a 401 as signed out, and success after a failure", async () => {
     const statuses: SyncStatus[] = [];
     syncMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    syncMock.mockRejectedValueOnce(new ApiError(401));
+    syncMock.mockRejectedValueOnce(new ApiError(401, null));
     syncMock.mockResolvedValueOnce({ cards: [], practiceDays: [], lessonCompletion: [] });
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
@@ -147,11 +147,27 @@ describe("sync scheduler", () => {
 
   it("reports a server error as a failure, not signed out", async () => {
     const statuses: SyncStatus[] = [];
-    syncMock.mockRejectedValueOnce(new ApiError(500));
+    syncMock.mockRejectedValueOnce(new ApiError(500, null));
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
     await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
     scheduler.stop();
+  });
+});
+
+describe("syncedAgo", () => {
+  const minute = 60_000;
+
+  it.each([
+    [0, "Synced just now"],
+    [-5_000, "Synced just now"],
+    [minute - 1, "Synced just now"],
+    [minute, "Synced 1 min ago"],
+    [59 * minute + 59_999, "Synced 59 min ago"],
+    [60 * minute, "Synced 1 h ago"],
+    [25 * 60 * minute, "Synced 25 h ago"],
+  ])("formats %i ms as %s", (elapsed, text) => {
+    expect(syncedAgo(1_000_000, 1_000_000 + elapsed)).toBe(text);
   });
 });

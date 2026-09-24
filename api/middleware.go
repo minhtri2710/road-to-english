@@ -23,6 +23,8 @@ func corsMiddleware(next http.Handler, configuredOrigin string) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		// The web app reads the wait on a 429.
+		w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
 		next.ServeHTTP(w, r)
 	})
 }

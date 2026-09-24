@@ -35,7 +35,7 @@ export interface Lesson {
 
 export class NotFoundError extends ApiError {
   constructor() {
-    super(404);
+    super(404, null);
     this.name = "NotFoundError";
     this.message = "Lesson not found";
   }

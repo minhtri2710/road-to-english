@@ -1,8 +1,13 @@
 import { act } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  accountDisclosure,
   callsTo,
+  click,
+  hasText,
+  inputLabelled,
+  openAccountForm,
   renderApp,
   resetApp,
   setInputValue,
@@ -11,9 +16,16 @@ import {
 } from "../test/app";
 
 describe("useSync", () => {
-  afterEach(resetApp);
+  afterEach(async () => {
+    await resetApp();
+    vi.useRealTimers();
+  });
 
-  const syncFailed = "Couldn't sync. Your changes are saved on this device and will sync when you're back online.";
+  const syncFailed = "Saved on this device. Will sync when you're back online.";
+  const liveRegions = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('[role="status"], [role="alert"], [aria-live]')).map((region) => region.textContent).join("|");
+  const syncLine = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("*")).find((el) => el.children.length === 0 && el.textContent?.startsWith("Synced "));
 
   it("syncs exactly once after sign-in", async () => {
     const { container } = await renderApp({
@@ -24,15 +36,11 @@ describe("useSync", () => {
         }
       },
     });
-    const email = container.querySelector<HTMLInputElement>('input[aria-label="Email"]');
-    const password = container.querySelector<HTMLInputElement>('input[aria-label="Password"]');
-    if (!email || !password) throw new Error("sign-in form not found");
+    await openAccountForm(container);
     await act(async () => {
-      setInputValue(email, "learner@example.com");
-      setInputValue(password, "password");
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "Sign in")
-        ?.click();
+      setInputValue(inputLabelled(container, "Email"), "learner@example.com");
+      setInputValue(inputLabelled(container, "Password"), "password");
+      inputLabelled(container, "Email").form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
     });
     await waitForCondition(() => callsTo("/sync") === 1);
     expect(callsTo("/sync")).toBe(1);
@@ -77,6 +85,45 @@ describe("useSync", () => {
     });
     await waitForCondition(() => !(container.textContent?.includes(syncFailed) ?? true));
     expect(callsTo("/sync")).toBe(before + 1);
+    // The recovery is announced once; the visible line is plain supporting text.
+    expect(syncLine(container)?.textContent).toBe("Synced just now");
+    expect(liveRegions(container)).toContain("Synced.");
+  });
+
+  it("shows when the last run synced, refreshed once a minute, without announcing it", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const { container } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
+    await waitForCondition(() => syncLine(container) !== undefined);
+    expect(syncLine(container)?.textContent).toBe("Synced just now");
+    expect(syncLine(container)?.closest('[role="status"], [role="alert"], [aria-live]')).toBeNull();
+    expect(liveRegions(container)).not.toContain("Synced");
+
+    await act(async () => {
+      vi.advanceTimersByTime(59_999);
+    });
+    expect(syncLine(container)?.textContent).toBe("Synced just now");
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(syncLine(container)?.textContent).toBe("Synced 1 min ago");
+    await act(async () => {
+      vi.advanceTimersByTime(59 * 60_000);
+    });
+    expect(syncLine(container)?.textContent).toBe("Synced 1 h ago");
+    expect(liveRegions(container)).not.toContain("Synced");
+  });
+
+  it("shows no sync line once signed out", async () => {
+    const { container } = await renderApp({ route: (path) => {
+      if (path === "/me") return userResponse();
+      if (path === "/logout") return new Response(null, { status: 204 });
+      return undefined;
+    } });
+    await waitForCondition(() => syncLine(container) !== undefined);
+    await click(container, "Sign out");
+    await waitForCondition(hasText(container, "Sign in"));
+    expect(syncLine(container)).toBeUndefined();
+    expect(container.textContent).not.toContain(syncFailed);
   });
 
   it("re-syncs when the window gains focus", async () => {
@@ -98,7 +145,7 @@ describe("useSync", () => {
     } });
     await waitForCondition(() => container.textContent?.includes("You were signed out. Sign in again to sync.") ?? false);
     expect(container.textContent).not.toContain("restored@example.com");
-    expect(container.querySelector('input[aria-label="Email"]')).not.toBeNull();
+    expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("false");
     expect(container.textContent).not.toContain(syncFailed);
   });
 });
