@@ -1224,7 +1224,7 @@ func TestAuthLimiterSuccessReturnsOnlyItsAccountSlot(t *testing.T) {
 		req.RemoteAddr = remoteAddr
 		return req
 	}
-	allow := func(req *http.Request) (*limitWindow, bool) {
+	allow := func(req *http.Request) (loginReservation, bool) {
 		return limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
 	}
 	for i := 0; i < accountFailureCap-1; i++ {
@@ -1264,18 +1264,18 @@ func TestAuthLimiterFailsOpenWhenMapsAreFull(t *testing.T) {
 	if !ok {
 		t.Fatalf("login refused with a full pair map: status %d", recorder.Code)
 	}
-	if reserved == nil || reserved.count != 1 {
+	if reserved.account == nil || reserved.account.count != 1 {
 		t.Fatalf("account reservation = %#v, want count 1", reserved)
 	}
 	limiter.clearFailures(req, "fresh@example.com", reserved)
-	if reserved.count != 0 {
-		t.Fatalf("account count after success = %d, want 0", reserved.count)
+	if reserved.account.count != 0 {
+		t.Fatalf("account count after success = %d, want 0", reserved.account.count)
 	}
 
 	fill(limiter.accounts)
 	other := limiter.accounts["filler-0"]
 	reserved, ok = limiter.allowAccount(httptest.NewRecorder(), req, "second@example.com")
-	if !ok || reserved != nil {
+	if !ok || reserved.account != nil {
 		t.Fatalf("full account map: allowed = %v, reservation = %#v; want allowed with no reservation", ok, reserved)
 	}
 	limiter.clearFailures(req, "second@example.com", reserved)
@@ -1292,15 +1292,73 @@ func TestAuthLimiterSuccessDoesNotReturnASlotFromAnExpiredWindow(t *testing.T) {
 	if !ok {
 		t.Fatal("first attempt refused")
 	}
-	stale.start = time.Now().Add(-loginFailureWindow)
+	stale.account.start = time.Now().Add(-loginFailureWindow)
 	other := httptest.NewRequest(http.MethodPost, "/login", nil)
 	other.RemoteAddr = "203.0.113.2:1000"
 	fresh, ok := limiter.allowAccount(httptest.NewRecorder(), other, "a@example.com")
-	if !ok || fresh == stale {
+	if !ok || fresh.account == stale.account {
 		t.Fatal("second attempt did not start a new account window")
 	}
 	limiter.clearFailures(req, "a@example.com", stale)
-	if fresh.count != 1 {
-		t.Fatalf("new window count = %d, want 1: a stale reservation was returned to it", fresh.count)
+	if fresh.account.count != 1 {
+		t.Fatalf("new window count = %d, want 1: a stale reservation was returned to it", fresh.account.count)
+	}
+}
+
+func TestLoginServerErrorReleasesItsReservation(t *testing.T) {
+	api := newTestAPI(t)
+	signupForSync(t, api, "outage@example.com")
+	login := func(ctx context.Context, i int, password string) int {
+		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(`{"email":"outage@example.com","password":"`+password+`"}`)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "198.51.100.20:" + strconv.Itoa(1000+i)
+		recorder := httptest.NewRecorder()
+		api.handler.ServeHTTP(recorder, req)
+		return recorder.Code
+	}
+	// A cancelled context makes GetUserByEmail fail with an error that is not ErrUserNotFound.
+	down, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < loginFailureLimit+5; i++ {
+		if code := login(down, i, "wrong password"); code != http.StatusInternalServerError {
+			t.Fatalf("outage attempt %d status = %d, want 500", i, code)
+		}
+	}
+	if code := login(context.Background(), 100, "wrong password"); code != http.StatusUnauthorized {
+		t.Fatalf("wrong password after outage status = %d, want 401: server errors counted as failed logins", code)
+	}
+}
+
+func TestAuthLimiterReleaseReturnsBothSlots(t *testing.T) {
+	limiter := newAuthLimiter()
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.RemoteAddr = "203.0.113.1:1000"
+	pairs := func() int { return limiter.pairs[pairKey(req, "a@example.com")].count }
+	accounts := func() int { return limiter.accounts["a@example.com"].count }
+	if _, ok := limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com"); !ok {
+		t.Fatal("first attempt refused")
+	}
+	reserved, ok := limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
+	if !ok {
+		t.Fatal("second attempt refused")
+	}
+	limiter.release(req, "a@example.com", reserved)
+	if pairs() != 1 || accounts() != 1 {
+		t.Fatalf("after release pair = %d, account = %d; want 1 and 1", pairs(), accounts())
+	}
+
+	stale, ok := limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
+	if !ok {
+		t.Fatal("third attempt refused")
+	}
+	stale.pair.start = time.Now().Add(-loginFailureWindow)
+	stale.account.start = time.Now().Add(-loginFailureWindow)
+	fresh, ok := limiter.allowAccount(httptest.NewRecorder(), req, "a@example.com")
+	if !ok || fresh.pair == stale.pair || fresh.account == stale.account {
+		t.Fatal("attempt after expiry did not start new windows")
+	}
+	limiter.release(req, "a@example.com", stale)
+	if fresh.pair.count != 1 || fresh.account.count != 1 {
+		t.Fatalf("new windows pair = %d, account = %d; want 1 and 1: a stale release lowered them", fresh.pair.count, fresh.account.count)
 	}
 }

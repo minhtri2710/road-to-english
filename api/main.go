@@ -126,6 +126,7 @@ func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 				return
 			}
+			limiter.release(r, credentials.Email, reserved)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
@@ -275,11 +276,17 @@ func live(windows map[string]*limitWindow, key string, now time.Time) *limitWind
 	return admit(windows, key, loginFailureWindow, now)
 }
 
+// loginReservation holds the windows allowAccount counted one failed-login slot in, nil for a count it skipped.
+type loginReservation struct {
+	pair    *limitWindow
+	account *limitWindow
+}
+
 // allowAccount reserves one failed-login slot for email from this IP key and for email overall, before the password
 // check and under one lock, so parallel wrong guesses cannot all pass. It refuses when either count is at its limit.
 // A full map fails open for that count (the per-IP limiter still bounds each client), so filling the pair map cannot
-// refuse every login. It returns the account window it counted in, nil when none, for clearFailures.
-func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email string) (*limitWindow, bool) {
+// refuse every login. It returns the windows it counted in, for clearFailures or release.
+func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email string) (loginReservation, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
@@ -287,11 +294,11 @@ func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email
 	account := live(l.accounts, email, now)
 	if pair != nil && pair.count >= loginFailureLimit {
 		writeTooManyAttempts(w, pair.start.Add(loginFailureWindow).Sub(now))
-		return nil, false
+		return loginReservation{}, false
 	}
 	if account != nil && account.count >= accountFailureCap {
 		writeTooManyAttempts(w, account.start.Add(loginFailureWindow).Sub(now))
-		return nil, false
+		return loginReservation{}, false
 	}
 	if pair != nil {
 		pair.count++
@@ -299,19 +306,32 @@ func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email
 	if account != nil {
 		account.count++
 	}
-	return account, true
+	return loginReservation{pair: pair, account: account}, true
+}
+
+// returnSlot gives back one reserved slot, only while reserved is still key's live window, so a stale reservation
+// never lowers a newer window.
+func returnSlot(windows map[string]*limitWindow, key string, reserved *limitWindow) {
+	if reserved != nil && windows[key] == reserved && reserved.count > 0 {
+		reserved.count--
+	}
 }
 
 // clearFailures runs after a successful login: it clears this IP key's failures for email and returns only the one
-// slot this login reserved to the account count, and only while that window is still the live one, so failures from
-// other IP keys still count toward the cap.
-func (l *authLimiter) clearFailures(r *http.Request, email string, reserved *limitWindow) {
+// slot this login reserved to the account count, so failures from other IP keys still count toward the cap.
+func (l *authLimiter) clearFailures(r *http.Request, email string, reserved loginReservation) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.pairs, pairKey(r, email))
-	if reserved != nil && l.accounts[email] == reserved && reserved.count > 0 {
-		reserved.count--
-	}
+	returnSlot(l.accounts, email, reserved.account)
+}
+
+// release returns both reserved slots when the login failed for a server error, which is not a failed guess.
+func (l *authLimiter) release(r *http.Request, email string, reserved loginReservation) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	returnSlot(l.pairs, pairKey(r, email), reserved.pair)
+	returnSlot(l.accounts, email, reserved.account)
 }
 
 func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentials, bool) {

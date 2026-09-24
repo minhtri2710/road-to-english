@@ -148,6 +148,8 @@ describe("number equivalence", () => {
 
   it.each([
     ["6:30", "six thirty"],
+    ["12:05", "twelve oh five"],
+    ["6:09", "six oh nine"],
     ["7 o'clock", "seven o'clock"],
     ["7:00", "seven o'clock"],
     ["25", "twenty-five"],
@@ -158,6 +160,13 @@ describe("number equivalence", () => {
   ])("matches %s to %s", (digits, words) => {
     expect(allCorrect(digits, words)).toBe(true);
     expect(allCorrect(words, digits)).toBe(true);
+  });
+
+  it("spells time minutes 01-09 as oh and leaves other numbers alone", () => {
+    expect(allCorrect("12:05", "twelve zero five")).toBe(false);
+    expect(allCorrect("7:00", "seven oh")).toBe(false);
+    expect(allCorrect("0912", "zero nine one two")).toBe(true);
+    expect(allCorrect("0912", "oh nine one two")).toBe(false);
   });
 
   it("leaves 1000 and up as digits", () => {

@@ -5,6 +5,8 @@ export type RecorderState = "idle" | "requesting" | "recording" | "ready" | "err
 export interface RecorderControls {
   state: RecorderState;
   url: string | null;
+  // Milliseconds from start to stop of the latest clip; null before the first one.
+  durationMs: number | null;
   error: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
@@ -31,6 +33,7 @@ export function useRecorder(): RecorderControls {
   const [state, setState] = useState<RecorderState>("idle");
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [durationMs, setDurationMs] = useState<number | null>(null);
   const mountedRef = useRef(true);
   const stateRef = useRef<RecorderState>("idle");
   const streamRef = useRef<MediaStream | null>(null);
@@ -102,6 +105,7 @@ export function useRecorder(): RecorderControls {
       streamRef.current = stream;
       recorderRef.current = recorder;
       chunksRef.current = [];
+      let startedAt = 0;
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -127,6 +131,7 @@ export function useRecorder(): RecorderControls {
             new Blob(chunksRef.current, { type: recorder?.mimeType || "audio/webm" }),
           );
           replaceUrl(nextUrl);
+          setDurationMs(Date.now() - startedAt);
           setError(null);
           updateState("ready");
         } catch {
@@ -136,6 +141,7 @@ export function useRecorder(): RecorderControls {
       };
 
       recorder.start();
+      startedAt = Date.now();
       updateState("recording");
     } catch {
       release();
@@ -178,5 +184,5 @@ export function useRecorder(): RecorderControls {
     };
   }, []);
 
-  return { state, url, error, startRecording, stopRecording };
+  return { state, url, durationMs, error, startRecording, stopRecording };
 }

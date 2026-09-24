@@ -211,6 +211,9 @@ type PracticeMode = "recording" | "check" | "dictation" | "blank";
 // Every mounted recording player, across all sentences, so starting any medium can pause them.
 const recordingAudios = new Set<HTMLAudioElement>();
 
+// A clip shorter than this (a Record cut off by another medium) earns no recording XP.
+const MIN_RECORDING_MS = 1000;
+
 function SentenceShadowing({
   text,
   targetWpm,
@@ -268,10 +271,10 @@ function SentenceShadowing({
   }, [recorder.url]);
 
   useEffect(() => {
-    if (recorder.state === "ready") {
+    if (recorder.state === "ready" && (recorder.durationMs ?? 0) >= MIN_RECORDING_MS) {
       practice("recording");
     }
-  }, [practice, recorder.state]);
+  }, [practice, recorder.state, recorder.durationMs]);
 
   useEffect(() => {
     if (!looping) {

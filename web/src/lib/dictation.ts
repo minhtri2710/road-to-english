@@ -31,10 +31,12 @@ function spellNumber(digits: string): string {
   return digits.length <= 3 ? spellBelow1000(+digits) : digits;
 }
 
-// "6:30" -> "six thirty"; "7:00" -> "seven oclock", the normalized form of
-// "seven o'clock" that a recognizer writes as "7:00".
+// "6:30" -> "six thirty"; "12:05" -> "twelve oh five"; "7:00" -> "seven oclock",
+// the normalized form of "seven o'clock" that a recognizer writes as "7:00".
 function spellTime(_match: string, hour: string, minutes: string): string {
-  return ` ${spellNumber(hour)} ${minutes === "00" ? "oclock" : spellNumber(minutes)} `;
+  if (minutes === "00") return ` ${spellNumber(hour)} oclock `;
+  if (minutes[0] === "0") return ` ${spellNumber(hour)} oh ${ONES[+minutes[1]]} `;
+  return ` ${spellNumber(hour)} ${spellNumber(minutes)} `;
 }
 
 // normalize() tokens with numbers spelled out, so a digit form and its words compare equal.

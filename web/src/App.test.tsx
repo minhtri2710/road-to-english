@@ -3571,7 +3571,29 @@ describe("App", () => {
       });
 
     afterEach(() => {
+      vi.useRealTimers();
       localStorage.clear();
+    });
+
+    it("awards recording practice only for a clip of at least one second", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const view = await openPractice();
+      const { container } = view;
+      await waitForCondition(() => container.textContent?.includes("Goal 0/10") ?? false);
+      await click(container, "Record");
+      vi.setSystemTime(Date.now() + 999);
+      await click(container, "Stop");
+      await settle();
+      expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
+      expect(container.textContent).toContain("Goal 0/10");
+
+      await click(container, "Record");
+      vi.setSystemTime(Date.now() + 1000);
+      await click(container, "Stop");
+      await waitForCondition(() => container.textContent?.includes("Goal 1/10") ?? false);
+      await settle();
+      expect(container.textContent).toContain("Goal 1/10");
+      await close(view);
     });
 
     it("runs one practice medium at a time across sentences", async () => {
@@ -3748,6 +3770,7 @@ describe("App", () => {
     });
 
     it("counts each non-empty sentence check once per lesson visit", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
       const view = await openPractice();
       const { container } = view;
       const first = greetingsLesson.sentences[0];
@@ -3783,6 +3806,7 @@ describe("App", () => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await click(container, "Record");
         await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);
+        vi.setSystemTime(Date.now() + 1000);
         await click(container, "Stop");
         await settle();
         goal(2);
