@@ -110,6 +110,18 @@ export async function openLibraryLesson(page: Page, title: string): Promise<void
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 }
 
+// Answers every sentence's dictation, one form at a time by its input id.
+export async function attemptEverySentence(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Dictation" }).click();
+  const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
+  expect(ids.length).toBeGreaterThan(0);
+  for (const id of ids) {
+    const form = page.locator("form", { has: page.locator(`[id="${id}"]`) });
+    await form.getByLabel("What did you hear?").fill("something");
+    await form.getByRole("button", { name: "Check" }).click();
+  }
+}
+
 export const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
 
 // Fills the library's create form and submits it; callers assert what the new lesson shows.

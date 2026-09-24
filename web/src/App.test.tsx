@@ -58,8 +58,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 34 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check and One at a time toggles and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(49);
+    // 33 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check and One at a time toggles and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
+    expect(container.querySelectorAll("button")).toHaveLength(48);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -590,6 +590,33 @@ describe("App", () => {
       return { ...view, dictation };
     }
 
+    it("does not announce the goal when a practice save commits the previous day's count after midnight", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 0, 5, 23, 59, 0));
+      const { container, dictation } = await openDictationAt(4);
+      const save = progressStore.recordPractice;
+      const pending = deferred<void>();
+      const committed = deferred<unknown>();
+      vi.spyOn(progressStore, "recordPractice").mockImplementation(async (...args) => {
+        await pending.promise;
+        const count = await save(...args);
+        committed.resolve(count);
+        return count;
+      });
+      await submitInput(dictation(1), "Good morning");
+      vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
+      pending.resolve();
+      await harnessAct(async () => {
+        expect(await committed.promise).toEqual({ date: "2026-01-05", actions: 5, newCards: 0 });
+      });
+      for (let index = 0; index < 5; index += 1) {
+        await harnessAct(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      }
+      expect(goalStatus(container).textContent).toBe("");
+    });
+
     it("announces the goal once when the second of two overlapping practice saves reaches it", async () => {
       const { container, dictation } = await openDictationAt(3);
       const save = progressStore.recordPractice;
@@ -957,17 +984,6 @@ describe("App", () => {
       await waitForCondition(hasText(container, `${storageLine}: disk full. Reload to try again.`));
       await click(container, "Back to lessons");
       expect(container.textContent).toContain("0 of 10 practice actions today");
-    });
-
-    it("recovers Mark complete after a failed write", async () => {
-      const { container } = await renderApp();
-      await openGreetings(container);
-      vi.spyOn(progressStore, "markLessonComplete").mockRejectedValueOnce(new Error("quota"));
-      await click(container, "Mark complete");
-      await waitForCondition(hasText(container, "Couldn't save. Try again."));
-      await click(container, "Mark complete");
-      await waitForCondition(() => buttonsNamed(container, "Completed").length === 1);
-      expect(container.textContent).not.toContain("Couldn't save.");
     });
 
     it("recovers Delete lesson after a failed write", async () => {

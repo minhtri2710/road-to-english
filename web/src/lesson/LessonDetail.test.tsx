@@ -92,32 +92,6 @@ describe("LessonDetail", () => {
     await waitForActions(2);
   });
 
-  it("marks a lesson complete and shows its badge", async () => {
-    const { container } = await openLesson();
-
-    const completeButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Mark complete",
-    );
-    if (!completeButton) throw new Error("Mark complete button not found");
-    const announced = () =>
-      Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
-    expect(announced()).not.toContain("Lesson marked complete.");
-    await harnessAct(async () => {
-      completeButton.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Completed") ?? false);
-    await waitForCondition(() => announced().includes("Lesson marked complete."));
-
-    await clickButtonWith(container, "Back to lessons");
-    await waitForCondition(() => {
-      const lessonButton = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent?.includes("Greetings & Basics"),
-      );
-      return lessonButton?.textContent?.includes("Completed") ?? false;
-    });
-    expect(container.textContent).toContain("Completed");
-  });
-
   it("stops reference speech on a lesson mode change", async () => {
     const speech = installSpeechFakes();
     const view = await openLesson();
@@ -193,18 +167,11 @@ describe("LessonDetail", () => {
     }
   });
 
-  it("keeps focus on Mark complete and moves it through the pronunciation disclosure", async () => {
+  it("moves focus through the pronunciation disclosure", async () => {
     vi.stubGlobal("webkitSpeechRecognition", class {});
     const view = await openLesson();
     const { container } = view;
     await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-
-    const complete = buttonsNamed(container, "Mark complete")[0]!;
-    complete.focus();
-    await click(container, "Mark complete");
-    await waitForCondition(() => buttonsNamed(container, "Completed").length === 1);
-    expect(document.activeElement).toBe(buttonsNamed(container, "Completed")[0]);
-    expect(document.activeElement?.getAttribute("aria-disabled")).toBe("true");
 
     const toggle = buttonsNamed(container, "Pronunciation check")[0]!;
     toggle.focus();

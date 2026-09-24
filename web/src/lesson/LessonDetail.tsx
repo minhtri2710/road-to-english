@@ -12,7 +12,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
-import { Alert, ErrorMessage, Status, ViewHeading } from "../components/feedback";
+import { ErrorMessage, Status, ViewHeading } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
@@ -24,6 +24,7 @@ import { cardId, cardWord, sentenceCard, wordCardBack, type NewCard, type VocabC
 import { GuidedShadowing } from "./GuidedShadowing";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation, type PracticeMode } from "./SentenceQuiz";
+import { LessonSummary, type SummaryProps } from "./LessonSummary";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
 
 const styles = stylex.create({
@@ -52,7 +53,7 @@ function readAutoHideText(): boolean {
 
 type LessonMode = "shadow" | "dictation" | "blank";
 
-interface LessonDetailProps {
+interface LessonDetailProps extends SummaryProps {
   onBack: () => void;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
@@ -96,6 +97,7 @@ export function LessonDetail({
   completedLessons,
   markLessonComplete,
   takeHeadingFocus,
+  ...summaryProps
 }: LessonDetailProps & { lesson: Lesson }) {
   const completed = completedLessons.has(data.id);
   const [mode, setMode] = useState<LessonMode>("shadow");
@@ -126,9 +128,6 @@ export function LessonDetail({
     sentenceId: string;
     charIndex: number;
   } | null>(null);
-  const [completeFailed, setCompleteFailed] = useState(false);
-  // Set when this visit marks the lesson complete, so the change to Completed is announced.
-  const [completedNow, setCompletedNow] = useState(false);
   const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
   // A1 blanks offer a word bank drawn from the whole lesson.
   const bankWords =
@@ -147,7 +146,11 @@ export function LessonDetail({
   };
   // Each sentence and mode counts once per lesson visit; retries are not counted.
   const practiced = useRef(new Set<string>());
+  // Sentences attempted in any mode this visit; attempting every one completes the lesson.
+  const [attempted, setAttempted] = useState<ReadonlySet<string>>(new Set());
+  const allAttempted = data.sentences.every((sentence) => attempted.has(sentence.id));
   const practice = (sentenceId: string, mode: PracticeMode) => {
+    setAttempted((current) => (current.has(sentenceId) ? current : new Set(current).add(sentenceId)));
     const key = `${sentenceId}:${mode}`;
     if (practiced.current.has(key)) {
       return;
@@ -302,8 +305,29 @@ export function LessonDetail({
           </VStack>
         )}
       </Card>
-      );
+    );
   };
+
+  // The save runs once per visit; a failure waits for Try again, and a lesson already complete is never saved again.
+  const saveStarted = useRef(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const saveCompletion = () =>
+    markLessonComplete(data.id).then(
+      () => {
+        setSaveFailed(false);
+        return true;
+      },
+      () => {
+        setSaveFailed(true);
+        return false;
+      },
+    );
+  useEffect(() => {
+    if (allAttempted && !completed && !saveStarted.current) {
+      saveStarted.current = true;
+      void saveCompletion();
+    }
+  }, [allAttempted, completed]);
 
   useEffect(() => {
     return () => {
@@ -346,24 +370,6 @@ export function LessonDetail({
           </Text>
         </VStack>
       )}
-      <Button
-        label={completed ? "Completed" : "Mark complete"}
-        variant="secondary"
-        isDisabled={completed}
-        // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-        tooltip={completed ? "You completed this lesson" : undefined}
-        onClick={() => {
-          setCompleteFailed(false);
-          markLessonComplete(data.id).then(
-            () => setCompletedNow(true),
-            () => setCompleteFailed(true),
-          );
-        }}
-      />
-      {completeFailed && <Alert>Couldn't save. Try again.</Alert>}
-      <VisuallyHidden>
-        <Status>{completedNow && completed && "Lesson marked complete."}</Status>
-      </VisuallyHidden>
       <ToggleButtonGroup
         label="Lesson mode"
         value={mode}
@@ -489,6 +495,19 @@ export function LessonDetail({
           ))}
         </VStack>
       )}
+      {allAttempted && (
+        <LessonSummary
+          lessonId={data.id}
+          sentenceCount={data.sentences.length}
+          saveFailed={saveFailed}
+          retrySave={saveCompletion}
+          onBack={onBack}
+          {...summaryProps}
+        />
+      )}
+      <VisuallyHidden>
+        <Status>{allAttempted && "Lesson complete."}</Status>
+      </VisuallyHidden>
     </VStack>
   );
 }

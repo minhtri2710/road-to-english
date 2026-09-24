@@ -5,6 +5,7 @@ import {
   ACCOUNT_PASSWORD,
   accountDisclosure,
   accountModes,
+  attemptEverySentence,
   createLesson,
   expect,
   limitLogin,
@@ -452,6 +453,25 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Save word" }).click();
     await page.getByRole("button", { name: "Saved, remove from review deck" }).click();
     await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await inspect();
+  }],
+  ["lesson summary", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await attemptEverySentence(page);
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next lesson: Shopping Basics" })).toBeVisible();
+    await inspect();
+  }],
+  ["lesson summary when the completion save fails", async (page, inspect) => {
+    await page.addInitScript(() => {
+      indexedDB.open = () => {
+        throw new DOMException("The operation is insecure.", "SecurityError");
+      };
+    });
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await attemptEverySentence(page);
+    await expect(page.getByRole("region", { name: "Lesson complete" }).getByRole("alert")).toHaveText("Couldn't save your progress.");
+    await expect(page.getByRole("button", { name: "Try again" }).last()).toBeVisible();
     await inspect();
   }],
   ["review when the deck fails to load", async (page, inspect) => {

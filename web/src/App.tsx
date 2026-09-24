@@ -25,6 +25,7 @@ import { useLastLesson } from "./hooks/useLastLesson";
 import { useLevelFilter } from "./hooks/useLevelFilter";
 import { useSync } from "./hooks/useSync";
 import { useVocabDeck } from "./hooks/vocab";
+import { todayKey } from "./lib/progress";
 import { capNewCards } from "./lib/vocab";
 import { readRoute, routeHash, type Route } from "./lib/route";
 import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
@@ -86,13 +87,16 @@ function AppViews() {
   const storageError =
     deck.error ?? progress.error ?? (userLessons instanceof Error ? userLessons : null);
   const { dailyGoal, goalMet, goalAnnounced, practiceCommitted, chooseGoal } = useDailyGoal(progress.actionsToday);
+  // A save that resolves after local midnight committed the previous day's count, which never announces.
   const recordPractice = async (options: { newCard: boolean }) => {
-    const actions = await progress.recordPractice(options);
-    if (actions !== null) {
-      practiceCommitted(actions);
+    const committed = await progress.recordPractice(options);
+    if (committed !== null && committed.date === todayKey(new Date())) {
+      practiceCommitted(committed.actions);
     }
   };
   const { levelFilter, chooseLevelFilter } = useLevelFilter();
+  // Cards due now, or null while the deck is loading or failed to load.
+  const due = deck.error === null && !deck.loading ? reviewDeck.length : null;
   const auth = useAuth();
   const syncLine = useSync(auth, deck, progress);
   const returnFocusId = useRef<string | null>(null);
@@ -241,6 +245,13 @@ function AppViews() {
     completedLessons: progress.completedLessons,
     markLessonComplete: progress.markLessonComplete,
     takeHeadingFocus,
+    due,
+    onReview: () => navigate({ view: "review" }),
+    source:
+      route.view === "my"
+        ? { view: "my" as const, lessons: Array.isArray(userLessons) ? userLessons : [] }
+        : { view: "lesson" as const, levelFilter },
+    openLesson: (id: string) => navigate({ view: route.view === "my" ? "my" : "lesson", id }),
   };
 
   return (
@@ -340,7 +351,7 @@ function AppViews() {
                   ownLessons={Array.isArray(userLessons) ? userLessons : []}
                   onContinue={() => lastLesson && navigate(lastLesson)}
                   today={{
-                    due: deck.error === null && !deck.loading ? reviewDeck.length : null,
+                    due,
                     actionsToday: progress.actionsToday,
                     dailyGoal,
                     goalMet,

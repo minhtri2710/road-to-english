@@ -126,6 +126,34 @@ describe("guided shadowing", () => {
     expect(announced(container).filter((text) => text === "Sentence 2 of 3")).toHaveLength(1);
   });
 
+  it("stops a loop when One at a time is turned on or off", async () => {
+    installSpeechFakes();
+    const { container } = await openLesson();
+    await click(container, "Loop");
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
+    await click(container, "One at a time");
+    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
+    await click(container, "Loop");
+    await click(container, "One at a time");
+    expect(buttonsNamed(container, "Loop").map((loop) => loop.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
+  });
+
+  it("shows the lesson summary in the guided view once every sentence is recorded", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { container } = await openGuided();
+    const summary = () => Array.from(container.querySelectorAll("h2")).find((h2) => h2.textContent === "Lesson complete");
+    await record(container);
+    await click(container, "Next");
+    await record(container);
+    await click(container, "Next");
+    expect(summary()).toBeUndefined();
+    await record(container);
+    await waitForCondition(() => summary() !== undefined);
+    expect(heading(container)?.textContent).toBe("Sentence 3 of 3");
+    expect(container.textContent).toContain("You practised all 3 sentences.");
+    await waitForCondition(() => container.textContent!.includes("Completed"));
+  });
+
   it("stops a loop and speech on a step", async () => {
     const { container, speech } = await openGuided();
     await click(container, "Loop");
