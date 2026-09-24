@@ -1,0 +1,32 @@
+{
+  "accept": [
+    "a",
+    "dont",
+    "hello42",
+    "t-shirt",
+    "caf\u00e9",
+    "na\u00efve",
+    "r\u00e9sum\u00e9",
+    "zo\u00eb",
+    "i\u0307",
+    "\u03bf\u03b4\u03bf\u03c2"
+  ],
+  "reject": [
+    "Hello",
+    "T-shirt",
+    "a b",
+    "a:b",
+    "don't",
+    "Caf\u00e9",
+    "ZO\u00cb",
+    "\u0130",
+    "\u039f\u0394\u039f\u03a3",
+    "cafe\u0301",
+    "\u0301a",
+    "a-\u0301b",
+    "a--b",
+    "-a",
+    "a-",
+    "caf \u00e9"
+  ]
+}

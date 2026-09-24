@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -105,6 +107,17 @@ func TestWordCardRoundTripPreservesWord(t *testing.T) {
 	}
 }
 
+func TestUnicodeWordCardRoundTrips(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "unicode-word-card@example.com")
+	card := wordSyncCard("caf\u00e9")
+
+	got := syncState(t, repo, user.ID, oneCardState(card))
+	if len(got.Cards) != 1 || got.Cards[0].ID != "lesson-1:sentence-1:caf\u00e9" || *got.Cards[0].Source.Word != "caf\u00e9" {
+		t.Fatalf("SyncState() cards = %+v, want the caf\u00e9 word card", got.Cards)
+	}
+}
+
 func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "nil-word@example.com")
@@ -193,6 +206,34 @@ func wordSyncCard(word string) Card {
 
 func oneCardState(card Card) State {
 	return State{Cards: []Card{card}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}
+}
+
+// testdata/card-words.json is shared with the web isCardWord test, so the two contracts cannot drift.
+func TestValidCardWordSharedVectors(t *testing.T) {
+	raw, err := os.ReadFile("testdata/card-words.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct{ Accept, Reject []string }
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors.Accept) == 0 || len(vectors.Reject) == 0 {
+		t.Fatal("empty card-word vectors")
+	}
+	for _, word := range vectors.Accept {
+		if !validCardWord(word) {
+			t.Errorf("validCardWord(%q) = false, want true", word)
+		}
+	}
+	for _, word := range vectors.Reject {
+		if validCardWord(word) {
+			t.Errorf("validCardWord(%q) = true, want false", word)
+		}
+	}
+	if !validCardWord("") {
+		t.Error("validCardWord(\"\") = false, want true for a sentence card")
+	}
 }
 
 func TestValidateWordCards(t *testing.T) {

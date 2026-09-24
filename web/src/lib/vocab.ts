@@ -6,6 +6,8 @@ import {
 import { Rating, State } from "ts-fsrs";
 import type { Card, Grade } from "ts-fsrs";
 
+import { cardWord, isCardWord } from "./words";
+
 export { Rating, State } from "ts-fsrs";
 export type { Grade } from "ts-fsrs";
 
@@ -37,16 +39,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 // Text the api accepts: any string without U+0000.
 export function isText(value: unknown): value is string {
   return typeof value === "string" && !value.includes("\u0000");
-}
-
-// A word card's word: lowercase letter/digit runs joined by single hyphens ("t-shirt").
-export function isCardWord(word: string): boolean {
-  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(word);
-}
-
-// The card word for a splitWords part: lowercase, apostrophes dropped, hyphens kept.
-export function cardWord(part: string): string {
-  return part.toLowerCase().replace(/['’]/g, "");
 }
 
 export function cardId({ lessonId, sentenceId, word }: CardSource): string {

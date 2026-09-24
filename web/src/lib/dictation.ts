@@ -1,12 +1,7 @@
-import { cardWord, isCardWord } from "./vocab";
+import { cardWord, isCardWord, replaceWords, splitWords, trimToWord, wordRuns } from "./words";
 
 function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/['’]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return wordRuns(s).join(" ");
 }
 
 // Reference entries carry the word as the lesson writes it and the whole written word it came from
@@ -43,8 +38,9 @@ function spellTime(_match: string, hour: string, minutes: string): string {
 
 // normalize() tokens with numbers spelled out, so a digit form and its words compare equal.
 function tokens(s: string): string[] {
-  const n = normalize(s.replace(/\b(\d{1,2}):([0-5]\d)\b/g, spellTime));
-  return n ? n.split(" ").flatMap((t) => (/^\d+$/.test(t) ? spellNumber(t).split(" ") : [t])) : [];
+  return wordRuns(s.replace(/\b(\d{1,2}):([0-5]\d)\b/g, spellTime)).flatMap((t) =>
+    /^\d+$/.test(t) ? spellNumber(t).split(" ") : [t],
+  );
 }
 
 // The reference's tokens, each with the word the lesson writes for it: a word that is one token keeps
@@ -53,7 +49,7 @@ function tokens(s: string): string[] {
 function referenceWords(reference: string): { token: string; word: string; written: string }[] {
   return reference.split(/\s+/).flatMap((chunk) => {
     const parts = tokens(chunk);
-    const written = chunk.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    const written = trimToWord(chunk);
     return parts.map((token) => ({ token, word: parts.length === 1 ? written : token, written }));
   });
 }
@@ -108,12 +104,6 @@ export function diffWords(typed: string, reference: string): WordDiff[] {
   return diff;
 }
 
-// Letter/digit runs (apostrophes kept, internal hyphens joining runs into one
-// compound such as "T-shirt") and the text between them, in order.
-export function splitWords(text: string): string[] {
-  return text.split(/([A-Za-z0-9'’]+(?:-[A-Za-z0-9'’]+)*)/);
-}
-
 // Picks the longest card word (earliest on a tie) from the splitWords split
 // SentenceWords uses; index -1 when the text has no word. The answer may be a
 // compound ("t-shirt"); check typed text with blankMatches.
@@ -137,12 +127,12 @@ export function blankMatches(typed: string, answer: string): boolean {
   return tokens(typed).join(" ") === tokens(answer).join(" ");
 }
 
-// The text with every letter masked but the first of each word and of each
-// hyphen part: "Good morning, T-shirt!" -> "G___ m______, T-s____!". Digits and
-// punctuation stay.
+// The text with every letter (with its marks) masked but the first of each word
+// and of each hyphen part: "Good morning, T-shirt!" -> "G___ m______, T-s____!",
+// "Zoë" -> "Z__". Digits and punctuation stay.
 export function hintFor(text: string): string {
-  return text.replace(/[A-Za-z0-9'’]+(?:-[A-Za-z0-9'’]+)*/g, (word) =>
-    word.replace(/[A-Za-z]/g, (letter, at: number) => (at === 0 || word[at - 1] === "-" ? letter : "_")),
+  return replaceWords(text, (word) =>
+    word.replace(/\p{L}\p{M}*/gu, (letter, at: number) => (at === 0 || word[at - 1] === "-" ? letter : "_")),
   );
 }
 

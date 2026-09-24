@@ -4,12 +4,10 @@ import { mergeCard } from "./mergeCard";
 import { card as newCard } from "../test/fixtures";
 import {
   capNewCards,
-  cardWord,
   createCard,
   deleteCard,
   formatInterval,
   GRADES,
-  isCardWord,
   MAX_KEY_BYTES,
   previewIntervals,
   Rating,
@@ -259,25 +257,6 @@ describe("capNewCards", () => {
 
   it("keeps no New cards past the limit but all review cards", () => {
     expect(ids(capNewCards(due, 25))).toEqual(ids(reviewCards));
-  });
-});
-
-describe("card words", () => {
-  it.each(["t-shirt", "twenty-five", "well-known", "a", "dont"])("accepts %j", (word) => {
-    expect(isCardWord(word)).toBe(true);
-  });
-
-  it.each(["-a", "a-", "a--b", "a b", "", "T-shirt", "Hello"])("rejects %j", (word) => {
-    expect(isCardWord(word)).toBe(false);
-  });
-
-  it.each([
-    ["T-shirt", "t-shirt"],
-    ["don't", "dont"],
-    ["It's", "its"],
-    ["It’s", "its"],
-  ])("derives %j as %j", (part, word) => {
-    expect(cardWord(part)).toBe(word);
   });
 });
 

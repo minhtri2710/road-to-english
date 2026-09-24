@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createUserLesson, putUserLesson } from "../lib/userLessons";
 import { createCard } from "../lib/vocab";
 import { getAllCards, putCard } from "../lib/vocabStore";
 import * as vocabStore from "../lib/vocabStore";
@@ -223,6 +224,27 @@ describe("WordPanel", () => {
     const [card] = await getAllCards();
     expect(card?.id).toBe(`greetings-basics:${sentence.id}:t-shirt`);
     expect(card?.source.word).toBe("t-shirt");
+  });
+
+  it("offers each non-ASCII word of a user lesson as one button and saves it under the full word", async () => {
+    installSpeechFakes();
+    const lesson = createUserLesson({ title: "Accents", text: "Zoë's café has a naïve résumé.", level: "B1", targetWpm: 110 });
+    await putUserLesson(lesson);
+    const { container } = await renderApp();
+    await clickButtonWith(container, "Accents");
+
+    for (const word of ["Zoë's", "café", "naïve", "résumé"]) {
+      await waitForCondition(() => buttonsNamed(container, word).length === 1);
+    }
+    expect(buttonsNamed(container, "caf")).toHaveLength(0);
+    expect(buttonsNamed(container, "na")).toHaveLength(0);
+    for (const word of ["café", "naïve", "résumé", "Zoë's"]) {
+      await click(container, word);
+      await click(container, "Save word");
+      await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
+    }
+    const ids = (await getAllCards()).map((card) => card.id).sort();
+    expect(ids).toEqual(["café", "naïve", "résumé", "zoës"].map((word) => `${lesson.id}:${lesson.sentences[0]!.id}:${word}`).sort());
   });
 
   it("removes a saved card with the Saved toggle, offers Undo that restores it, and re-saves it fresh", async () => {
@@ -484,6 +506,20 @@ describe("WordPanel", () => {
       expect(dictionaryCalls()).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/morning"]);
       expect(container.textContent).toContain("/morning/");
       expect(container.textContent).toContain("noun");
+    });
+
+    it("looks up a decomposed word in lowercase NFC", async () => {
+      installSpeechFakes();
+      const { container } = await openLesson({
+        ...greetingsLesson,
+        sentences: [{ id: "cafe-1", text: "Cafe\u0301 time.", vi: "" }],
+      });
+      routeDictionary(async (url) => definitionFor(url.split("/").at(-1)!));
+
+      await click(container, "Cafe\u0301");
+      await click(container, "Define");
+      await waitForCondition(() => dictionaryCalls().length === 1);
+      expect(dictionaryCalls()).toEqual([`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent("caf\u00e9")}`]);
     });
 
     it("shows No definition when the lookup fails", async () => {

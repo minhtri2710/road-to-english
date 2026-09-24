@@ -107,6 +107,8 @@ describe("sync state validation", () => {
     ["word card with sentence id", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "hello" } }],
     ["word with colon", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "a:b" }, id: "lesson-1:sentence-1:a:b" }],
     ["uppercase word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "Hello" }, id: "lesson-1:sentence-1:Hello" }],
+    ["uppercase non-ASCII word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "Caf\u00e9" }, id: "lesson-1:sentence-1:Caf\u00e9" }],
+    ["NFD word", { source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "cafe\u0301" }, id: "lesson-1:sentence-1:cafe\u0301" }],
     ["missing updatedAt", { updatedAt: undefined }],
     ["null updatedAt", { updatedAt: null }],
     ["invalid updatedAt", { updatedAt: "2026-01-01T00:00:00+07:00" }],
@@ -191,6 +193,17 @@ describe("sync state validation", () => {
         },
       ],
     })).not.toThrow();
+  });
+
+  it("accepts a non-ASCII word card", () => {
+    expect(revives({
+      ...state(),
+      cards: [{
+        ...state().cards[0],
+        id: "lesson-1:sentence-1:caf\u00e9",
+        source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "caf\u00e9" },
+      }],
+    })).toBe(true);
   });
 
   it("revives only the sync stores, never user lessons", () => {

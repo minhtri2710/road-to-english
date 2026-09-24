@@ -11,10 +11,10 @@ import * as stylex from "@stylexjs/stylex";
 
 import { Alert, Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
-import { splitWords } from "../lib/dictation";
 import { lookupWord, type Definition } from "../lib/dictionary";
 import { speechSupported } from "../lib/speech";
-import { cardId, cardWord, isCardWord, type NewCard, type VocabCard } from "../lib/vocab";
+import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
+import { cardWord, isCardWord, splitWords } from "../lib/words";
 
 const styles = stylex.create({
   sentenceWord: {
@@ -201,7 +201,7 @@ export function WordPanel({
   hear: () => void;
 }) {
   // Lookups keep an inner apostrophe ("don't") but drop quote marks and keep hyphens ("t-shirt"); the card id uses cardWord().
-  const word = text.toLowerCase().replace(/’/g, "'").replace(/^'+|'+$/g, "");
+  const word = text.toLowerCase().normalize("NFC").replace(/’/g, "'").replace(/^'+|'+$/g, "");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
   const [lookup, setLookup] = useState<"idle" | "pending" | "unreachable" | Definition | null>("idle");
 

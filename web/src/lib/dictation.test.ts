@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blankFor, blankMatches, diffWords, endingHints, hintFor, splitWords, wordBank } from "./dictation";
+import { blankFor, blankMatches, diffWords, endingHints, hintFor, wordBank } from "./dictation";
 
 describe("normalization", () => {
   it.each([
@@ -101,6 +101,20 @@ describe("diffWords", () => {
   });
 });
 
+describe("non-ASCII words", () => {
+  it("marks an unaccented word as replaced and the accented one as correct", () => {
+    expect(diffWords("I like cafe", "I like café.").at(-1)).toEqual({ kind: "replaced", word: "café", written: "café", typed: "cafe" });
+    expect(diffWords("i like café", "I like café.").every((entry) => entry.kind === "correct")).toBe(true);
+  });
+
+  it("lists a missed word whole", () => {
+    expect(diffWords("so", "So naïve!")).toEqual([
+      { kind: "correct", word: "So", written: "So" },
+      { kind: "missed", word: "naïve", written: "naïve" },
+    ]);
+  });
+});
+
 describe("blankFor", () => {
   it.each([
     ["longest word", "I like apples a lot", 5, "apples"],
@@ -111,6 +125,7 @@ describe("blankFor", () => {
     ["seed: introduction", "I'm from Vietnam, and I live in Hanoi.", 5, "vietnam"],
     ["seed: request", "Sorry, could you say that again?", 1, "sorry"],
     ["compound", "I wear a T-shirt and shorts.", 7, "t-shirt"],
+    ["non-ASCII word", "Zoë reads a résumé.", 7, "résumé"],
   ])("picks the %s", (_name, text, index, answer) => {
     const blank = blankFor(text);
     expect(blank.index).toBe(index);
@@ -129,18 +144,12 @@ describe("blankFor", () => {
   });
 });
 
-describe("splitWords", () => {
-  it.each([
-    ["I wear a T-shirt and shorts.", ["", "I", " ", "wear", " ", "a", " ", "T-shirt", " ", "and", " ", "shorts", "."]],
-    ["twenty-five", ["", "twenty-five", ""]],
-    ["a - b", ["", "a", " - ", "b", ""]],
-    ["word-", ["", "word", "-"]],
-  ])("splits %j", (text, parts) => {
-    expect(splitWords(text)).toEqual(parts);
-  });
-});
-
 describe("blankMatches", () => {
+  it("matches a non-ASCII answer only with its accents", () => {
+    expect(blankMatches("Café", "café")).toBe(true);
+    expect(blankMatches("cafe", "café")).toBe(false);
+  });
+
   it.each(["t-shirt", "T-shirt", "t shirt", " T-Shirt "])("accepts %j for t-shirt", (typed) => {
     expect(blankMatches(typed, "t-shirt")).toBe(true);
   });
@@ -211,6 +220,8 @@ describe("hintFor", () => {
     ["I get up at 6:30.", "I g__ u_ a_ 6:30."],
     ["It's 7 o'clock", "I_'_ 7 o'_____"],
     ["I wear a T-shirt.", "I w___ a T-s____."],
+    ["Zoë", "Z__"],
+    ["Café naïve résumé", "C___ n____ r_____"],
     ["", ""],
   ])("masks %j", (text, hint) => {
     expect(hintFor(text)).toBe(hint);
@@ -271,6 +282,11 @@ describe("wordBank", () => {
     expect(wordBank("name", words, "about-me-1")).toEqual(wordBank("name", words, "about-me-1"));
     const orders = new Set(["a", "b", "c", "d", "e", "f"].map((seed) => wordBank("name", words, seed).join(" ")));
     expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it("keys and shows non-ASCII words whole", () => {
+    const choices = wordBank("Café", ["Zoë", "café", "naïve", "résumé", "Café", "zoë"], "s");
+    expect([...choices].sort()).toEqual(["Café", "Zoë", "naïve", "résumé"]);
   });
 
   it("offers no bank with fewer than two distractors", () => {

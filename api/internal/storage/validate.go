@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // validate checks the whole sync input against the wire contract web validateCard also enforces.
@@ -61,10 +63,16 @@ func (s State) validate() error {
 	return nil
 }
 
-var cardWordPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+// cardWordRuns: letter/mark/digit runs, each starting with a letter or digit, joined by single hyphens.
+var (
+	cardWordRuns  = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{M}\p{N}]*(-[\p{L}\p{N}][\p{L}\p{M}\p{N}]*)*$`)
+	cardWordUpper = regexp.MustCompile(`[\p{Lu}\p{Lt}]`)
+)
 
+// validCardWord is the web isCardWord contract: NFC, no uppercase or titlecase letter, hyphen-joined
+// runs. "" is a sentence card.
 func validCardWord(word string) bool {
-	return word == "" || cardWordPattern.MatchString(word)
+	return word == "" || cardWordRuns.MatchString(word) && !cardWordUpper.MatchString(word) && norm.NFC.IsNormalString(word)
 }
 
 func cardID(lessonID, sentenceID, word string) string {

@@ -367,10 +367,10 @@ describe("missed words", () => {
     installSpeechFakes();
     const { container } = await openLesson(lesson);
     await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-    // The panel offers "na", "ve", "e" and "g" but never "naïve" or "e.g"; the diff misses those whole words.
+    // The panel offers "naïve", "e" and "g" but never "e.g"; the diff misses that whole word.
     await answer(container, "dictation", "s1", "a plan this");
     await waitForCondition(() => missedList(container) !== null);
-    expect(missedWords(container)).toEqual(["one"]);
+    expect(missedWords(container)).toEqual(["naïve", "one"]);
   });
 
   it("lists nothing for an empty or whitespace-only dictation check", async () => {

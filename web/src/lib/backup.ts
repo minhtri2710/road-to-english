@@ -2,7 +2,8 @@ import type { Lesson } from "../api/lessons";
 import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
-import { cardId, isCardWord, isKeySize, isRecord, isText, type CardSource, type VocabCard } from "./vocab";
+import { cardId, isKeySize, isRecord, isText, type CardSource, type VocabCard } from "./vocab";
+import { isCardWord } from "./words";
 
 // The /sync wire state. User lessons are local-only and never part of it.
 export interface SyncState {

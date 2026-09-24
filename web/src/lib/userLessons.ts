@@ -1,7 +1,7 @@
 import type { Lesson, Level } from "../api/lessons";
 import { withDb } from "./db";
-import { splitWords } from "./dictation";
-import { cardWord, isCardWord, isRecord, isText } from "./vocab";
+import { isRecord, isText } from "./vocab";
+import { cardWord, isCardWord, splitWords } from "./words";
 import { isYouTubeId, parseTranscript, parseYouTubeId } from "./youtube";
 
 export const USER_LEVELS = ["A1", "A2", "B1", "B2"] as const satisfies readonly Level[];
