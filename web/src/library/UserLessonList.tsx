@@ -1,4 +1,5 @@
 import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -14,6 +15,7 @@ export function UserLessonList({
   deleteFailedId,
   completedLessons,
   takeFocus,
+  onCreateLesson,
 }: {
   lessons: Lesson[] | Error | null;
   onSelect: (lesson: Lesson) => void;
@@ -21,6 +23,7 @@ export function UserLessonList({
   deleteFailedId: string | null;
   completedLessons: Set<string>;
   takeFocus: (id: string) => boolean;
+  onCreateLesson: () => void;
 }) {
   if (lessons === null) {
     return <Text as="p">Loading your lessons...</Text>;
@@ -31,7 +34,14 @@ export function UserLessonList({
   }
 
   if (lessons.length === 0) {
-    return <Text as="p">No lessons of your own yet.</Text>;
+    return (
+      <EmptyState
+        title="No lessons of your own yet"
+        description="Paste a transcript or any English text to practise it as a lesson."
+        isCompact
+        actions={<Button label="Create a lesson" variant="secondary" onClick={onCreateLesson} />}
+      />
+    );
   }
 
   return (

@@ -11,6 +11,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Lesson, Level } from "../api/lessons";
 import { Alert } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
+import type { LevelFilter } from "../hooks/useLevelFilter";
 import { createUserLesson, USER_LEVELS, USER_WPMS } from "../lib/userLessons";
 
 const styles = stylex.create({
@@ -26,11 +27,25 @@ const styles = stylex.create({
   },
 });
 
-export function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Promise<void> }) {
+export function ImportTextForm({
+  onCreate,
+  levelFilter,
+}: {
+  onCreate: (lesson: Lesson) => Promise<void>;
+  levelFilter: LevelFilter;
+}) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
-  const [level, setLevel] = useState<Level>("B1");
+  const [level, setLevel] = useState<Level>(levelFilter === "All" ? "B1" : levelFilter);
+  // A new level filter becomes the default level; the learner can still pick another.
+  const [followedFilter, setFollowedFilter] = useState(levelFilter);
+  if (levelFilter !== followedFilter) {
+    setFollowedFilter(levelFilter);
+    if (levelFilter !== "All") {
+      setLevel(levelFilter);
+    }
+  }
   const [targetWpm, setTargetWpm] = useState<(typeof USER_WPMS)[number]>("110");
   const [error, setError] = useState<string | null>(null);
   const isCreatingRef = useRef(false);
@@ -80,8 +95,12 @@ export function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Pro
         <label htmlFor="import-text">
           <Text as="span" type="supporting">Text</Text>
         </label>
+        <Text as="p" type="supporting" id="import-text-hint">
+          Paste the transcript from YouTube's Show transcript panel (timestamps included).
+        </Text>
         <textarea
           id="import-text"
+          aria-describedby="import-text-hint"
           className={stylex.props(styles.importTextArea).className}
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -117,9 +136,6 @@ export function ImportTextForm({ onCreate }: { onCreate: (lesson: Lesson) => Pro
         </HStack>
         <Button label="Create" variant="primary" type="submit" />
         {error && <Alert>{error}</Alert>}
-        <Text as="p" type="supporting">
-          Paste the transcript from YouTube's Show transcript panel (timestamps included).
-        </Text>
       </VStack>
     </form>
   );

@@ -5,15 +5,19 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
-import type { Level } from "../api/lessons";
+import type { Lesson, Level } from "../api/lessons";
 import { ErrorMessage } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLessons } from "../hooks/lessons";
 import type { DailyGoal } from "../hooks/useDailyGoal";
+import type { LessonRoute } from "../hooks/useLastLesson";
+import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 
 const styles = stylex.create({
   lessonButton: {
@@ -79,16 +83,14 @@ function TodayStrip({
   due,
   actionsToday,
   dailyGoal,
-  nextLesson,
+  suggestion,
   onReview,
-  onStart,
 }: {
   due: number | null;
   actionsToday: number;
   dailyGoal: DailyGoal;
-  nextLesson: { title: string } | undefined;
+  suggestion: { text: string; action: string; onOpen: () => void } | undefined;
   onReview: () => void;
-  onStart: () => void;
 }) {
   const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
   return (
@@ -101,10 +103,10 @@ function TodayStrip({
         {due ? (
           <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
         ) : (
-          nextLesson && (
+          suggestion && (
             <>
-              <Text type="supporting">Next: {nextLesson.title}</Text>
-              <Button label="Start lesson" variant="primary" onClick={onStart} />
+              <Text type="supporting">{suggestion.text}</Text>
+              <Button label={suggestion.action} variant="primary" onClick={suggestion.onOpen} />
             </>
           )
         )}
@@ -119,6 +121,11 @@ export function LessonList({
   takeFocus,
   focusHeading,
   onSettled,
+  levelFilter,
+  chooseLevelFilter,
+  lastLesson,
+  ownLessons,
+  onContinue,
   today,
 }: {
   onSelect: (id: string) => void;
@@ -126,7 +133,12 @@ export function LessonList({
   takeFocus: (id: string) => boolean;
   focusHeading: () => void;
   onSettled: (settled: boolean) => void;
-  today: Omit<Parameters<typeof TodayStrip>[0], "nextLesson" | "onStart">;
+  levelFilter: LevelFilter;
+  chooseLevelFilter: (filter: LevelFilter) => void;
+  lastLesson: LessonRoute | null;
+  ownLessons: Lesson[];
+  onContinue: () => void;
+  today: Omit<Parameters<typeof TodayStrip>[0], "suggestion">;
 }) {
   const { data, loading, error, retry } = useLessons();
   // Rows take the return focus as they mount, so this runs after any row could have taken it.
@@ -134,8 +146,16 @@ export function LessonList({
     onSettled(!loading);
     return () => onSettled(false);
   }, [loading]);
-  // The first library lesson not yet completed; the strip reads the list this component already loads.
-  const nextLesson = data?.find((lesson) => !completedLessons.has(lesson.id));
+  const shown = levelFilter === "All" ? data : data?.filter((lesson) => lesson.level === levelFilter);
+  const unfinished = (lesson: { id: string }) => !completedLessons.has(lesson.id);
+  // The last opened lesson while it still exists unfinished, else the first unfinished library lesson in the level.
+  const lastPool: { id: string; title: string }[] | undefined = lastLesson?.view === "lesson" ? data ?? undefined : ownLessons;
+  const continueLesson = lastLesson && lastPool?.find((lesson) => lesson.id === lastLesson.id && unfinished(lesson));
+  const nextLesson = shown?.find(unfinished);
+  const completedCount = shown?.filter((lesson) => !unfinished(lesson)).length ?? 0;
+  const suggestion = continueLesson
+    ? { text: `Continue: ${continueLesson.title}`, action: "Continue", onOpen: onContinue }
+    : nextLesson && { text: `Next: ${nextLesson.title}`, action: "Start lesson", onOpen: () => onSelect(nextLesson.id) };
 
   let content: ReactNode;
   if (loading) {
@@ -159,12 +179,14 @@ export function LessonList({
         />
       </VStack>
     );
-  } else if (!data || data.length === 0) {
+  } else if (!data || data.length === 0 || !shown) {
     content = <Text as="p">No lessons available.</Text>;
+  } else if (shown.length === 0) {
+    content = <Text as="p">No lessons at this level.</Text>;
   } else {
     content = (
       <VStack as="ul" gap={2} padding={0}>
-        {data.map((lesson) => (
+        {shown.map((lesson) => (
           <li key={lesson.id}>
             <LessonRow
               title={lesson.title}
@@ -183,7 +205,25 @@ export function LessonList({
 
   return (
     <VStack gap={4}>
-      <TodayStrip {...today} nextLesson={nextLesson} onStart={() => nextLesson && onSelect(nextLesson.id)} />
+      <TodayStrip {...today} suggestion={suggestion} />
+      <VStack gap={2}>
+        <SegmentedControl
+          label="Level"
+          value={levelFilter}
+          onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
+        >
+          {LEVEL_FILTERS.map((filter) => (
+            <SegmentedControlItem key={filter} value={filter} label={filter} />
+          ))}
+        </SegmentedControl>
+        {shown && shown.length > 0 && (
+          <ProgressBar
+            label={`${levelFilter === "All" ? "" : `${levelFilter}: `}${completedCount} of ${shown.length} completed`}
+            value={completedCount}
+            max={shown.length}
+          />
+        )}
+      </VStack>
       {content}
     </VStack>
   );

@@ -27,7 +27,7 @@ test("import text, export a backup, delete, restore from the backup", async ({ p
     void dialog.accept();
   });
   await deleteButton.click();
-  await expect(page.getByText("No lessons of your own yet.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No lessons of your own yet" })).toBeVisible();
 
   page.once("dialog", (dialog) => {
     expect(dialog.message()).toContain("replace all local data");

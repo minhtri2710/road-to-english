@@ -561,11 +561,11 @@ describe("App", () => {
     it("creates a lesson from pasted text, opens it without a lesson fetch, and lists it after a remount", async () => {
       const first = await renderLibrary();
       expect(first.container.textContent).toContain("Your lessons stay on this device; export a backup to move them.");
-      expect(buttonsNamed(first.container, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
-      expect(buttonsNamed(first.container, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
+      expect(buttonsNamed(first.container.querySelector("form")!, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
+      expect(buttonsNamed(first.container.querySelector("form")!, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
       expect(buttonsNamed(first.container, "110 WPM")[0]?.getAttribute("aria-pressed")).toBe("true");
       await act(async () => {
-        buttonsNamed(first.container, "B2")[0]?.click();
+        buttonsNamed(first.container.querySelector("form")!, "B2")[0]?.click();
         buttonsNamed(first.container, "130 WPM")[0]?.click();
       });
 
@@ -643,14 +643,14 @@ describe("App", () => {
       await act(async () => {
         buttonsNamed(view.container, "Delete")[0]?.click();
       });
-      await waitForCondition(() => view.container.textContent?.includes("No lessons of your own yet.") ?? false);
+      await waitForCondition(() => view.container.textContent?.includes("No lessons of your own yet") ?? false);
       expect(document.activeElement?.textContent).toBe("Your lessons");
       expect(await listUserLessons()).toEqual([]);
       expect(await getAllCards()).toEqual([card]);
       await close(view);
 
       const remounted = await renderLibrary();
-      expect(remounted.container.textContent).toContain("No lessons of your own yet.");
+      expect(remounted.container.textContent).toContain("No lessons of your own yet");
       expect(remounted.container.textContent).not.toContain("Tea talk");
     });
 
@@ -897,7 +897,7 @@ describe("App", () => {
       await act(async () => {
         del()?.click();
       });
-      await waitForCondition(hasText(container, "No lessons of your own yet."));
+      await waitForCondition(hasText(container, "No lessons of your own yet"));
       expect(container.textContent).not.toContain("Couldn't delete.");
     });
 

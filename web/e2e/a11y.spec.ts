@@ -128,6 +128,15 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await createUserLesson(page);
     await inspect();
   }],
+  ["library filtered by level with progress, Continue and the own-lessons empty state", async (page, inspect) => {
+    await openLibraryLesson(page, "Daily Routine");
+    await page.getByRole("button", { name: "Back to lessons" }).click();
+    await page.getByRole("radio", { name: "B1" }).click();
+    await expect(page.getByText("B1: 0 of 4 completed")).toBeVisible();
+    await expect(page.getByText("Continue: Daily Routine")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No lessons of your own yet" })).toBeVisible();
+    await inspect();
+  }],
   ["shadow mode with a word selected", async (page, inspect) => {
     await selectWord(page);
     await inspect();

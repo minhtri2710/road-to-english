@@ -206,6 +206,7 @@ export async function resetApp(): Promise<void> {
     await close(view);
   }
   window.history.replaceState(null, "", "/");
+  localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   fetchMock.mockReset();

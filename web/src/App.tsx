@@ -20,6 +20,8 @@ import { useAuth } from "./hooks/auth";
 import { useUserLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
 import { DAILY_GOALS, useDailyGoal, type DailyGoal } from "./hooks/useDailyGoal";
+import { useLastLesson } from "./hooks/useLastLesson";
+import { useLevelFilter } from "./hooks/useLevelFilter";
 import { useSync } from "./hooks/useSync";
 import { useVocabDeck } from "./hooks/vocab";
 import { capNewCards } from "./lib/vocab";
@@ -72,6 +74,7 @@ export function App() {
     armGoal();
     return progress.recordPractice(options);
   };
+  const { levelFilter, chooseLevelFilter } = useLevelFilter();
   const auth = useAuth();
   const syncLine = useSync(auth, deck, progress);
   const returnFocusId = useRef<string | null>(null);
@@ -203,6 +206,7 @@ export function App() {
   // A user-lesson route whose lesson is unknown or deleted shows the library, and the URL follows.
   const missingUserLesson = route.view === "my" && userLessons !== null && userLesson === undefined;
   const view = missingUserLesson ? "library" : route.view;
+  const lastLesson = useLastLesson(route.view === "lesson" || (route.view === "my" && userLesson) ? route : null);
 
   useEffect(() => {
     if (missingUserLesson) {
@@ -344,6 +348,11 @@ export function App() {
                       librarySettled.current = settled;
                       settleReturnFocus();
                     }}
+                    levelFilter={levelFilter}
+                    chooseLevelFilter={chooseLevelFilter}
+                    lastLesson={lastLesson}
+                    ownLessons={Array.isArray(userLessons) ? userLessons : []}
+                    onContinue={() => lastLesson && navigate(lastLesson)}
                     today={{
                       due: deck.error === null && !deck.loading ? reviewDeck.length : null,
                       actionsToday: progress.actionsToday,
@@ -360,9 +369,10 @@ export function App() {
                       deleteFailedId={deleteFailedId}
                       completedLessons={progress.completedLessons}
                       takeFocus={takeReturnFocus}
+                      onCreateLesson={() => document.getElementById("import-title")?.focus()}
                     />
                   </VStack>
-                  <ImportTextForm onCreate={createLesson} />
+                  <ImportTextForm onCreate={createLesson} levelFilter={levelFilter} />
                 </VStack>
               ) : route.view === "lesson" ? (
                 <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
