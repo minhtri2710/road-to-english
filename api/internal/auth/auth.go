@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 	"unicode/utf8"
 
@@ -14,8 +15,11 @@ import (
 
 var (
 	ErrPasswordTooShort = errors.New("password has fewer than 8 characters")
-	ErrPasswordTooLong  = errors.New("password exceeds 72 bytes")
+	ErrPasswordTooLong  = fmt.Errorf("password exceeds %d bytes", MaxPasswordBytes)
 )
+
+// MaxPasswordBytes is bcrypt's input limit; longer passwords are refused, never truncated.
+const MaxPasswordBytes = 72
 
 const SessionTTL = 30 * 24 * time.Hour
 
@@ -29,7 +33,7 @@ func HashPassword(plain string) (string, error) {
 		return "", ErrPasswordTooShort
 	}
 	// ponytail: multibyte passwords can reach bcrypt's 72-byte limit below 64 characters; lifting this ceiling needs pre-hashing or a pepper, a separate Human gate.
-	if len(plain) > 72 {
+	if len(plain) > MaxPasswordBytes {
 		return "", ErrPasswordTooLong
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)

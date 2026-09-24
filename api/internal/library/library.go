@@ -122,11 +122,7 @@ func (s *Store) Summaries() []Summary {
 
 func (s *Store) Lesson(id string) (Lesson, bool) {
 	lesson, ok := s.lessonsByID[id]
-	if !ok {
-		return Lesson{}, false
-	}
-	lesson.Sentences = append([]Sentence(nil), lesson.Sentences...)
-	return lesson, true
+	return lesson, ok
 }
 
 func validLevel(level Level) bool {

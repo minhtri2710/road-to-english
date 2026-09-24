@@ -6,42 +6,30 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"os"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/road-to-english/api/internal/testdb"
 )
 
 func newTestRepo(t *testing.T) *Repository {
 	t.Helper()
-
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("DATABASE_URL must be set to a local Postgres for storage tests; run: docker compose -f api/compose.yaml up -d --wait")
-	}
-
-	repo, err := Open(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	t.Cleanup(repo.Close)
-	lockConn, err := repo.pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("acquire test database lock: %v", err)
-	}
-	if _, err := lockConn.Exec(context.Background(), `SELECT pg_advisory_lock(hashtextextended('road-to-english-api-tests', 0))`); err != nil {
-		lockConn.Release()
-		t.Fatalf("lock test database: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock(hashtextextended('road-to-english-api-tests', 0))`)
-		lockConn.Release()
+	var repo *Repository
+	testdb.Open(t, func(dsn string) {
+		var err error
+		if repo, err = Open(context.Background(), dsn); err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		t.Cleanup(repo.Close)
 	})
-
-	if _, err := repo.pool.Exec(context.Background(), "TRUNCATE users, sessions, cards, practice_days, lesson_completion RESTART IDENTITY CASCADE"); err != nil {
-		t.Fatalf("truncate test tables: %v", err)
-	}
 	return repo
+}
+
+// fsrs returns a complete FSRS object the sync contract accepts.
+func fsrs(due string, reps int) []byte {
+	return []byte(`{"due":"` + due + `","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":` + strconv.Itoa(reps) + `,"lapses":0,"state":0}`)
 }
 
 func createTestUser(t *testing.T, repo *Repository, email string) User {
@@ -81,7 +69,7 @@ func emptyState() State {
 func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "card@example.com")
-	wantFSRS := []byte(`{ "due": "2026-09-22T10:00:00.000Z", "last_review": "2026-09-21T10:00:00.000Z", "stability": 2.5, "difficulty": 4.2, "elapsed_days": 1, "scheduled_days": 2, "reps": 3, "lapses": 0, "state": 2 }`)
+	wantFSRS := []byte(`{ "due": "2026-09-22T10:00:00.000Z", "last_review": "2026-09-21T10:00:00.000Z", "stability": 2.5, "difficulty": 4.2, "elapsed_days": 1, "scheduled_days": 2, "learning_steps": 0, "reps": 3, "lapses": 0, "state": 2 }`)
 	want := testCard("greetings-basics:greetings-basics-1", "greetings-basics", "greetings-basics-1", "Good morning", "Buenos días", wantFSRS)
 
 	gotState := syncState(t, repo, user.ID, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
@@ -100,8 +88,8 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 func TestWordCardRoundTripPreservesWord(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "word-card@example.com")
-	sentence := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "Good morning", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
-	word := testCard("lesson-1:sentence-1:morning", "lesson-1", "sentence-1", "morning", "Good morning — Chào buổi sáng", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	sentence := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "Good morning", "", fsrs("2026-09-22T10:00:00Z", 0))
+	word := testCard("lesson-1:sentence-1:morning", "lesson-1", "sentence-1", "morning", "Good morning — Chào buổi sáng", fsrs("2026-09-22T10:00:00Z", 0))
 	*word.Source.Word = "morning"
 
 	got := syncState(t, repo, user.ID, State{Cards: []Card{sentence, word}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
@@ -119,12 +107,12 @@ func TestWordCardRoundTripPreservesWord(t *testing.T) {
 func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "nil-word@example.com")
-	valid := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
-	nilWord := testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", []byte(`{"due":"2026-09-22T10:00:00Z"}`))
+	valid := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0))
+	nilWord := testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", fsrs("2026-09-22T10:00:00Z", 0))
 	nilWord.Source.Word = nil
 
-	if _, err := repo.SyncState(context.Background(), user.ID, State{Cards: []Card{valid, nilWord}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); err == nil {
-		t.Fatal("SyncState() error = nil, want missing word error")
+	if _, err := repo.SyncState(context.Background(), user.ID, State{Cards: []Card{valid, nilWord}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("SyncState() error = %v, want ErrInvalidState", err)
 	}
 	var count int
 	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM cards WHERE user_id = $1", user.ID).Scan(&count); err != nil {
@@ -132,6 +120,116 @@ func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("cards rows = %d, want 0", count)
+	}
+}
+
+// Each invalid class is rejected with ErrInvalidState and writes nothing, even when it comes after valid items.
+func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "invalid-classes@example.com")
+	valid := func() State {
+		return State{
+			Cards:            []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0))},
+			PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
+			LessonCompletion: []LessonCompletion{{LessonID: "lesson-1"}},
+		}
+	}
+	addCard := func(state *State, mutate func(*Card)) {
+		card := testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", fsrs("2026-09-22T10:00:00Z", 0))
+		mutate(&card)
+		state.Cards = append(state.Cards, card)
+	}
+	for name, mutate := range map[string]func(*State){
+		"nil cards":             func(s *State) { s.Cards = nil },
+		"nil practice days":     func(s *State) { s.PracticeDays = nil },
+		"nil lesson completion": func(s *State) { s.LessonCompletion = nil },
+		"card text":             func(s *State) { addCard(s, func(c *Card) { c.Front = "" }) },
+		"card word":             func(s *State) { addCard(s, func(c *Card) { c.Source.Word = nil }) },
+		"card id":               func(s *State) { addCard(s, func(c *Card) { c.ID = "wrong" }) },
+		"duplicate card":        func(s *State) { s.Cards = append(s.Cards, s.Cards[0]) },
+		"card fsrs":             func(s *State) { addCard(s, func(c *Card) { c.Fsrs = []byte(`{"due":"2026-09-22T10:00:00Z"}`) }) },
+		"card updatedAt":        func(s *State) { addCard(s, func(c *Card) { c.UpdatedAt = "yesterday" }) },
+		"card deletedAt":        func(s *State) { addCard(s, func(c *Card) { c.DeletedAt = DeletedAt{} }) },
+		"practice day":          func(s *State) { s.PracticeDays = append(s.PracticeDays, PracticeDay{Date: "2026-02-30"}) },
+		"lesson completion":     func(s *State) { s.LessonCompletion = append(s.LessonCompletion, LessonCompletion{LessonID: ""}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := valid()
+			mutate(&state)
+			if _, err := repo.SyncState(context.Background(), user.ID, state); !errors.Is(err, ErrInvalidState) {
+				t.Fatalf("SyncState() error = %v, want ErrInvalidState", err)
+			}
+			if got := syncState(t, repo, user.ID, emptyState()); !reflect.DeepEqual(got, emptyState()) {
+				t.Fatalf("state after rejected sync = %#v, want empty", got)
+			}
+		})
+	}
+}
+
+func wordSyncCard(word string) Card {
+	card := testCard("lesson-1:sentence-1:"+word, "lesson-1", "sentence-1", word, "back", fsrs("2026-09-22T10:00:00Z", 0))
+	card.UpdatedAt = "2026-09-22T10:00:00Z"
+	*card.Source.Word = word
+	return card
+}
+
+func oneCardState(card Card) State {
+	return State{Cards: []Card{card}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}
+}
+
+func TestValidateWordCards(t *testing.T) {
+	sentence := wordSyncCard("")
+	sentence.ID = "lesson-1:sentence-1"
+	sentence.Front = "Hello there"
+	if err := oneCardState(sentence).validate(); err != nil {
+		t.Fatal("sentence card rejected")
+	}
+	for _, word := range []string{"hello42", "t-shirt"} {
+		if err := oneCardState(wordSyncCard(word)).validate(); err != nil {
+			t.Fatalf("word %q rejected", word)
+		}
+	}
+	for _, word := range []string{"Hello", "a:b", "don't", "a b", "-a", "a-", "a--b", "T-shirt"} {
+		if err := oneCardState(wordSyncCard(word)).validate(); err == nil {
+			t.Fatalf("word %q accepted", word)
+		}
+	}
+	mismatch := wordSyncCard("hello")
+	mismatch.ID = "lesson-1:sentence-1"
+	if err := oneCardState(mismatch).validate(); err == nil {
+		t.Fatal("word card with sentence id accepted")
+	}
+	missing := sentence
+	missing.Source.Word = nil
+	if err := oneCardState(missing).validate(); err == nil {
+		t.Fatal("card without word accepted")
+	}
+}
+
+func TestValidateCardTimestamps(t *testing.T) {
+	deletedAt := "2026-09-23T10:00:00.123Z"
+	tombstone := wordSyncCard("hello")
+	tombstone.DeletedAt = DeletedAt{Present: true, Value: &deletedAt}
+	if err := oneCardState(wordSyncCard("hello")).validate(); err != nil {
+		t.Fatal("live card rejected")
+	}
+	if err := oneCardState(tombstone).validate(); err != nil {
+		t.Fatal("tombstone card rejected")
+	}
+
+	badDeletedAt := "2026-09-23T10:00:00+07:00"
+	for name, mutate := range map[string]func(*Card){
+		"missing updatedAt": func(card *Card) { card.UpdatedAt = "" },
+		"non-UTC updatedAt": func(card *Card) { card.UpdatedAt = "2026-09-22T10:00:00+07:00" },
+		"invalid updatedAt": func(card *Card) { card.UpdatedAt = "yesterday" },
+		"missing deletedAt": func(card *Card) { card.DeletedAt = DeletedAt{} },
+		"non-UTC deletedAt": func(card *Card) { card.DeletedAt = DeletedAt{Present: true, Value: &badDeletedAt} },
+	} {
+		card := wordSyncCard("hello")
+		mutate(&card)
+		if err := oneCardState(card).validate(); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
 	}
 }
 
@@ -152,8 +250,8 @@ func TestParseTimestampGrammar(t *testing.T) {
 		"2026-01-01T00:00:00+00:00": false,
 		"2026-02-30T00:00:00Z":      false,
 	} {
-		if _, err := ParseTimestamp(value); (err == nil) != valid {
-			t.Errorf("ParseTimestamp(%q) error = %v, want valid %v", value, err, valid)
+		if _, err := parseTimestamp(value); (err == nil) != valid {
+			t.Errorf("parseTimestamp(%q) error = %v, want valid %v", value, err, valid)
 		}
 	}
 }
@@ -161,20 +259,20 @@ func TestParseTimestampGrammar(t *testing.T) {
 func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "card-times@example.com")
-	live := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "live", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))
+	live := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "live", "card", fsrs("2026-01-01T00:00:00Z", 0))
 	live.UpdatedAt = "2026-01-02T03:04:05.123Z"
-	deleted := tombstone(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "deleted", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`)), "2026-01-03T00:00:00.5Z")
+	deleted := tombstone(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "deleted", "card", fsrs("2026-01-01T00:00:00Z", 0)), "2026-01-03T00:00:00.5Z")
 
 	got := syncState(t, repo, user.ID, State{Cards: []Card{live, deleted}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 	if !reflect.DeepEqual(got.Cards, []Card{live, deleted}) {
 		t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{live, deleted})
 	}
 	for _, card := range got.Cards {
-		if _, err := ParseTimestamp(card.UpdatedAt); err != nil {
+		if _, err := parseTimestamp(card.UpdatedAt); err != nil {
 			t.Fatalf("stored updatedAt %q fails the grammar: %v", card.UpdatedAt, err)
 		}
 	}
-	if _, err := ParseTimestamp(*got.Cards[1].DeletedAt.Value); err != nil {
+	if _, err := parseTimestamp(*got.Cards[1].DeletedAt.Value); err != nil {
 		t.Fatalf("stored deletedAt fails the grammar: %v", err)
 	}
 
@@ -197,9 +295,9 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 
 // Mirrors web mergeCard.test.ts case for case.
 func TestCardUpsertMergeRule(t *testing.T) {
-	fresh := []byte(`{"due":"2026-01-01T00:00:00Z","reps":0}`)
-	reviewed := []byte(`{"due":"2026-01-09T00:00:00Z","reps":3}`)
-	reviewedMore := []byte(`{"due":"2026-01-20T00:00:00Z","reps":5}`)
+	fresh := fsrs("2026-01-01T00:00:00Z", 0)
+	reviewed := fsrs("2026-01-09T00:00:00Z", 3)
+	reviewedMore := fsrs("2026-01-20T00:00:00Z", 5)
 	card := func(front, updatedAt string, fsrs []byte) Card {
 		value := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", fsrs)
 		value.UpdatedAt = updatedAt
@@ -290,12 +388,12 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 	userA := createTestUser(t, repo, "a@example.com")
 	userB := createTestUser(t, repo, "b@example.com")
 	stateA := State{
-		Cards:            []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "A", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))},
+		Cards:            []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "A", "card", fsrs("2026-01-01T00:00:00Z", 0))},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-a"}},
 	}
 	stateB := State{
-		Cards:            []Card{testCard("lesson-2:sentence-2", "lesson-2", "sentence-2", "B", "card", []byte(`{"due":"2026-01-01T00:00:00Z"}`))},
+		Cards:            []Card{testCard("lesson-2:sentence-2", "lesson-2", "sentence-2", "B", "card", fsrs("2026-01-01T00:00:00Z", 0))},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-23"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-b"}},
 	}

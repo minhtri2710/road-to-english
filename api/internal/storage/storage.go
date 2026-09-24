@@ -25,6 +25,8 @@ var (
 	ErrEmailTaken     = errors.New("email already taken")
 	ErrUserNotFound   = errors.New("user not found")
 	ErrSessionInvalid = errors.New("session invalid")
+	// ErrInvalidState is SyncState's error for an input that breaks the wire contract; nothing was written.
+	ErrInvalidState = errors.New("invalid sync state")
 )
 
 // Card is the client-compatible persisted vocabulary card.
@@ -84,9 +86,8 @@ type State struct {
 }
 
 type User struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID    string
+	Email string
 }
 
 type Repository struct {
@@ -96,7 +97,7 @@ type Repository struct {
 // timestampGrammar is the one wire form the web also accepts: seconds, an optional 1-3 digit fraction, Z.
 var timestampGrammar = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$`)
 
-func ParseTimestamp(value string) (time.Time, error) {
+func parseTimestamp(value string) (time.Time, error) {
 	if !timestampGrammar.MatchString(value) {
 		return time.Time{}, fmt.Errorf("timestamp must be YYYY-MM-DDTHH:MM:SS with an optional 1-3 digit fraction and Z")
 	}
@@ -111,29 +112,9 @@ func ParseTimestamp(value string) (time.Time, error) {
 	return timestamp, nil
 }
 
-// formatTimestamp renders a stored timestamp in the Z form ParseTimestamp and the web accept.
+// formatTimestamp renders a stored timestamp in the Z form parseTimestamp and the web accept.
 func formatTimestamp(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func FSRSLastReview(raw json.RawMessage) (*time.Time, error) {
-	var object map[string]json.RawMessage
-	if len(raw) == 0 || json.Unmarshal(raw, &object) != nil || object == nil {
-		return nil, fmt.Errorf("fsrs must be a JSON object")
-	}
-	rawLastReview, ok := object["last_review"]
-	if !ok || bytes.Equal(bytes.TrimSpace(rawLastReview), []byte("null")) {
-		return nil, nil
-	}
-	var value string
-	if err := json.Unmarshal(rawLastReview, &value); err != nil {
-		return nil, fmt.Errorf("last_review must be a string or null: %w", err)
-	}
-	timestamp, err := ParseTimestamp(value)
-	if err != nil {
-		return nil, fmt.Errorf("invalid last_review: %w", err)
-	}
-	return &timestamp, nil
 }
 
 func Open(ctx context.Context, dsn string) (*Repository, error) {
@@ -178,8 +159,8 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string)
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash)
 		VALUES ($1, $2)
-		RETURNING id, email, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
+		RETURNING id, email
+	`, email, passwordHash).Scan(&user.ID, &user.Email)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -193,10 +174,10 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string)
 func (r *Repository) GetUserByID(ctx context.Context, userID string) (User, error) {
 	var user User
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, email, created_at
+		SELECT id, email
 		FROM users
 		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
+	`, userID).Scan(&user.ID, &user.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrUserNotFound
 	}
@@ -210,10 +191,10 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 	var user User
 	var passwordHash string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, email, password_hash, created_at
+		SELECT id, email, password_hash
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.ID, &user.Email, &passwordHash, &user.CreatedAt)
+	`, email).Scan(&user.ID, &user.Email, &passwordHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, "", ErrUserNotFound
 	}
@@ -299,7 +280,12 @@ func (r *Repository) DeleteSession(ctx context.Context, tokenHash string) error 
 	return nil
 }
 
+// SyncState validates the whole input before any write, returning ErrInvalidState when it breaks the wire contract,
+// then merges it in one transaction and returns the user's full state.
 func (r *Repository) SyncState(ctx context.Context, userID string, in State) (State, error) {
+	if err := in.validate(); err != nil {
+		return State{}, err
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return State{}, fmt.Errorf("begin sync transaction: %w", err)
@@ -341,42 +327,42 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 const incomingWins = `(EXCLUDED.updated_at > cards.updated_at
 	OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL))`
 
+var upsertCardSQL = strings.ReplaceAll(`
+	INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	ON CONFLICT (user_id, id) DO UPDATE SET
+		front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
+		back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
+		lesson_id = CASE WHEN {wins} THEN EXCLUDED.lesson_id ELSE cards.lesson_id END,
+		sentence_id = CASE WHEN {wins} THEN EXCLUDED.sentence_id ELSE cards.sentence_id END,
+		word = CASE WHEN {wins} THEN EXCLUDED.word ELSE cards.word END,
+		fsrs = CASE
+			WHEN (cards.fsrs->>'reps')::numeric > 0 AND (EXCLUDED.fsrs->>'reps')::numeric = 0 THEN cards.fsrs
+			WHEN (EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0 THEN EXCLUDED.fsrs
+			WHEN {wins} THEN EXCLUDED.fsrs
+			ELSE cards.fsrs
+		END,
+		updated_at = CASE WHEN {wins} THEN EXCLUDED.updated_at ELSE cards.updated_at END,
+		deleted_at = CASE WHEN {wins} THEN EXCLUDED.deleted_at ELSE cards.deleted_at END
+	WHERE {wins}
+		OR ((EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0)
+`, "{wins}", incomingWins)
+
+// syncCard upserts one card SyncState has already validated.
 func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
-	if card.Source.Word == nil {
-		return fmt.Errorf("sync card %q: missing source word", card.ID)
-	}
-	updatedAt, err := ParseTimestamp(card.UpdatedAt)
+	updatedAt, err := parseTimestamp(card.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("sync card %q: invalid updatedAt: %w", card.ID, err)
 	}
 	var deletedAt *time.Time
 	if card.DeletedAt.Value != nil {
-		value, err := ParseTimestamp(*card.DeletedAt.Value)
+		value, err := parseTimestamp(*card.DeletedAt.Value)
 		if err != nil {
 			return fmt.Errorf("sync card %q: invalid deletedAt: %w", card.ID, err)
 		}
 		deletedAt = &value
 	}
-	_, err = tx.Exec(ctx, strings.ReplaceAll(`
-		INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		ON CONFLICT (user_id, id) DO UPDATE SET
-			front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
-			back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
-			lesson_id = CASE WHEN {wins} THEN EXCLUDED.lesson_id ELSE cards.lesson_id END,
-			sentence_id = CASE WHEN {wins} THEN EXCLUDED.sentence_id ELSE cards.sentence_id END,
-			word = CASE WHEN {wins} THEN EXCLUDED.word ELSE cards.word END,
-			fsrs = CASE
-				WHEN (cards.fsrs->>'reps')::numeric > 0 AND (EXCLUDED.fsrs->>'reps')::numeric = 0 THEN cards.fsrs
-				WHEN (EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0 THEN EXCLUDED.fsrs
-				WHEN {wins} THEN EXCLUDED.fsrs
-				ELSE cards.fsrs
-			END,
-			updated_at = CASE WHEN {wins} THEN EXCLUDED.updated_at ELSE cards.updated_at END,
-			deleted_at = CASE WHEN {wins} THEN EXCLUDED.deleted_at ELSE cards.deleted_at END
-		WHERE {wins}
-			OR ((EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0)
-	`, "{wins}", incomingWins), userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
+	_, err = tx.Exec(ctx, upsertCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
 	if err != nil {
 		return fmt.Errorf("sync card %q: %w", card.ID, err)
 	}
