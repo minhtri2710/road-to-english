@@ -316,4 +316,133 @@ describe("LessonList", () => {
       expect(buttonsNamed(container, "Continue")).toHaveLength(0);
     });
   });
+
+  describe("first-run welcome", () => {
+    const WELCOMED = "road-to-english.welcomed";
+    const heading = (container: HTMLElement, text: string) =>
+      Array.from(container.querySelectorAll("h2")).find((candidate) => candidate.textContent === text);
+    const welcome = (container: HTMLElement) => heading(container, "Welcome to Road to English")?.closest("section") ?? null;
+    const welcomeRadio = (container: HTMLElement, name: string) =>
+      Array.from(
+        welcome(container)?.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="English level"] [role="radio"]') ?? [],
+      ).find((item) => item.textContent === name);
+    const question = (container: HTMLElement, text: string) =>
+      Array.from(container.querySelectorAll("p")).find((candidate) => candidate.textContent === text);
+    const firstRun = async () => {
+      localStorage.removeItem(WELCOMED);
+      const view = await renderApp();
+      await waitForCondition(hasText(view.container, "Greetings & Basics"));
+      return view;
+    };
+
+    it("shows on the first run in the Today card's place as a labelled region, and not once welcomed", async () => {
+      const first = await firstRun();
+      const region = welcome(first.container)!;
+      expect(region.getAttribute("aria-labelledby")).toBe(heading(first.container, "Welcome to Road to English")!.id);
+      expect(region.textContent).toContain("Step 1 of 2");
+      expect(question(region, "What is your English level?")).toBeDefined();
+      expect(heading(first.container, "Today")).toBeUndefined();
+      expect(document.activeElement).toBe(document.body);
+      await first.unmount();
+
+      localStorage.setItem(WELCOMED, "yes");
+      const unknown = await renderApp();
+      await waitForCondition(hasText(unknown.container, "Greetings & Basics"));
+      expect(welcome(unknown.container)).not.toBeNull();
+      await unknown.unmount();
+
+      localStorage.removeItem(WELCOMED);
+      const welcomed = await renderApp();
+      await click(welcomed.container, "Skip");
+      await welcomed.unmount();
+      const again = await renderApp();
+      await waitForCondition(hasText(again.container, "Greetings & Basics"));
+      expect(welcome(again.container)).toBeNull();
+      expect(heading(again.container, "Today")).toBeDefined();
+    });
+
+    it("preselects the stored level and goal, and offers Not sure as All", async () => {
+      localStorage.setItem("road-to-english.levelFilter", "A2");
+      localStorage.setItem("road-to-english.dailyGoal", "20");
+      const { container } = await firstRun();
+      expect(["Not sure", "A1", "A2", "B1", "B2"].every((name) => welcomeRadio(container, name))).toBe(true);
+      expect(welcomeRadio(container, "A2")?.getAttribute("aria-checked")).toBe("true");
+      await click(container, "Next");
+      const intense = buttonsNamed(welcome(container)!, "20 Intense")[0]!;
+      expect(intense.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("filters the list as soon as a level is chosen and keeps it across a remount", async () => {
+      const first = await firstRun();
+      await act(async () => {
+        welcomeRadio(first.container, "B1")!.click();
+      });
+      expect(first.container.textContent).not.toContain("Greetings & Basics");
+      expect(first.container.textContent).toContain("Daily Routine");
+      expect(radio(first.container, "B1")?.getAttribute("aria-checked")).toBe("true");
+      expect(localStorage.getItem("road-to-english.levelFilter")).toBe("B1");
+      await act(async () => {
+        welcomeRadio(first.container, "Not sure")!.click();
+      });
+      expect(localStorage.getItem("road-to-english.levelFilter")).toBe("All");
+      await act(async () => {
+        welcomeRadio(first.container, "B1")!.click();
+      });
+      await first.unmount();
+
+      const second = await renderApp();
+      await waitForCondition(hasText(second.container, "Daily Routine"));
+      expect(second.container.textContent).not.toContain("Greetings & Basics");
+      expect(welcomeRadio(second.container, "B1")?.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("Next moves to step 2 and focuses its question; the goal choice persists; Done shows the Today card", async () => {
+      const first = await firstRun();
+      await click(first.container, "Next");
+      const region = welcome(first.container)!;
+      expect(region.textContent).toContain("Step 2 of 2");
+      expect(region.textContent).toContain(
+        "You can change both later: the level filter below the Today card and the goal in the Today card.",
+      );
+      expect(document.activeElement).toBe(question(region, "How much practice a day?"));
+
+      // Choosing keeps focus on the choice: the question takes focus only once, after Next.
+      buttonsNamed(region, "20 Intense")[0]!.focus();
+      const intense = await click(region, "20 Intense");
+      expect(localStorage.getItem("road-to-english.dailyGoal")).toBe("20");
+      expect(intense.getAttribute("aria-pressed")).toBe("true");
+      expect(document.activeElement).toBe(intense);
+
+      await click(region, "Done");
+      expect(welcome(first.container)).toBeNull();
+      expect(document.activeElement).toBe(heading(first.container, "Today"));
+      expect(todayStrip(first.container)!.textContent).toContain("0 of 20 practice actions today");
+      expect(localStorage.getItem(WELCOMED)).toBe("done");
+      await first.unmount();
+
+      const second = await renderApp();
+      await waitForCondition(hasText(second.container, "Greetings & Basics"));
+      expect(welcome(second.container)).toBeNull();
+      expect(todayStrip(second.container)!.textContent).toContain("0 of 20 practice actions today");
+    });
+
+    for (const step of [1, 2]) {
+      it(`Skip on step ${step} stores only the welcome, shows the Today card and focuses its heading`, async () => {
+        const first = await firstRun();
+        if (step === 2) {
+          await click(first.container, "Next");
+        }
+        await click(welcome(first.container)!, "Skip");
+        expect(welcome(first.container)).toBeNull();
+        expect(document.activeElement).toBe(heading(first.container, "Today"));
+        expect({ ...localStorage }).toEqual({ [WELCOMED]: "done" });
+        await first.unmount();
+
+        const second = await renderApp();
+        await waitForCondition(hasText(second.container, "Greetings & Basics"));
+        expect(welcome(second.container)).toBeNull();
+        expect(heading(second.container, "Today")).toBeDefined();
+      });
+    }
+  });
 });

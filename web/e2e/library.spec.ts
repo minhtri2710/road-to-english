@@ -83,3 +83,45 @@ test("the week view marks today as practised after a practice action", async ({ 
   await expect(todayMark).not.toContainText("not practised");
   await expect(today.getByText("1 of 10 practice actions today")).toBeVisible();
 });
+
+test.describe("first-run welcome", () => {
+  test.use({ welcomed: false });
+
+  test("the welcome sets level and goal, and stays done across a reload", async ({ page }) => {
+    await page.goto("/");
+    const welcome = page.getByRole("region", { name: "Welcome to Road to English" });
+    await expect(welcome.getByText("Step 1 of 2")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Today" })).toHaveCount(0);
+    const rows = page.getByRole("button").filter({ hasText: /· \d+ sentences/ });
+
+    await welcome.getByRole("radiogroup", { name: "English level" }).getByRole("radio", { name: "B2" }).click();
+    await expect(rows).toHaveCount(4);
+    await welcome.getByRole("button", { name: "Next" }).click();
+    await expect(welcome.getByText("Step 2 of 2")).toBeVisible();
+    await expect(welcome.getByText("How much practice a day?")).toBeFocused();
+    await welcome.getByRole("button", { name: "5 Light" }).click();
+    await welcome.getByRole("button", { name: "Done" }).click();
+
+    await expect(welcome).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Today" })).toBeFocused();
+    await expect(page.getByText("0 of 5 practice actions today")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("0 of 5 practice actions today")).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "Level" }).getByRole("radio", { name: "B2" })).toHaveAttribute("aria-checked", "true");
+    await expect(rows).toHaveCount(4);
+    await expect(welcome).toHaveCount(0);
+  });
+
+  test("Skip on step 1 keeps the defaults and shows the Today card", async ({ page }) => {
+    await page.goto("/");
+    const welcome = page.getByRole("region", { name: "Welcome to Road to English" });
+    await welcome.getByRole("button", { name: "Skip" }).click();
+    await expect(welcome).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Today" })).toBeFocused();
+    await expect(page.getByText("0 of 10 practice actions today")).toBeVisible();
+    await expect(page.getByText("0 of 17 completed")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    await expect(welcome).toHaveCount(0);
+  });
+});

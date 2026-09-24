@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -21,6 +21,7 @@ import { useLessons } from "../hooks/lessons";
 import { DAILY_GOALS, type DailyGoal } from "../hooks/useDailyGoal";
 import type { LessonRoute } from "../hooks/useLastLesson";
 import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
+import { useWelcome } from "../hooks/useWelcome";
 import { MAX_FREEZES } from "../lib/progress";
 
 const styles = stylex.create({
@@ -126,7 +127,95 @@ const WEEKDAY_NAMES: Record<string, string> = {
 };
 const FREEZE_HELP = `A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to ${MAX_FREEZES}.`;
 
+// The first-run welcome: level, then daily goal. Choices apply at once; Done or Skip on either step ends it.
+function WelcomeCard({
+  levelFilter,
+  chooseLevelFilter,
+  dailyGoal,
+  chooseGoal,
+  onFinish,
+}: {
+  levelFilter: LevelFilter;
+  chooseLevelFilter: (filter: LevelFilter) => void;
+  dailyGoal: DailyGoal;
+  chooseGoal: (goal: DailyGoal) => void;
+  onFinish: () => void;
+}) {
+  const headingId = useId();
+  const [step, setStep] = useState<1 | 2>(1);
+  // Set by Next, so the step 2 question takes focus once as it mounts.
+  const focusQuestion = useRef(false);
+  return (
+    <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
+      <VStack as="section" gap={1} aria-labelledby={headingId}>
+        <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
+          <Heading level={2} id={headingId}>Welcome to Road to English</Heading>
+          <Text type="supporting">Step {step} of 2</Text>
+        </HStack>
+        {step === 1 ? (
+          <>
+            <Text as="p">What is your English level?</Text>
+            <SegmentedControl
+              label="English level"
+              value={levelFilter}
+              onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
+            >
+              {LEVEL_FILTERS.map((filter) => (
+                <SegmentedControlItem key={filter} value={filter} label={filter === "All" ? "Not sure" : filter} />
+              ))}
+            </SegmentedControl>
+          </>
+        ) : (
+          <>
+            <Text
+              as="p"
+              tabIndex={-1}
+              ref={(question) => {
+                if (question && focusQuestion.current) {
+                  focusQuestion.current = false;
+                  question.focus();
+                }
+              }}
+            >
+              How much practice a day?
+            </Text>
+            <ToggleButtonGroup
+              label="Daily goal"
+              value={dailyGoal}
+              onChange={(nextGoal) => {
+                if (nextGoal) {
+                  chooseGoal(nextGoal as DailyGoal);
+                }
+              }}
+            >
+              {DAILY_GOALS.map((value) => (
+                <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} />
+              ))}
+            </ToggleButtonGroup>
+            <Text as="p" type="supporting">
+              You can change both later: the level filter below the Today card and the goal in the Today card.
+            </Text>
+          </>
+        )}
+        <HStack gap={1} align="center">
+          {step === 1 ? (
+            <Button label="Next" variant="primary" onClick={() => {
+                focusQuestion.current = true;
+                setStep(2);
+              }}
+            />
+          ) : (
+            <Button label="Done" variant="primary" onClick={onFinish} />
+          )}
+          <Button label="Skip" variant="secondary" onClick={onFinish} />
+        </HStack>
+      </VStack>
+    </Card>
+  );
+}
+
 function TodayCard({
+  headingRef,
   due,
   actionsToday,
   dailyGoal,
@@ -139,6 +228,7 @@ function TodayCard({
   suggestion,
   onReview,
 }: {
+  headingRef: (heading: HTMLHeadingElement | null) => void;
   due: number | null;
   actionsToday: number;
   dailyGoal: DailyGoal;
@@ -157,7 +247,7 @@ function TodayCard({
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
       <VStack gap={1}>
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-          <Heading level={2}>Today</Heading>
+          <Heading level={2} tabIndex={-1} ref={headingRef}>Today</Heading>
           {due !== null && <Text type="supporting">{cards(due)} due</Text>}
           {due ? (
             <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
@@ -239,8 +329,11 @@ export function LessonList({
   lastLesson: LessonRoute | null;
   ownLessons: Lesson[];
   onContinue: () => void;
-  today: Omit<Parameters<typeof TodayCard>[0], "suggestion">;
+  today: Omit<Parameters<typeof TodayCard>[0], "suggestion" | "headingRef">;
 }) {
+  const { welcomed, finishWelcome } = useWelcome();
+  // Set by Done or Skip, so the Today card heading takes focus as it replaces the welcome.
+  const focusToday = useRef(false);
   const { data, loading, error, retry } = useLessons();
   // Rows take the return focus as they mount, so this runs after any row could have taken it.
   useEffect(() => {
@@ -306,7 +399,29 @@ export function LessonList({
 
   return (
     <VStack gap={4}>
-      <TodayCard {...today} suggestion={suggestion} />
+      {welcomed ? (
+        <TodayCard
+          {...today}
+          suggestion={suggestion}
+          headingRef={(heading) => {
+            if (heading && focusToday.current) {
+              focusToday.current = false;
+              heading.focus();
+            }
+          }}
+        />
+      ) : (
+        <WelcomeCard
+          levelFilter={levelFilter}
+          chooseLevelFilter={chooseLevelFilter}
+          dailyGoal={today.dailyGoal}
+          chooseGoal={today.chooseGoal}
+          onFinish={() => {
+            focusToday.current = true;
+            finishWelcome();
+          }}
+        />
+      )}
       <VStack gap={2}>
         <SegmentedControl
           label="Level"

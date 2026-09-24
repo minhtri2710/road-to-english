@@ -649,3 +649,55 @@ test.describe("reduced motion", () => {
     });
   }
 });
+
+test.describe("first-run welcome", () => {
+  test.use({ welcomed: false });
+  const welcome = (page: Page) => page.getByRole("region", { name: "Welcome to Road to English" });
+
+  async function showStep1(page: Page): Promise<void> {
+    await showStorageBanner(page);
+    await expect(welcome(page).getByText("Step 1 of 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
+  }
+
+  async function showStep2(page: Page): Promise<void> {
+    await showStep1(page);
+    await welcome(page).getByRole("button", { name: "Next" }).click();
+    await expect(welcome(page).getByText("Step 2 of 2")).toBeVisible();
+  }
+
+  async function finish(page: Page): Promise<void> {
+    await showStep2(page);
+    await welcome(page).getByRole("button", { name: "Done" }).click();
+    await expect(page.getByRole("heading", { name: "Today" })).toBeFocused();
+  }
+
+  for (const [name, reach] of [["step 1", showStep1], ["step 2", showStep2]] as const) {
+    test(`axe on ${name}`, async ({ page }) => {
+      await reach(page);
+      expect(await axeViolations(page)).toEqual([]);
+    });
+
+    test(`the first lesson stays inside the first screen on ${name} with the storage banner`, async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 667 });
+      await reach(page);
+      const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
+      console.log(`first row y at 375x667, welcome ${name}, storage banner: ${box?.y}`);
+      expect(box?.y).toBeLessThan(667);
+    });
+  }
+
+  for (const width of [320, 360]) {
+    test.describe(`at ${width}px`, () => {
+      test.use({ viewport: { width, height: 740 } });
+
+      for (const [name, reach] of [["welcome-step-1", showStep1], ["welcome-step-2", showStep2], ["welcome-done", finish]] as const) {
+        test(name, async ({ page }, testInfo) => {
+          await reach(page);
+          await page.screenshot({ path: testInfo.outputPath(`${name}-${width}.png`) });
+          expect(await layoutProblems(page)).toEqual([]);
+        });
+      }
+    });
+  }
+});

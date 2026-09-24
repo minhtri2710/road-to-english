@@ -68,7 +68,9 @@ function installBrowserFakes() {
   speechSynthesis.cancel = () => undefined;
 }
 
-export const test = base.extend<{ external: string[] }>({
+// Every test starts past the first-run welcome unless it opts in with test.use({ welcomed: false }).
+export const test = base.extend<{ external: string[]; welcomed: boolean }>({
+  welcomed: [true, { option: true }],
   external: async ({ context }, use) => {
     const external: string[] = [];
     await context.route("**/*", (route) => {
@@ -87,8 +89,11 @@ export const test = base.extend<{ external: string[] }>({
     await use(external);
     expect(external, "external requests").toEqual([]);
   },
-  page: async ({ page, external }, use) => {
+  page: async ({ page, external, welcomed }, use) => {
     void external;
+    if (welcomed) {
+      await page.addInitScript(() => localStorage.setItem("road-to-english.welcomed", "done"));
+    }
     await use(page);
   },
 });
