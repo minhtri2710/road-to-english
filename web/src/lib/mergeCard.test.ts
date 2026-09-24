@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { createCard, deleteCard, reviewCard, Rating, type VocabCard } from "./vocab";
+import { deleteCard, reviewCard, Rating, type VocabCard } from "./vocab";
 import { mergeCard } from "./mergeCard";
+import { card } from "../test/fixtures";
 
 const earlier = "2026-01-02T00:00:00.000Z";
 const later = "2026-01-04T00:00:00.000Z";
 
 function fresh(front: string, updatedAt: string): VocabCard {
-  return createCard(
-    { front, back: "card", source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" } },
-    new Date(updatedAt),
-  );
+  return card("sentence-1", new Date(updatedAt), { front });
 }
 
 // `reps` Good reviews, the last one at `updatedAt`.

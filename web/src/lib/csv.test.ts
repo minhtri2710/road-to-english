@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import { cardsCsv, cardsCsvFileName } from "./csv";
-import { createCard, deleteCard } from "./vocab";
+import { deleteCard } from "./vocab";
+import { card } from "../test/fixtures";
 
 const due = new Date("2026-09-23T10:20:30.000Z");
-const card = (front: string, back: string, sentenceId: string) =>
-  createCard({ front, back, source: { lessonId: "l", sentenceId, word: "" } }, due);
 
 describe("cardsCsv", () => {
   it("quotes every field and keeps special characters verbatim", () => {
     const cards = [
-      card("vi", "Xin chào, thế giới", "s5"),
-      card("crlf", "a\r\nb", "s4"),
-      card("lf", "a\nb", "s3"),
-      card('say "hi"', "quote", "s2"),
-      card("a, b", "comma", "s1"),
+      card("s5", due, { front: "vi", back: "Xin chào, thế giới" }),
+      card("s4", due, { front: "crlf", back: "a\r\nb" }),
+      card("s3", due, { front: "lf", back: "a\nb" }),
+      card("s2", due, { front: 'say "hi"', back: "quote" }),
+      card("s1", due, { front: "a, b", back: "comma" }),
     ];
     const iso = due.toISOString();
     expect(cardsCsv(cards)).toBe(
@@ -30,7 +29,7 @@ describe("cardsCsv", () => {
 
   it("prefixes formula-leading cells with a single quote", () => {
     const iso = due.toISOString();
-    const cards = ["=1", "+1", "-1", "@a", "\tx", "\ry"].map((front, i) => card(front, "a=b", `s${i}`));
+    const cards = ["=1", "+1", "-1", "@a", "\tx", "\ry"].map((front, i) => card(`s${i}`, due, { front, back: "a=b" }));
     expect(cardsCsv(cards)).toBe(
       '\uFEFF"front","back","due"\r\n' +
         ["'=1", "'+1", "'-1", "'@a", "'\tx", "'\ry"].map((front) => `"${front}","a=b","${iso}"\r\n`).join(""),
@@ -38,11 +37,11 @@ describe("cardsCsv", () => {
   });
 
   it("writes the due ISO string", () => {
-    expect(cardsCsv([card("x", "y", "s1")])).toContain('"2026-09-23T10:20:30.000Z"');
+    expect(cardsCsv([card("s1", due, { front: "x", back: "y" })])).toContain('"2026-09-23T10:20:30.000Z"');
   });
 
   it("leaves out deleted cards", () => {
-    expect(cardsCsv([card("kept", "a", "s1"), deleteCard(card("gone", "b", "s2"), due)])).toBe(
+    expect(cardsCsv([card("s1", due, { front: "kept", back: "a" }), deleteCard(card("s2", due, { front: "gone", back: "b" }), due)])).toBe(
       '\uFEFF"front","back","due"\r\n"kept","a","' + due.toISOString() + '"\r\n',
     );
   });

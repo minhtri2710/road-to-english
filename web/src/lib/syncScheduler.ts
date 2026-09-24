@@ -1,4 +1,4 @@
-import { ApiError } from "../api/lessons";
+import { ApiError } from "../api/client";
 import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
 import type { SyncState } from "./backup";

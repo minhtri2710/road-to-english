@@ -104,3 +104,19 @@ export async function openLibraryLesson(page: Page, title: string): Promise<void
   await page.getByRole("button", { name: title }).click();
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 }
+
+export const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
+
+// Fills the library's create form and submits it; callers assert what the new lesson shows.
+export async function createLesson(
+  page: Page,
+  { title, text, videoUrl }: { title: string; text: string; videoUrl?: string },
+): Promise<void> {
+  await page.goto("/");
+  await page.getByLabel("Title").fill(title);
+  if (videoUrl) {
+    await page.getByLabel("YouTube URL").fill(videoUrl);
+  }
+  await page.getByLabel("Text", { exact: true }).fill(text);
+  await page.getByRole("button", { name: "Create" }).click();
+}

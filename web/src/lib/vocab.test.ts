@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mergeCard } from "./mergeCard";
+import { card as newCard } from "../test/fixtures";
 import { capNewCards, cardWord, createCard, isCardWord, deleteCard, Rating, restoreCard, reviewCard, State } from "./vocab";
 
 const now = new Date("2026-01-01T00:00:00Z");
@@ -9,10 +10,6 @@ const input = {
   back: "hola",
   source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
 };
-
-function newCard() {
-  return createCard(input, now);
-}
 
 describe("vocabulary cards", () => {
   it("creates a new FSRS card", () => {
@@ -138,14 +135,11 @@ describe("vocabulary cards", () => {
 
 describe("capNewCards", () => {
   const newCards = Array.from({ length: 25 }, (_, index) =>
-    createCard(
-      { ...input, source: { ...input.source, sentenceId: `new-${index}` } },
-      now,
-    ),
+    newCard(`new-${index}`, now),
   );
   const reviewCards = [0, 1, 2].map((index) =>
     reviewCard(
-      createCard({ ...input, source: { ...input.source, sentenceId: `review-${index}` } }, now),
+      newCard(`review-${index}`, now),
       Rating.Good,
       now,
     ),

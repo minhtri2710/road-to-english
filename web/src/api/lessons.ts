@@ -1,3 +1,5 @@
+import { ApiError, request } from "./client";
+
 export type Level = "A1" | "A2" | "B1" | "B2";
 
 export interface Sentence {
@@ -31,16 +33,6 @@ export interface Lesson {
   videoId?: string;
 }
 
-export class ApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number) {
-    super(`Request failed with status ${status}`);
-    this.name = "ApiError";
-    this.status = status;
-  }
-}
-
 export class NotFoundError extends ApiError {
   constructor() {
     super(404);
@@ -49,30 +41,18 @@ export class NotFoundError extends ApiError {
   }
 }
 
-const apiUrl = import.meta.env.VITE_API_URL ?? "";
-
-export function getUrl(path: string): string {
-  return `${apiUrl.replace(/\/$/, "")}${path}`;
-}
-
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(getUrl(path));
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new NotFoundError();
-    }
-
-    throw new ApiError(response.status);
+async function requestLesson<T>(path: string): Promise<T> {
+  try {
+    return await request<T>(path);
+  } catch (error) {
+    throw error instanceof ApiError && error.status === 404 ? new NotFoundError() : error;
   }
-
-  return (await response.json()) as T;
 }
 
 export function fetchLessons(): Promise<LessonSummary[]> {
-  return request<LessonSummary[]>("/lessons");
+  return requestLesson<LessonSummary[]>("/lessons");
 }
 
 export function fetchLesson(id: string): Promise<Lesson> {
-  return request<Lesson>(`/lessons/${encodeURIComponent(id)}`);
+  return requestLesson<Lesson>(`/lessons/${encodeURIComponent(id)}`);
 }

@@ -21,7 +21,8 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
-import { ApiError, NotFoundError, type Lesson, type Level } from "./api/lessons";
+import { ApiError } from "./api/client";
+import { NotFoundError, type Lesson, type Level } from "./api/lessons";
 import { createSyncScheduler, type SyncScheduler, type SyncStatus } from "./lib/syncScheduler";
 import { setSyncTrigger } from "./lib/syncEvents";
 import { useAuth, type AuthState } from "./hooks/auth";

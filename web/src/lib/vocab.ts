@@ -7,7 +7,7 @@ import { State } from "ts-fsrs";
 import type { Card, Grade } from "ts-fsrs";
 
 export { Rating, State } from "ts-fsrs";
-export type { Grade, Card } from "ts-fsrs";
+export type { Grade } from "ts-fsrs";
 
 export interface CardSource {
   lessonId: string;
@@ -31,6 +31,10 @@ export interface VocabCard {
 export type NewCard = Omit<VocabCard, "id" | "fsrs" | "updatedAt" | "deletedAt">;
 
 // Text the api accepts: any string without U+0000.
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function isText(value: unknown): value is string {
   return typeof value === "string" && !value.includes("\u0000");
 }
@@ -85,13 +89,9 @@ export function restoreCard(card: VocabCard, now: Date): VocabCard {
 
 export const NEW_CARDS_PER_DAY = 20;
 
-// Keeps every non-New due card and at most `limit - introducedToday` New cards, in due order.
-export function capNewCards(
-  due: VocabCard[],
-  introducedToday: number,
-  limit = NEW_CARDS_PER_DAY,
-): VocabCard[] {
-  let newLeft = Math.max(0, limit - introducedToday);
+// Keeps every non-New due card and at most `NEW_CARDS_PER_DAY - introducedToday` New cards, in due order.
+export function capNewCards(due: VocabCard[], introducedToday: number): VocabCard[] {
+  let newLeft = Math.max(0, NEW_CARDS_PER_DAY - introducedToday);
   return due.filter((card) => {
     if (card.fsrs.state !== State.New) {
       return true;

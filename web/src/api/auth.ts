@@ -1,27 +1,21 @@
-import { ApiError, getUrl } from "./lessons";
+import { ApiError, request } from "./client";
 
 export interface AuthUser {
   id: string;
   email: string;
 }
 
-async function requestUser(
+function requestUser(
   path: "/signup" | "/login",
   email: string,
   password: string,
 ): Promise<AuthUser> {
-  const response = await fetch(getUrl(path), {
+  return request<AuthUser>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
     credentials: "include",
   });
-
-  if (!response.ok) {
-    throw new ApiError(response.status);
-  }
-
-  return (await response.json()) as AuthUser;
 }
 
 export function signUp(email: string, password: string): Promise<AuthUser> {
@@ -32,30 +26,23 @@ export function signIn(email: string, password: string): Promise<AuthUser> {
   return requestUser("/login", email, password);
 }
 
-export async function signOut(): Promise<void> {
-  const response = await fetch(getUrl("/logout"), {
+export function signOut(): Promise<void> {
+  return request<void>("/logout", {
     method: "POST",
     credentials: "include",
   });
-
-  if (!response.ok) {
-    throw new ApiError(response.status);
-  }
 }
 
 export async function fetchMe(): Promise<AuthUser | null> {
-  const response = await fetch(getUrl("/me"), {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (response.status === 401) {
-    return null;
+  try {
+    return await request<AuthUser>("/me", {
+      method: "GET",
+      credentials: "include",
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    throw error;
   }
-
-  if (!response.ok) {
-    throw new ApiError(response.status);
-  }
-
-  return (await response.json()) as AuthUser;
 }

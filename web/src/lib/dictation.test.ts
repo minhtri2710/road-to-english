@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { blankFor, blankMatches, diffWords, normalize, splitWords } from "./dictation";
+import { blankFor, blankMatches, diffWords, splitWords } from "./dictation";
 
-describe("normalize", () => {
+describe("normalization", () => {
   it.each([
     ["case", "HELLO World", "hello world"],
     ["punctuation", "Hello, world!", "hello world"],
@@ -11,7 +11,8 @@ describe("normalize", () => {
     ["hyphen", "sign-off", "sign off"],
     ["exact", "Good morning", "good morning"],
   ])("handles %s", (_name, input, expected) => {
-    expect(normalize(input)).toBe(expected);
+    const words = diffWords(input, input).map((part) => (part.kind === "correct" ? part.word : ""));
+    expect(words.join(" ")).toBe(expected);
   });
 });
 

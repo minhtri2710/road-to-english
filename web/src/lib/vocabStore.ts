@@ -1,31 +1,25 @@
 import { restoreCard, reviewCard, type Grade, type VocabCard } from "./vocab";
 
-import { openAppDatabase } from "./db";
+import { withDb } from "./db";
 import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 
 export async function putCard(card: VocabCard): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     await db.put("cards", card);
     notifyLocalMutation();
-  } finally {
-    db.close();
-  }
+  });
 }
 
 // Save: merges the new card into the stored copy in one transaction, so a re-save keeps the stored FSRS history.
 export async function saveCard(card: VocabCard): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction("cards", "readwrite");
     const stored = await tx.store.get(card.id);
     await tx.store.put(stored ? mergeCard(stored, card) : card);
     await tx.done;
     notifyLocalMutation();
-  } finally {
-    db.close();
-  }
+  });
 }
 
 // A history merge replaces fsrs at the same updatedAt, so the fsrs is part of a card's version.
@@ -39,8 +33,7 @@ function sameFsrs(left: VocabCard, right: VocabCard): boolean {
 
 // Writes `next` only while the stored copy is still exactly `expected`, in one transaction.
 async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise<boolean> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction("cards", "readwrite");
     const stored = await tx.store.get(expected.id);
     const unchanged =
@@ -56,9 +49,7 @@ async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise
       notifyLocalMutation();
     }
     return unchanged;
-  } finally {
-    db.close();
-  }
+  });
 }
 
 // Undo: restores the card only while the stored copy is still exactly this tombstone.
@@ -72,12 +63,9 @@ export function saveReview(card: VocabCard, rating: Grade, now: Date): Promise<b
 }
 
 export async function getAllCards(): Promise<VocabCard[]> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return await db.getAll("cards");
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export function dueCards(cards: VocabCard[], now: Date): VocabCard[] {

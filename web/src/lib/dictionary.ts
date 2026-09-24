@@ -1,11 +1,9 @@
+import { isRecord } from "./vocab";
+
 export interface Definition {
   phonetic?: string;
   partOfSpeech: string;
   definition: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function nonEmptyString(value: unknown): value is string {

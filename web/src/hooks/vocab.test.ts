@@ -2,18 +2,15 @@ import { act, createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createCard, type VocabCard } from "../lib/vocab";
+import type { VocabCard } from "../lib/vocab";
 import { getAllCards } from "../lib/vocabStore";
 import { useVocabDeck } from "./vocab";
+import { card } from "../test/fixtures";
 
 vi.mock("../lib/vocabStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/vocabStore")>()),
   getAllCards: vi.fn(),
 }));
-
-function card(sentenceId: string): VocabCard {
-  return createCard({ front: sentenceId, back: "", source: { lessonId: "l", sentenceId, word: "" } }, new Date());
-}
 
 function Probe() {
   const deck = useVocabDeck();
@@ -40,11 +37,11 @@ describe("useVocabDeck", () => {
     await act(async () => {
       pending[latest]([card("new")]);
     });
-    expect(container.textContent).toBe("l:new");
+    expect(container.textContent).toBe("lesson-1:new");
     await act(async () => {
       pending.slice(0, latest).forEach((resolve) => resolve([card("stale")]));
     });
-    expect(container.textContent).toBe("l:new");
+    expect(container.textContent).toBe("lesson-1:new");
     await act(async () => {
       root.unmount();
     });

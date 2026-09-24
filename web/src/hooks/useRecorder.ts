@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type RecorderState = "idle" | "requesting" | "recording" | "ready" | "error";
+type RecorderState = "idle" | "requesting" | "recording" | "ready" | "error";
 
-export interface RecorderControls {
+interface RecorderControls {
   state: RecorderState;
   url: string | null;
   // Milliseconds from start to stop of the latest clip; null before the first one.
@@ -14,12 +14,6 @@ export interface RecorderControls {
 
 function stopStream(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
-}
-
-function revokeObjectUrl(url: string): void {
-  if (typeof URL.revokeObjectURL === "function") {
-    URL.revokeObjectURL(url);
-  }
 }
 
 // The one recording in progress (or awaiting microphone permission) across all recorders.
@@ -50,7 +44,7 @@ export function useRecorder(): RecorderControls {
 
   const replaceUrl = (nextUrl: string) => {
     if (urlRef.current) {
-      revokeObjectUrl(urlRef.current);
+      URL.revokeObjectURL(urlRef.current);
     }
     urlRef.current = nextUrl;
     if (mountedRef.current) {
@@ -178,7 +172,7 @@ export function useRecorder(): RecorderControls {
       stopStream(stream);
       recorderRef.current = null;
       if (urlRef.current) {
-        revokeObjectUrl(urlRef.current);
+        URL.revokeObjectURL(urlRef.current);
         urlRef.current = null;
       }
     };

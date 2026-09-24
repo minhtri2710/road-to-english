@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { syncState } from "./sync";
-import { ApiError } from "./lessons";
+import { ApiError } from "./client";
 
 const fetchMock = vi.fn<typeof fetch>();
 const local = {

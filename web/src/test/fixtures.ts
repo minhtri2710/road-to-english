@@ -1,4 +1,24 @@
 import type { Lesson, LessonSummary } from "../api/lessons";
+import { createCard, type VocabCard } from "../lib/vocab";
+
+// A New card on lesson-1: id "lesson-1:<sentenceId>", front defaulting to the sentence id.
+export function card(
+  sentenceId = "sentence-1",
+  now = new Date("2026-01-01T00:00:00Z"),
+  { front = sentenceId, back = "hola" }: { front?: string; back?: string } = {},
+): VocabCard {
+  return createCard({ front, back, source: { lessonId: "lesson-1", sentenceId, word: "" } }, now);
+}
+
+export function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 export const lessonSummaries = [
   {

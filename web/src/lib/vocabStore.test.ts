@@ -1,19 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { mergeInto } from "./backupStore";
-import { createCard, deleteCard, Rating, reviewCard } from "./vocab";
+import { deleteCard, Rating, reviewCard } from "./vocab";
+import { card as newCard } from "../test/fixtures";
 import { dueCards, getAllCards, putCard, restoreTombstone, saveCard, saveReview } from "./vocabStore";
 
 const now = new Date("2026-01-01T00:00:00Z");
-const input = {
-  front: "hello",
-  back: "hola",
-  source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
-};
 
 describe("vocabulary store", () => {
   it("round-trips FSRS dates through IndexedDB after reopening", async () => {
-    const card = createCard(input, now);
+    const card = newCard("sentence-1", now);
     await putCard(card);
 
     const firstRead = await getAllCards();
@@ -27,18 +23,9 @@ describe("vocabulary store", () => {
   });
 
   it("selects due cards in ascending due order", () => {
-    const early = createCard(
-      { ...input, source: { ...input.source, sentenceId: "early", word: "" } },
-      new Date("2025-12-31T23:00:00Z"),
-    );
-    const late = createCard(
-      { ...input, source: { ...input.source, sentenceId: "late", word: "" } },
-      new Date("2025-01-01T00:00:00Z"),
-    );
-    const future = createCard(
-      { ...input, source: { ...input.source, sentenceId: "future", word: "" } },
-      new Date("2026-01-02T00:00:00Z"),
-    );
+    const early = newCard("early", new Date("2025-12-31T23:00:00Z"));
+    const late = newCard("late", new Date("2025-01-01T00:00:00Z"));
+    const future = newCard("future", new Date("2026-01-02T00:00:00Z"));
 
     expect(dueCards([early, future, late], now).map((card) => card.id)).toEqual([
       late.id,
@@ -47,7 +34,7 @@ describe("vocabulary store", () => {
   });
 
   it("never selects a deleted card", () => {
-    const card = createCard(input, new Date("2025-12-31T00:00:00Z"));
+    const card = newCard("sentence-1", new Date("2025-12-31T00:00:00Z"));
 
     expect(dueCards([deleteCard(card, now)], now)).toEqual([]);
   });
@@ -55,7 +42,7 @@ describe("vocabulary store", () => {
   describe("after a history merge at the same updatedAt", () => {
     // Device B reviewed the card 3 times up to Jan 3; this device saved it fresh on Jan 4.
     function history() {
-      let card = createCard(input, new Date("2026-01-01T00:00:00.000Z"));
+      let card = newCard("sentence-1", new Date("2026-01-01T00:00:00.000Z"));
       for (const day of ["2026-01-01T00:01:00.000Z", "2026-01-02T00:00:00.000Z", "2026-01-03T00:00:00.000Z"]) {
         card = reviewCard(card, Rating.Good, new Date(day));
       }
@@ -63,7 +50,7 @@ describe("vocabulary store", () => {
     }
 
     it("rejects a rating of the pre-merge card and keeps the merged history", async () => {
-      await saveCard(createCard(input, new Date("2026-01-04T00:00:00.000Z")));
+      await saveCard(newCard("sentence-1", new Date("2026-01-04T00:00:00.000Z")));
       const shown = (await getAllCards())[0]!;
       await mergeInto({ cards: [history()], practiceDays: [], lessonCompletion: [] });
       const merged = (await getAllCards())[0]!;
@@ -75,7 +62,7 @@ describe("vocabulary store", () => {
     });
 
     it("rejects restoring a tombstone whose fsrs changed", async () => {
-      const tombstone = deleteCard(createCard(input, new Date("2026-01-04T00:00:00.000Z")), new Date("2026-01-04T01:00:00.000Z"));
+      const tombstone = deleteCard(newCard("sentence-1", new Date("2026-01-04T00:00:00.000Z")), new Date("2026-01-04T01:00:00.000Z"));
       await putCard(tombstone);
       await putCard({ ...tombstone, fsrs: history().fsrs });
 

@@ -1,13 +1,11 @@
-import { expect, test } from "./fixtures";
-
-const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
+import { createLesson, expect, test, TRANSCRIPT } from "./fixtures";
 
 test("video lesson from a YouTube URL and a pasted transcript", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("Title").fill("Video lesson");
-  await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-  await page.getByLabel("Text", { exact: true }).fill(TRANSCRIPT);
-  await page.getByRole("button", { name: "Create" }).click();
+  await createLesson(page, {
+    title: "Video lesson",
+    text: TRANSCRIPT,
+    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  });
 
   await expect(page.getByRole("heading", { level: 1, name: "Video lesson" })).toBeVisible();
   await expect(page.getByText("Video from YouTube; playing it connects to YouTube.")).toBeVisible();
@@ -26,11 +24,7 @@ test("video lesson from a YouTube URL and a pasted transcript", async ({ page })
 
 test("the video player fits a 375px viewport at 16:9", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto("/");
-  await page.getByLabel("Title").fill("Narrow video");
-  await page.getByLabel("YouTube URL").fill("https://youtu.be/dQw4w9WgXcQ");
-  await page.getByLabel("Text", { exact: true }).fill(TRANSCRIPT);
-  await page.getByRole("button", { name: "Create" }).click();
+  await createLesson(page, { title: "Narrow video", text: TRANSCRIPT, videoUrl: "https://youtu.be/dQw4w9WgXcQ" });
 
   const frame = page.getByTitle("YouTube video player");
   await expect(frame).toBeVisible();

@@ -1,5 +1,5 @@
 // ponytail: 180 WPM is a heuristic rate-one mapping; speech engines vary, so tune this constant if calibration changes.
-export const WPM_AT_RATE_ONE = 180;
+const WPM_AT_RATE_ONE = 180;
 
 let current: SpeechSynthesisUtterance | null = null;
 

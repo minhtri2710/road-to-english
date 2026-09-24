@@ -1,13 +1,10 @@
-import { downloadText, expect, test } from "./fixtures";
+import { createLesson, downloadText, expect, test } from "./fixtures";
 
 const TITLE = "My pasted text";
 const TEXT = "The first sentence is short. The second one follows.\n\nA new paragraph starts here.";
 
 test("import text, export a backup, delete, restore from the backup", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("Title").fill(TITLE);
-  await page.getByLabel("Text", { exact: true }).fill(TEXT);
-  await page.getByRole("button", { name: "Create" }).click();
+  await createLesson(page, { title: TITLE, text: TEXT });
 
   await expect(page.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
   await expect(page.getByRole("button", { name: "Listen" })).toHaveCount(3);

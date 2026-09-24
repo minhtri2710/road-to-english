@@ -1,12 +1,11 @@
-import { openAppDatabase, type DailyCount } from "./db";
+import { withDb, type DailyCount } from "./db";
 import { notifyLocalMutation } from "./syncEvents";
 
 export async function recordPractice(
   dateKey: string,
   { newCard }: { newCard: boolean },
 ): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction(["practiceDays", "dailyCounts"], "readwrite");
     tx.objectStore("practiceDays").put({ date: dateKey });
     const counts = tx.objectStore("dailyCounts");
@@ -18,53 +17,36 @@ export async function recordPractice(
     });
     await tx.done;
     notifyLocalMutation();
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function getDailyCount(dateKey: string): Promise<DailyCount> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return (await db.get("dailyCounts", dateKey)) ?? { date: dateKey, actions: 0, newCards: 0 };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function getAllDailyCounts(): Promise<DailyCount[]> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return await db.getAll("dailyCounts");
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function getPracticeDays(): Promise<string[]> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return (await db.getAll("practiceDays")).map(({ date }) => date);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function markLessonComplete(lessonId: string): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     await db.put("lessonCompletion", { lessonId });
     notifyLocalMutation();
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function getCompletedLessons(): Promise<string[]> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return (await db.getAll("lessonCompletion")).map(({ lessonId }) => lessonId);
-  } finally {
-    db.close();
-  }
+  });
 }

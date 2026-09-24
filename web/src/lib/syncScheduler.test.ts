@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError } from "../api/lessons";
+import { ApiError } from "../api/client";
 import { syncState } from "../api/sync";
 import { createSyncScheduler, type SyncStatus } from "./syncScheduler";
 import { getAllCards } from "./vocabStore";
-import { createCard } from "./vocab";
 import { putCard } from "./vocabStore";
 import { setSyncTrigger } from "./syncEvents";
+import { card as fixtureCard, deferred } from "../test/fixtures";
 
 vi.mock("../api/sync", () => ({ syncState: vi.fn() }));
 
@@ -14,26 +14,11 @@ const syncMock = vi.mocked(syncState);
 const now = new Date("2026-01-01T00:00:00Z");
 
 function card(lastReview?: string) {
-  const value = createCard(
-    {
-      front: "hello",
-      back: "answer",
-      source: { lessonId: "lesson-1", sentenceId: "sentence-1", word: "" },
-    },
-    now,
-  );
+  const value = fixtureCard("sentence-1", now);
   if (lastReview) {
     value.fsrs.last_review = new Date(lastReview);
   }
   return value;
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
-    resolve = nextResolve;
-  });
-  return { promise, resolve };
 }
 
 describe("sync scheduler", () => {

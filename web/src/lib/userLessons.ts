@@ -1,19 +1,19 @@
 import type { Lesson, Level } from "../api/lessons";
-import { openAppDatabase } from "./db";
+import { withDb } from "./db";
 import { splitWords } from "./dictation";
-import { cardWord, isCardWord, isText } from "./vocab";
+import { cardWord, isCardWord, isRecord, isText } from "./vocab";
 import { isYouTubeId, parseTranscript, parseYouTubeId } from "./youtube";
 
 export const USER_LEVELS = ["A1", "A2", "B1", "B2"] as const satisfies readonly Level[];
 export const USER_WPMS = ["90", "110", "130", "150"] as const;
-export const MAX_TEXT_LENGTH = 20000;
-export const MAX_SENTENCES = 200;
-export const MAX_TITLE_LENGTH = 100;
+const MAX_TEXT_LENGTH = 20000;
+const MAX_SENTENCES = 200;
+const MAX_TITLE_LENGTH = 100;
 
 // Best-effort: Intl.Segmenter splits after abbreviations such as "Mr." ("Mr. Smith" -> "Mr.", "Smith ...").
 // A blank line is a hard break; other whitespace collapses before segmenting because ICU breaks at every
 // newline, which would split hard-wrapped text.
-export function segmentText(text: string): string[] {
+function segmentText(text: string): string[] {
   const segmenter = new Intl.Segmenter("en", { granularity: "sentence" });
   return text
     .split(/\n\s*\n/)
@@ -23,7 +23,7 @@ export function segmentText(text: string): string[] {
     .filter((segment) => splitWords(segment).some((part) => isCardWord(cardWord(part))));
 }
 
-export function isValidTitle(value: unknown): value is string {
+function isValidTitle(value: unknown): value is string {
   return isText(value) && value === value.trim() && value.length >= 1 && value.length <= MAX_TITLE_LENGTH;
 }
 
@@ -60,10 +60,6 @@ export function createUserLesson(input: {
     sentences: sentences.map((sentence, index) => ({ id: `s${index + 1}`, vi: "", ...sentence })),
     ...(videoId && { videoId }),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
@@ -114,37 +110,19 @@ export function isValidUserLesson(value: unknown): value is Lesson {
 }
 
 export async function listUserLessons(): Promise<Lesson[]> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     return await db.getAll("userLessons");
-  } finally {
-    db.close();
-  }
-}
-
-export async function getUserLesson(id: string): Promise<Lesson | undefined> {
-  const db = await openAppDatabase();
-  try {
-    return await db.get("userLessons", id);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function putUserLesson(lesson: Lesson): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     await db.put("userLessons", lesson);
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function deleteUserLesson(id: string): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     await db.delete("userLessons", id);
-  } finally {
-    db.close();
-  }
+  });
 }

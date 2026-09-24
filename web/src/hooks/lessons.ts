@@ -7,7 +7,7 @@ import {
   type LessonSummary,
 } from "../api/lessons";
 
-export interface AsyncData<T> {
+interface AsyncData<T> {
   data: T | null;
   loading: boolean;
   error: Error | null;
@@ -54,22 +54,13 @@ export function useLessons(): AsyncData<LessonSummary[]> & { retry: () => void }
   return { data, loading, error, retry: () => setAttempt((count) => count + 1) };
 }
 
-export function useLesson(id: string | null): AsyncData<Lesson> {
+export function useLesson(id: string): AsyncData<Lesson> {
   const [data, setData] = useState<Lesson | null>(null);
-  const [loading, setLoading] = useState(id !== null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let active = true;
-
-    if (id === null) {
-      setData(null);
-      setLoading(false);
-      setError(null);
-      return () => {
-        active = false;
-      };
-    }
 
     setData(null);
     setLoading(true);

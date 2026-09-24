@@ -15,9 +15,6 @@ interface Recognition {
 type RecognitionConstructor = new () => Recognition;
 
 function recognitionConstructor(): RecognitionConstructor | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
   const speechWindow = window as unknown as {
     SpeechRecognition?: RecognitionConstructor;
     webkitSpeechRecognition?: RecognitionConstructor;

@@ -3,7 +3,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { Lesson } from "../api/lessons";
 import type { VocabCard } from "./vocab";
 
-export interface AppDatabase extends DBSchema {
+interface AppDatabase extends DBSchema {
   cards: { key: string; value: VocabCard };
   practiceDays: { key: string; value: { date: string } };
   lessonCompletion: { key: string; value: { lessonId: string } };
@@ -35,4 +35,14 @@ export function openAppDatabase(): Promise<IDBPDatabase<AppDatabase>> {
       db.createObjectStore("userLessons", { keyPath: "id" });
     },
   });
+}
+
+// Opens per call: tests swap indexedDB per test and the e2e storage-failure spec overrides indexedDB.open.
+export async function withDb<T>(fn: (db: IDBPDatabase<AppDatabase>) => Promise<T>): Promise<T> {
+  const db = await openAppDatabase();
+  try {
+    return await fn(db);
+  } finally {
+    db.close();
+  }
 }

@@ -3,15 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   createUserLesson,
   deleteUserLesson,
-  getUserLesson,
   isValidUserLesson,
   listUserLessons,
   putUserLesson,
-  segmentText,
 } from "./userLessons";
 import { userLesson, videoLesson } from "../test/fixtures";
 
-describe("segmentText", () => {
+function segmentText(text: string): string[] {
+  return createUserLesson({ title: "T", text, level: "B1", targetWpm: 110 }).sentences.map((sentence) => sentence.text);
+}
+
+describe("sentence segmentation", () => {
   it("splits multiple sentences", () => {
     expect(segmentText("I like tea. Do you? Yes!")).toEqual(["I like tea.", "Do you?", "Yes!"]);
   });
@@ -47,9 +49,9 @@ describe("segmentText", () => {
     expect(segmentText("Hello. «»? Bye.")).toEqual(["Hello.", "Bye."]);
   });
 
-  it("returns [] for empty text", () => {
-    expect(segmentText("")).toEqual([]);
-    expect(segmentText("   \n ")).toEqual([]);
+  it("finds no sentence in empty text", () => {
+    expect(() => segmentText("")).toThrow("Text must contain 1-200 sentences.");
+    expect(() => segmentText("   \n ")).toThrow("Text must contain 1-200 sentences.");
   });
 });
 
@@ -156,17 +158,15 @@ describe("video lessons", () => {
 });
 
 describe("user lesson store", () => {
-  it("round-trips put, get, list and delete", async () => {
+  it("round-trips put, list and delete", async () => {
     const other = { ...userLesson, id: "user-00000000-0000-4000-8000-000000000002", title: "Other" };
     await putUserLesson(userLesson);
     await putUserLesson(other);
 
-    expect(await getUserLesson(userLesson.id)).toEqual(userLesson);
     expect(await listUserLessons()).toEqual([userLesson, other]);
 
     await deleteUserLesson(userLesson.id);
 
-    expect(await getUserLesson(userLesson.id)).toBeUndefined();
     expect(await listUserLessons()).toEqual([other]);
   });
 });

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchMe, signIn, type AuthUser } from "../api/auth";
 import { useAuth, type AuthState } from "./auth";
+import { deferred } from "../test/fixtures";
 
 vi.mock("../api/auth", () => ({
   fetchMe: vi.fn(),
@@ -13,16 +14,6 @@ vi.mock("../api/auth", () => ({
 }));
 
 const user: AuthUser = { id: "u1", email: "learner@example.com" };
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 let state: AuthState;
 let root: Root;

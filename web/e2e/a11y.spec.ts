@@ -1,11 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
-import { expect, openLibraryLesson, test } from "./fixtures";
+import { createLesson, expect, openLibraryLesson, test, TRANSCRIPT } from "./fixtures";
 
 const LIBRARY_LESSON = "Greetings & Basics";
 const USER_LESSON = "My pasted text";
-const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
 
 async function axeViolations(page: Page): Promise<string[]> {
   const { violations } = await new AxeBuilder({ page })
@@ -17,10 +16,7 @@ async function axeViolations(page: Page): Promise<string[]> {
 }
 
 async function createUserLesson(page: Page): Promise<void> {
-  await page.goto("/");
-  await page.getByLabel("Title").fill(USER_LESSON);
-  await page.getByLabel("Text", { exact: true }).fill("The first sentence is short. The second one follows.");
-  await page.getByRole("button", { name: "Create" }).click();
+  await createLesson(page, { title: USER_LESSON, text: "The first sentence is short. The second one follows." });
   await expect(page.getByRole("heading", { level: 1, name: USER_LESSON })).toBeVisible();
   await page.getByRole("button", { name: "Back to lessons" }).click();
   await expect(page.getByRole("button", { name: `Delete ${USER_LESSON}` })).toBeVisible();
@@ -49,11 +45,11 @@ async function showImportError(page: Page): Promise<void> {
 }
 
 async function openVideoLesson(page: Page): Promise<void> {
-  await page.goto("/");
-  await page.getByLabel("Title").fill("Video lesson");
-  await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-  await page.getByLabel("Text", { exact: true }).fill(TRANSCRIPT);
-  await page.getByRole("button", { name: "Create" }).click();
+  await createLesson(page, {
+    title: "Video lesson",
+    text: TRANSCRIPT,
+    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  });
   await expect(page.getByRole("button", { name: "Play clip" }).first()).toBeEnabled();
 }
 

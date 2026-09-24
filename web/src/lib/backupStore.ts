@@ -1,26 +1,22 @@
-import { openAppDatabase } from "./db";
+import { withDb } from "./db";
 import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 import type { BackupData, SyncState } from "./backup";
 
 // The /sync payload: never includes userLessons.
 export async function exportAll(): Promise<SyncState> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const [cards, practiceDays, lessonCompletion] = await Promise.all([
       db.getAll("cards"),
       db.getAll("practiceDays"),
       db.getAll("lessonCompletion"),
     ]);
     return { cards, practiceDays, lessonCompletion };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function exportBackupData(): Promise<BackupData> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const [cards, practiceDays, lessonCompletion, userLessons] = await Promise.all([
       db.getAll("cards"),
       db.getAll("practiceDays"),
@@ -28,14 +24,11 @@ export async function exportBackupData(): Promise<BackupData> {
       db.getAll("userLessons"),
     ]);
     return { cards, practiceDays, lessonCompletion, userLessons };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function replaceAll(data: BackupData): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction(
       ["cards", "practiceDays", "lessonCompletion", "userLessons"],
       "readwrite",
@@ -54,14 +47,11 @@ export async function replaceAll(data: BackupData): Promise<void> {
     data.userLessons.forEach((lesson) => tx.objectStore("userLessons").put(lesson));
     await tx.done;
     notifyLocalMutation();
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function claimOwner(ownerId: string): Promise<boolean> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction("meta", "readwrite");
     const owner = await tx.objectStore("meta").get("owner");
     if (!owner) {
@@ -71,23 +61,11 @@ export async function claimOwner(ownerId: string): Promise<boolean> {
     }
     await tx.done;
     return owner.ownerId === ownerId;
-  } finally {
-    db.close();
-  }
-}
-
-export async function getOwner(): Promise<string | undefined> {
-  const db = await openAppDatabase();
-  try {
-    return (await db.get("meta", "owner"))?.ownerId;
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function mergeInto(data: SyncState): Promise<void> {
-  const db = await openAppDatabase();
-  try {
+  return withDb(async (db) => {
     const tx = db.transaction(
       ["cards", "practiceDays", "lessonCompletion"],
       "readwrite",
@@ -104,7 +82,5 @@ export async function mergeInto(data: SyncState): Promise<void> {
       tx.objectStore("lessonCompletion").put(completion),
     );
     await tx.done;
-  } finally {
-    db.close();
-  }
+  });
 }

@@ -1,6 +1,6 @@
 import { cardWord, isCardWord } from "./vocab";
 
-export function normalize(s: string): string {
+function normalize(s: string): string {
   return s
     .toLowerCase()
     .replace(/['’]/g, "")

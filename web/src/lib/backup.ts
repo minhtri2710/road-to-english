@@ -1,8 +1,8 @@
 import type { Lesson } from "../api/lessons";
-import { todayKey } from "./progress";
+import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
-import { cardId, isCardWord, isText, type CardSource, type VocabCard } from "./vocab";
+import { cardId, isCardWord, isRecord, isText, type CardSource, type VocabCard } from "./vocab";
 
 // The /sync wire state. User lessons are local-only and never part of it.
 export interface SyncState {
@@ -42,20 +42,8 @@ interface BackupEnvelope extends BackupData {
   exportedAt: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isNonEmptyText(value: unknown): value is string {
   return isText(value) && value.length > 0;
-}
-
-function daysInMonth(year: number, month: number): number {
-  if (month === 2) {
-    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    return leap ? 29 : 28;
-  }
-  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function timestampParts(value: string): number[] | null {
@@ -98,11 +86,11 @@ function reviveTimestamp(value: string): Date {
   return date;
 }
 
-export function isValidTimestamp(value: unknown): value is string {
+function isValidTimestamp(value: unknown): value is string {
   return typeof value === "string" && timestampParts(value) !== null;
 }
 
-export function isValidDayKey(value: unknown): value is string {
+function isValidDayKey(value: unknown): value is string {
   if (typeof value !== "string" || !/^(\d{4})-(\d{2})-(\d{2})$/.test(value)) {
     return false;
   }
@@ -167,7 +155,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
   }
 }
 
-export function validateSyncState(value: unknown): asserts value is SerializedState {
+function validateSyncState(value: unknown): asserts value is SerializedState {
   if (!isRecord(value) || !Array.isArray(value.cards) || !Array.isArray(value.practiceDays) || !Array.isArray(value.lessonCompletion)) {
     throw new Error("Invalid backup stores.");
   }

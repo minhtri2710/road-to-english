@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api/lessons";
+import { ApiError } from "../api/client";
 
 import {
   fetchMe,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isValidDayKey, isValidTimestamp, reviveSyncState } from "./backup";
+import { reviveSyncState } from "./backup";
 
 const fsrsFields = {
   stability: 2.5,
@@ -32,6 +32,15 @@ function state(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function revives(value: unknown): boolean {
+  try {
+    reviveSyncState(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("sync state validation", () => {
   it.each([
     ["2026-01-01T00:00:00Z", true],
@@ -48,7 +57,7 @@ describe("sync state validation", () => {
     ["0000-01-01T00:00:00Z", false],
     ["2026", false],
   ])("timestamp %s is %s", (value, valid) => {
-    expect(isValidTimestamp(value)).toBe(valid);
+    expect(revives(state({ cards: [{ ...state().cards[0], fsrs: { ...fsrsFields, due: value } }] }))).toBe(valid);
   });
 
   it.each([
@@ -60,7 +69,7 @@ describe("sync state validation", () => {
     ["0000-01-01", false],
     ["2026", false],
   ])("day key %s is %s", (value, valid) => {
-    expect(isValidDayKey(value)).toBe(valid);
+    expect(revives(state({ practiceDays: [{ date: value }] }))).toBe(valid);
   });
 
   it("revives valid timestamps and dates", () => {

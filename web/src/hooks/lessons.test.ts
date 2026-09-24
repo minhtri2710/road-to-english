@@ -69,11 +69,11 @@ describe("lesson hooks", () => {
     container.remove();
   });
 
-  it("starts useLesson loading for an id and idle for null", async () => {
+  it("starts useLesson loading for an id", async () => {
     const first: Record<string, boolean> = {};
-    function FirstPaint({ id }: { id: string | null }) {
+    function FirstPaint({ id }: { id: string }) {
       const { loading } = useLesson(id);
-      first[String(id)] ??= loading;
+      first[id] ??= loading;
       return null;
     }
     const container = document.createElement("div");
@@ -85,12 +85,11 @@ describe("lesson hooks", () => {
           StrictMode,
           null,
           createElement(FirstPaint, { id: "greetings-basics" }),
-          createElement(FirstPaint, { id: null }),
         ),
       );
     });
 
-    expect(first).toEqual({ "greetings-basics": true, null: false });
+    expect(first).toEqual({ "greetings-basics": true });
     await act(async () => {
       root.unmount();
     });
