@@ -226,6 +226,10 @@ describe("hintFor", () => {
   ])("masks %j", (text, hint) => {
     expect(hintFor(text)).toBe(hint);
   });
+
+  it("masks a combining mark with its letter", () => {
+    expect(hintFor("Zoe\u0308")).toBe("Z__");
+  });
 });
 
 describe("endingHints", () => {
