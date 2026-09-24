@@ -4,6 +4,7 @@ import { readPref, writePref } from "../lib/prefs";
 
 export const DAILY_GOALS = ["5", "10", "20"] as const;
 export type DailyGoal = (typeof DAILY_GOALS)[number];
+export const GOAL_NAMES: Record<DailyGoal, string> = { "5": "Light", "10": "Regular", "20": "Intense" };
 const DAILY_GOAL_KEY = "road-to-english.dailyGoal";
 
 function readDailyGoal(): DailyGoal {
