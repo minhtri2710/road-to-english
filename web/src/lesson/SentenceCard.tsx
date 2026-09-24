@@ -9,11 +9,12 @@ import type { Lesson } from "../api/lessons";
 import { sharedStyles } from "../components/styles";
 import type { StopMedia } from "../hooks/usePracticeMedia";
 import type { useYouTubePlayer } from "../hooks/useYouTubePlayer";
+import type { PracticeMode } from "../lib/progress";
 import { speak } from "../lib/speech";
 import { cardId, sentenceCard, wordCard, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord } from "../lib/words";
 import { SentenceShadowing } from "./SentenceShadowing";
-import { SentenceBlank, SentenceDictation, type PracticeMode } from "./SentenceQuiz";
+import { SentenceBlank, SentenceDictation } from "./SentenceQuiz";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
 
 const styles = stylex.create({

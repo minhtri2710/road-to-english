@@ -11,9 +11,10 @@ import { Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { registerRecordingAudio, type StopMedia } from "../hooks/usePracticeMedia";
 import { recordingSupported, useRecorder } from "../hooks/useRecorder";
+import type { PracticeMode } from "../lib/progress";
 import { recognizeOnce } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
-import { WordDiffResult, type PracticeMode } from "./SentenceQuiz";
+import { WordDiffResult } from "./SentenceQuiz";
 
 // Reference speech highlights the spoken word of its sentence. Any start, end or
 // error clears the highlight; speak's current-utterance guard drops superseded events.

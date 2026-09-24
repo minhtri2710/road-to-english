@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Lesson } from "../api/lessons";
+import type { PracticeMode } from "../lib/progress";
 import { wordCard, type NewCard } from "../lib/vocab";
 import { cardWord, isCardWord } from "../lib/words";
-import type { PracticeMode } from "../lesson/SentenceQuiz";
 
 // Practice, missed words and the completion save for one lesson visit.
 export function useLessonProgress(

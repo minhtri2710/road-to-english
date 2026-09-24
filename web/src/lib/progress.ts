@@ -1,3 +1,5 @@
+export type PracticeMode = "recording" | "check" | "dictation" | "blank";
+
 // ponytail: practice days are client-local day keys; cross-timezone unions can create or skip a streak day.
 export function todayKey(now: Date): string {
   const year = now.getFullYear();

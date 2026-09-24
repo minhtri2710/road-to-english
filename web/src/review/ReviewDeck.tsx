@@ -13,9 +13,10 @@ import * as stylex from "@stylexjs/stylex";
 
 import { Alert, Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
+import { useSayIt } from "../hooks/useSayIt";
 import { WordDiffResult } from "../lesson/SentenceQuiz";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
-import { recognitionSupported, recognizeOnce } from "../lib/recognition";
+import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import {
   formatInterval,
@@ -28,6 +29,7 @@ import {
   type Grade,
   type VocabCard,
 } from "../lib/vocab";
+import { addRating, EMPTY_RECAP, GRADE_NAMES, recapLine, type Recap } from "./recap";
 
 const styles = stylex.create({
   reviewCard: {
@@ -66,20 +68,6 @@ const LISTEN_WPM = 110;
 
 const LISTEN_FIRST_KEY = "road-to-english.listenFirst";
 
-// A spoken attempt at the current card: informs only, never rates or records practice.
-type SayIt =
-  | { status: "idle" }
-  | { status: "listening" }
-  | { status: "heard"; transcript: string }
-  | { status: "failed"; message: string };
-
-const GRADE_NAMES: Record<Grade, string> = {
-  [Rating.Again]: "Again",
-  [Rating.Hard]: "Hard",
-  [Rating.Good]: "Good",
-  [Rating.Easy]: "Easy",
-};
-
 function listen(text: string) {
   speak(text, LISTEN_WPM, 1);
 }
@@ -89,39 +77,6 @@ function stopListening() {
   if (speechSupported()) {
     stopSpeaking();
   }
-}
-
-// Ratings saved in this visit, per grade, and the distinct cards rated Again, in first-rated order.
-interface Recap {
-  counts: Record<Grade, number>;
-  again: { id: string; front: string }[];
-}
-
-const EMPTY_RECAP: Recap = {
-  counts: { [Rating.Again]: 0, [Rating.Hard]: 0, [Rating.Good]: 0, [Rating.Easy]: 0 },
-  again: [],
-};
-
-function addRating(recap: Recap, card: VocabCard, rating: Grade): Recap {
-  return {
-    counts: { ...recap.counts, [rating]: recap.counts[rating] + 1 },
-    again:
-      rating === Rating.Again && !recap.again.some((rated) => rated.id === card.id)
-        ? [...recap.again, { id: card.id, front: card.front }]
-        : recap.again,
-  };
-}
-
-// "Reviewed 3 cards: 1 Again, 2 Good. ", or "" before any saved rating.
-function recapLine({ counts }: Recap): string {
-  const total = GRADES.reduce((sum, grade) => sum + counts[grade], 0);
-  if (total === 0) {
-    return "";
-  }
-  const breakdown = GRADES.filter((grade) => counts[grade] > 0)
-    .map((grade) => `${counts[grade]} ${GRADE_NAMES[grade]}`)
-    .join(", ");
-  return `Reviewed ${total} card${total === 1 ? "" : "s"}: ${breakdown}. `;
 }
 
 // A visible key hint beside its button (a Kbd inside a primary button fails contrast); the button's
@@ -190,11 +145,6 @@ export function ReviewDeck({
   const [listenFirstPref, setListenFirstPref] = useState(() => readPref(LISTEN_FIRST_KEY) === "on");
   const listenFirst = canSpeak && listenFirstPref;
   const canSayIt = readPref(PRONUNCIATION_CHECK_KEY) === "on" && recognitionSupported();
-  // The card turn a Say it attempt belongs to; a new turn or Show answer drops it.
-  const [sayIt, setSayIt] = useState<{ turn: string | null; state: SayIt }>({ turn: null, state: { status: "idle" } });
-  const sayItState: SayIt = sayIt.turn === cardTurn && !showAnswer ? sayIt.state : { status: "idle" };
-  const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
-  const sayItRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (focusTarget === null) {
@@ -213,13 +163,7 @@ export function ReviewDeck({
     }
   }, [cardTurn, listenFirst, showAnswer]);
 
-  useEffect(
-    () => () => {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-    },
-    [cardTurn, showAnswer],
-  );
+  const { sayItState, sayItRef, startSayIt, sayItAgain } = useSayIt(cardTurn, showAnswer, stopListening);
 
   // The interval labels count from now, so they re-render once a minute while the answer is shown.
   const [, refreshIntervals] = useReducer((ticks: number) => ticks + 1, 0);
@@ -307,32 +251,6 @@ export function ReviewDeck({
       // The disabled rating buttons drop focus, so it moves to the card, whether or not the rating saved.
       setFocusTarget("prompt");
     }
-  };
-
-  const startSayIt = () => {
-    stopListening();
-    const turn = cardTurn;
-    setSayIt({ turn, state: { status: "listening" } });
-    const recognition = recognizeOnce();
-    recognitionRef.current = recognition;
-    recognition.result.then(
-      (transcript) => {
-        if (recognitionRef.current !== recognition) return;
-        recognitionRef.current = null;
-        setSayIt({ turn, state: { status: "heard", transcript } });
-      },
-      (error: Error) => {
-        if (recognitionRef.current !== recognition) return;
-        recognitionRef.current = null;
-        setSayIt({ turn, state: error.name === "AbortError" ? { status: "idle" } : { status: "failed", message: error.message } });
-      },
-    );
-  };
-
-  // Try again removes itself, so focus goes back to Say it.
-  const sayItAgain = () => {
-    setSayIt({ turn: cardTurn, state: { status: "idle" } });
-    sayItRef.current?.focus();
   };
 
   const reveal = () => {

@@ -9,6 +9,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
+import type { PracticeMode } from "../lib/progress";
 import { blankFor, blankMatches, diffWords, endingHints, hintFor, wordBank, type WordDiff } from "../lib/dictation";
 import { speak, speechSupported } from "../lib/speech";
 
@@ -21,8 +22,6 @@ const styles = stylex.create({
     textUnderlineOffset: "0.2em",
   },
 });
-
-export type PracticeMode = "recording" | "check" | "dictation" | "blank";
 
 function wordNote(entry: WordDiff, verb: "typed" | "said"): string {
   switch (entry.kind) {

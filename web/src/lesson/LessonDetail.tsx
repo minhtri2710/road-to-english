@@ -17,6 +17,7 @@ import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
 import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
+import type { PracticeMode } from "../lib/progress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
@@ -24,7 +25,6 @@ import type { NewCard, VocabCard } from "../lib/vocab";
 import { splitWords } from "../lib/words";
 import { GuidedShadowing } from "./GuidedShadowing";
 import { SentenceCard, type LessonMode } from "./SentenceCard";
-import type { PracticeMode } from "./SentenceQuiz";
 import { LessonSummary, type SummaryProps } from "./LessonSummary";
 
 const styles = stylex.create({
