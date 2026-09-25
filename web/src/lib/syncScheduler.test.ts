@@ -154,6 +154,70 @@ describe("sync scheduler", () => {
     await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
     scheduler.stop();
   });
+
+  const empty = { cards: [], practiceDays: [], lessonCompletion: [] };
+  const tooLarge = () => new ApiError(413, null, "too many cards");
+
+  it("sends an unchanged body refused with 413 no more, whatever triggers the run", async () => {
+    const reports: [SyncStatus, string | null][] = [];
+    syncMock.mockRejectedValueOnce(tooLarge());
+    await putCard(card("2026-01-02T00:00:00Z"));
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status, code) => reports.push([status, code]));
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(reports).toHaveLength(1));
+    // Focus, online and visibilitychange each call trigger with the local data unchanged.
+    for (let run = 2; run <= 4; run += 1) {
+      scheduler.trigger();
+      await vi.waitFor(() => expect(reports).toHaveLength(run));
+    }
+
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    expect(reports).toEqual(Array.from({ length: 4 }, () => ["tooLarge", "too many cards"]));
+    scheduler.stop();
+  });
+
+  it("sends a changed body once after a 413", async () => {
+    const reports: [SyncStatus, string | null][] = [];
+    syncMock.mockRejectedValue(tooLarge());
+    await putCard(card("2026-01-02T00:00:00Z"));
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status, code) => reports.push([status, code]));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(reports).toHaveLength(1));
+    setSyncTrigger(scheduler.trigger);
+
+    await putCard(card("2026-01-03T00:00:00Z"));
+    await vi.waitFor(() => expect(reports).toHaveLength(2));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(syncMock).toHaveBeenCalledTimes(2);
+    expect(reports).toEqual([["tooLarge", "too many cards"], ["tooLarge", "too many cards"]]);
+    scheduler.stop();
+  });
+
+  it("forgets the refused body after a 200", async () => {
+    const statuses: SyncStatus[] = [];
+    syncMock.mockRejectedValueOnce(tooLarge());
+    syncMock.mockResolvedValue(empty);
+    await putCard(card("2026-01-02T00:00:00Z"));
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge"]));
+
+    await putCard(card("2026-01-03T00:00:00Z"));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced"]));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced", "synced"]));
+    // The body the 413 refused is sendable again once a 200 cleared the memory.
+    await putCard(card("2026-01-02T00:00:00Z"));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced", "synced", "synced"]));
+
+    expect(syncMock).toHaveBeenCalledTimes(4);
+    expect(JSON.stringify(syncMock.mock.calls[3]?.[0])).toBe(JSON.stringify(syncMock.mock.calls[0]?.[0]));
+    scheduler.stop();
+  });
 });
 
 describe("syncedAgo", () => {

@@ -58,7 +58,7 @@ export function AppHeader({
       {/* The synced line changes every minute, so the live region carries only problems and one "Synced." after a failure. */}
       <Status>
         {syncLine?.status === "failed" && <Text as="p" type="supporting">{syncLine.text}</Text>}
-        {syncLine?.status === "ownerMismatch" && (
+        {(syncLine?.status === "ownerMismatch" || syncLine?.status === "tooLarge") && (
           <Text as="p" color="primary" xstyle={sharedStyles.error}>
             {syncLine.text}
           </Text>

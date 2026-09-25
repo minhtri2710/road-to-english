@@ -173,4 +173,34 @@ describe("useSync", () => {
     expect(accountDisclosure(container).getAttribute("aria-expanded")).toBe("false");
     expect(container.textContent).not.toContain(syncFailed);
   });
+
+  const bodyTooLarge = "Sync is paused: your data is too large to send in one sync. Everything is still saved on this device.";
+
+  it.each([
+    ["request body too large", bodyTooLarge],
+    ["too many cards", "Sync is paused: this account has more saved cards than sync can hold. Everything is still saved on this device."],
+    ["too many practice days", "Sync is paused: this account has more practice days than sync can hold. Everything is still saved on this device."],
+    ["too many lesson completions", "Sync is paused: this account has more completed lessons than sync can hold. Everything is still saved on this device."],
+    ["something new", bodyTooLarge],
+    [null, bodyTooLarge],
+  ])("announces a 413 with code %s as paused sync", async (code, text) => {
+    const { container } = await renderApp({ route: (path) => {
+      if (path === "/me") return userResponse();
+      if (path === "/sync") return new Response(code === null ? "too large" : JSON.stringify({ error: code }), { status: 413 });
+      return undefined;
+    } });
+    await waitForCondition(() => liveRegions(container).includes(text));
+    expect(container.textContent).not.toContain(syncFailed);
+    expect(syncLine(container)).toBeUndefined();
+  });
+
+  it("still shows the failed text for a server error", async () => {
+    const { container } = await renderApp({ route: (path) => {
+      if (path === "/me") return userResponse();
+      if (path === "/sync") return new Response(JSON.stringify({ error: "internal error" }), { status: 500 });
+      return undefined;
+    } });
+    await waitForCondition(() => liveRegions(container).includes(syncFailed));
+    expect(container.textContent).not.toContain("Sync is paused");
+  });
 });

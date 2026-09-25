@@ -9,7 +9,8 @@ import { setSyncTrigger } from "../lib/syncEvents";
 // The last finished run. syncedAt is when it synced (ms); recovered marks a sync that followed a failure.
 type SyncRun =
   | { status: "synced"; syncedAt: number; recovered: boolean }
-  | { status: "failed" | "ownerMismatch" };
+  | { status: "failed" | "ownerMismatch" }
+  | { status: "tooLarge"; code: string | null };
 
 export interface SyncLine {
   status: SyncRun["status"];
@@ -20,6 +21,14 @@ export interface SyncLine {
 const problemText = {
   failed: "Saved on this device. Will sync when you're back online.",
   ownerMismatch: "This device's data belongs to another account, so sync is off. Sign in with that account to sync.",
+};
+
+// Keyed by the server's 413 error; any other code reads as the body-too-large text.
+const tooLargeText: Record<string, string> = {
+  "request body too large": "Sync is paused: your data is too large to send in one sync. Everything is still saved on this device.",
+  "too many cards": "Sync is paused: this account has more saved cards than sync can hold. Everything is still saved on this device.",
+  "too many practice days": "Sync is paused: this account has more practice days than sync can hold. Everything is still saved on this device.",
+  "too many lesson completions": "Sync is paused: this account has more completed lessons than sync can hold. Everything is still saved on this device.",
 };
 
 // Wires local mutations to the sync scheduler and runs one scheduler per signed-in user.
@@ -61,7 +70,7 @@ export function useSync(
       async () => {
         await Promise.all([deck.reload(), progress.reload()]);
       },
-      (status) => {
+      (status, code) => {
         if (status === "signedOut") {
           expire();
           return;
@@ -76,7 +85,7 @@ export function useSync(
           }));
           return;
         }
-        setRun({ status });
+        setRun(status === "tooLarge" ? { status, code } : { status });
       },
     );
     syncRef.current = scheduler;
@@ -103,7 +112,12 @@ export function useSync(
   if (run === null) {
     return null;
   }
-  return run.status === "synced"
-    ? { status: run.status, text: syncedAgo(run.syncedAt, now), recovered: run.recovered }
-    : { status: run.status, text: problemText[run.status], recovered: false };
+  if (run.status === "synced") {
+    return { status: run.status, text: syncedAgo(run.syncedAt, now), recovered: run.recovered };
+  }
+  if (run.status === "tooLarge") {
+    const text = (run.code !== null && Object.hasOwn(tooLargeText, run.code) ? tooLargeText[run.code] : undefined) ?? tooLargeText["request body too large"];
+    return { status: run.status, text, recovered: false };
+  }
+  return { status: run.status, text: problemText[run.status], recovered: false };
 }

@@ -3,7 +3,7 @@ import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
 import type { SyncState } from "./backup";
 
-export type SyncStatus = "synced" | "failed" | "signedOut" | "ownerMismatch";
+export type SyncStatus = "synced" | "failed" | "signedOut" | "ownerMismatch" | "tooLarge";
 
 export interface SyncScheduler {
   trigger(): void;
@@ -11,20 +11,24 @@ export interface SyncScheduler {
 }
 
 // onStatus hears every finished run; a stopped scheduler reports nothing.
+// code is the server's error for a tooLarge run and null otherwise.
 export function createSyncScheduler(
   userId: string,
   onApplied: () => Promise<void>,
-  onStatus: (status: SyncStatus) => void,
+  onStatus: (status: SyncStatus, code: string | null) => void,
 ): SyncScheduler {
   let active = true;
   let running = false;
   let dirty = false;
+  // The body the server refused with 413 and its code; the same body is never re-sent.
+  let refused: { body: string; code: string | null } | null = null;
 
   // Returns null when the scheduler stopped mid-run.
-  const attempt = async (): Promise<SyncStatus | null> => {
+  const attempt = async (): Promise<{ status: SyncStatus; code: string | null } | null> => {
+    let body = "";
     try {
       if (!await claimOwner(userId)) {
-        return "ownerMismatch";
+        return { status: "ownerMismatch", code: null };
       }
       if (!active) {
         return null;
@@ -33,7 +37,12 @@ export function createSyncScheduler(
       if (!active) {
         return null;
       }
+      body = JSON.stringify(local);
+      if (refused?.body === body) {
+        return { status: "tooLarge", code: refused.code };
+      }
       const remote = await syncState(local);
+      refused = null;
       if (!active) {
         return null;
       }
@@ -42,10 +51,14 @@ export function createSyncScheduler(
         return null;
       }
       await onApplied();
-      return "synced";
+      return { status: "synced", code: null };
     } catch (error) {
       // Local IndexedDB stays the source of truth; the status tells the App what happened.
-      return error instanceof ApiError && error.status === 401 ? "signedOut" : "failed";
+      if (error instanceof ApiError && error.status === 413) {
+        refused = { body, code: error.code };
+        return { status: "tooLarge", code: error.code };
+      }
+      return { status: error instanceof ApiError && error.status === 401 ? "signedOut" : "failed", code: null };
     }
   };
 
@@ -56,12 +69,12 @@ export function createSyncScheduler(
     running = true;
     do {
       dirty = false;
-      const status = await attempt();
-      if (status === null || !active) {
+      const result = await attempt();
+      if (result === null || !active) {
         break;
       }
-      onStatus(status);
-      if (status !== "synced") {
+      onStatus(result.status, result.code);
+      if (result.status !== "synced") {
         break;
       }
     } while (active && dirty);

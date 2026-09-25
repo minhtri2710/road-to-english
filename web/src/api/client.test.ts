@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, request } from "./client";
 
-async function failure(status: number, headers?: Record<string, string>): Promise<ApiError> {
-  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status, headers })));
+async function failure(status: number, headers?: Record<string, string>, body: string | null = null): Promise<ApiError> {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status, headers })));
   const error: unknown = await request("/login").catch((caught: unknown) => caught);
   if (!(error instanceof ApiError)) throw new Error("expected an ApiError");
   return error;
@@ -37,5 +37,27 @@ describe("request", () => {
     const error = await failure(503, { "Retry-After": "42" });
     expect(error.status).toBe(503);
     expect(error.retryAfter).toBeNull();
+  });
+
+  it("reads the code from a JSON error body", async () => {
+    const error = await failure(413, undefined, JSON.stringify({ error: "too many cards" }));
+    expect(error.status).toBe(413);
+    expect(error.code).toBe("too many cards");
+  });
+
+  it.each([
+    ["no body", null],
+    ["a non-JSON body", "request body too large\n"],
+    ["a JSON body without a string error", JSON.stringify({ error: 413 })],
+    ["a JSON null body", "null"],
+  ])("reads a null code from %s", async (_name, body) => {
+    const error = await failure(413, undefined, body);
+    expect(error.code).toBeNull();
+  });
+
+  it("keeps a 429's Retry-After alongside its code", async () => {
+    const error = await failure(429, { "Retry-After": "42" }, JSON.stringify({ error: "too many requests" }));
+    expect(error.retryAfter).toBe(42);
+    expect(error.code).toBe("too many requests");
   });
 });
