@@ -405,6 +405,15 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(vietnamese).toHaveAttribute("aria-pressed", "true");
     await inspect();
   }],
+  ["lesson with stress marks on", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    const stress = page.getByRole("button", { name: "Stress", exact: true });
+    await stress.click();
+    await expect(stress).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Stress and intonation marks are auto-generated", { exact: false })).toBeVisible();
+    await expect(page.getByRole("img", { name: "falling intonation" }).first()).toBeVisible();
+    await inspect();
+  }],
   ["recording ready with Compare", async (page, inspect) => {
     await openRecordingReady(page);
     await inspect();

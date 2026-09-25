@@ -21,6 +21,7 @@ import type { PracticeMode } from "../lib/progress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
+import { loadStressDict, type StressDict } from "../lib/stress";
 import type { NewCard, VocabCard } from "../lib/vocab";
 import { splitWords } from "../lib/words";
 import { GuidedShadowing } from "./GuidedShadowing";
@@ -101,6 +102,10 @@ export function LessonDetail({
   const [loopingSentenceId, setLoopingSentenceId] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(false);
+  const [showStress, setShowStress] = useState(false);
+  // Loaded on the first "Stress" press, so the dictionary chunk stays out of every other visit.
+  const [stressDict, setStressDict] = useState<StressDict | "loading" | "failed" | null>(null);
+  const loadedStressDict = typeof stressDict === "object" ? stressDict : null;
   const [pronunciationCheck, setPronunciationCheck] = useState(readPronunciationCheck);
   const [autoHideText, setAutoHideText] = useState(readAutoHideText);
   // Sentences whose text is hidden in shadow mode, for this lesson visit.
@@ -163,6 +168,7 @@ export function LessonDetail({
     stopMedia,
     showTranscript,
     showVietnamese,
+    stressDict: showStress ? loadedStressDict : null,
     setTextHidden,
     selectedWord,
     setSelectedWord,
@@ -257,6 +263,17 @@ export function LessonDetail({
             <ToggleButton label="Transcript" isPressed={showTranscript} onPressedChange={setShowTranscript} />
             <ToggleButton label="Vietnamese" isPressed={showVietnamese} onPressedChange={setShowVietnamese} />
             <ToggleButton
+              label="Stress"
+              isPressed={showStress}
+              onPressedChange={(pressed) => {
+                setShowStress(pressed);
+                if (pressed && (stressDict === null || stressDict === "failed")) {
+                  setStressDict("loading");
+                  loadStressDict().then(setStressDict, () => setStressDict("failed"));
+                }
+              }}
+            />
+            <ToggleButton
               label="One at a time"
               isPressed={guidedIndex !== null}
               onPressedChange={(pressed) => {
@@ -291,6 +308,21 @@ export function LessonDetail({
             setAutoHideText(checked);
           }}
         />
+      )}
+      {mode === "shadow" && (
+        <Status>
+          {showStress && stressDict === "failed" && (
+            <Text as="p" color="primary" xstyle={sharedStyles.error}>
+              Stress marks could not be loaded.
+            </Text>
+          )}
+        </Status>
+      )}
+      {mode === "shadow" && showStress && loadedStressDict && (
+        <Text as="p" type="supporting">
+          Stress and intonation marks are auto-generated from a pronunciation dictionary and simple rules. They may
+          be wrong.
+        </Text>
       )}
       {mode === "shadow" && !pronunciationSupported && (
         <Text as="p" type="supporting">

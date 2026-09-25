@@ -11,6 +11,7 @@ import type { StopMedia } from "../hooks/usePracticeMedia";
 import type { useYouTubePlayer } from "../hooks/useYouTubePlayer";
 import type { PracticeMode } from "../lib/progress";
 import { speak } from "../lib/speech";
+import type { StressDict } from "../lib/stress";
 import { cardId, sentenceCard, wordCard, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord } from "../lib/words";
 import { SentenceShadowing } from "./SentenceShadowing";
@@ -38,6 +39,8 @@ interface SentenceCardProps {
   stopMedia: StopMedia;
   showTranscript: boolean;
   showVietnamese: boolean;
+  // The loaded dictionary while stress marks are on, else null.
+  stressDict: StressDict | null;
   textHidden: boolean;
   setTextHidden: (sentenceId: string, hidden: boolean) => void;
   selectedWord: { sentenceId: string; text: string } | null;
@@ -67,6 +70,7 @@ export function SentenceCard({
   stopMedia,
   showTranscript,
   showVietnamese,
+  stressDict,
   textHidden,
   setTextHidden,
   selectedWord,
@@ -126,6 +130,7 @@ export function SentenceCard({
               onSelect={(text) =>
                 setSelectedWord({ sentenceId: sentence.id, text })
               }
+              stressDict={stressDict}
             />
           )}
           {showText && sentence.notes && (

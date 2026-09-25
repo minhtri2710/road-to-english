@@ -17,7 +17,7 @@ The project is pre-launch. Data may be reset at any time.
 
 ## Run locally
 
-Requirements: Go, Node with pnpm, and Docker.
+Requirements: Go 1.26 or newer, Node with pnpm, and Docker.
 
 1. Start the dev database (Postgres on port 5435, disposable data):
 
@@ -48,6 +48,8 @@ After a schema change, recreate the database with `docker compose -f api/compose
 
 The api tests use the same database and need `DATABASE_URL` set.
 
+On a fresh machine, install the e2e browser first with `pnpm -C web exec playwright install chromium`.
+
 ```sh
 gofmt -l api
 go -C api vet ./...
@@ -62,3 +64,7 @@ pnpm -C web e2e
 ```
 
 The e2e suite uses Playwright. It starts its own api on port 8787 and web server on port 5183, and needs the dev database running.
+
+## Third-party data
+
+The stress marks use the CMU Pronouncing Dictionary (CMUdict), licensed BSD-2-Clause. `NOTICE` has the attribution.

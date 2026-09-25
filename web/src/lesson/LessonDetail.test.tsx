@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPracticeDays } from "../lib/progressStore";
 import { getAllCards } from "../lib/vocabStore";
@@ -1347,6 +1347,117 @@ describe("LessonDetail", () => {
       expect(buttonsNamed(again.container, "Text").map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
       await clickElement(autoHideSwitch(again.container), "auto-hide switch");
       expect(localStorage.getItem(AUTO_HIDE_KEY)).toBeNull();
+    });
+  });
+
+  describe("stress marks", () => {
+    // The dictionary chunk: counts loads and can fail, so a test sees when and whether it is fetched.
+    const stressChunk = { loads: 0, fail: false };
+    beforeEach(() => {
+      stressChunk.loads = 0;
+      stressChunk.fail = false;
+      vi.resetModules();
+      vi.doMock("../lib/stressDict.json?raw", () => {
+        stressChunk.loads += 1;
+        if (stressChunk.fail) {
+          throw new Error("chunk failed to load");
+        }
+        return {
+          default: JSON.stringify({ good: "1", morning: "10", how: "1", today: "01", nice: "1", meet: "1", see: "1", tomorrow: "010" }),
+        };
+      });
+    });
+
+    // The dictionary chunk arrives by dynamic import, which takes longer than waitForCondition's turns.
+    const waitForStressText = async (container: HTMLElement, text: string) => {
+      for (let attempt = 0; attempt < 200 && !container.textContent?.includes(text); attempt += 1) {
+        await harnessAct(() => new Promise((resolve) => setTimeout(resolve, 10)));
+      }
+      expect(container.textContent).toContain(text);
+    };
+    const LEGEND =
+      "Stress and intonation marks are auto-generated from a pronunciation dictionary and simple rules. They may be wrong.";
+    const arrows = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('[role="img"]')).map((arrow) => arrow.getAttribute("aria-label"));
+    const summaries = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll("p[aria-describedby]")).map(
+        (paragraph) => document.getElementById(paragraph.getAttribute("aria-describedby") ?? "")?.textContent,
+      );
+    const dots = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('p [aria-hidden="true"]'))
+        .map((span) => span.textContent)
+        .filter((text) => text?.match(/^[•●]( [•●])*$/));
+
+    it("keeps the dictionary out of the stress module's static imports", async () => {
+      await import("../lib/stress");
+      expect(stressChunk.loads).toBe(0);
+    });
+
+    it("loads the dictionary on the first Stress press and marks stress and intonation, keeping the word buttons", async () => {
+      installSpeechFakes();
+      const { container } = await openLesson();
+      const wordNames = () => Array.from(container.querySelectorAll("p button")).map((button) => button.textContent);
+      const namesBefore = wordNames();
+
+      const stress = buttonsNamed(container, "Stress")[0]!;
+      expect(stress.getAttribute("aria-pressed")).toBe("false");
+      expect(stressChunk.loads).toBe(0);
+      expect(container.textContent).not.toContain(LEGEND);
+      expect(arrows(container)).toEqual([]);
+
+      await harnessAct(async () => {
+        stress.click();
+      });
+      await waitForStressText(container, LEGEND);
+      expect(stress.getAttribute("aria-pressed")).toBe("true");
+      expect(stressChunk.loads).toBe(1);
+      // The first sentence is a question that starts with neither a wh-word nor an auxiliary.
+      expect(arrows(container)).toEqual(["falling intonation", "falling intonation"]);
+      expect(summaries(container)).toEqual([
+        "Stressed: Good, morning, how, today.",
+        "Stressed: nice, meet. Falling intonation.",
+        "Stressed: See, tomorrow. Falling intonation.",
+      ]);
+      expect(dots(container)).toEqual(["●", "● •", "●", "• ●", "●", "●", "●", "• ● •"]);
+      expect(wordNames()).toEqual(namesBefore);
+      for (const name of ["morning", "is", "you"]) {
+        expect(buttonsNamed(container, name)[0]!.hasAttribute("aria-label")).toBe(false);
+      }
+
+      // Hidden text shows no marks.
+      await click(container, "Transcript");
+      expect(arrows(container)).toEqual([]);
+      expect(summaries(container)).toEqual([]);
+      await click(container, "Transcript");
+      expect(arrows(container)).toHaveLength(2);
+
+      await click(container, "Stress");
+      expect(container.textContent).not.toContain(LEGEND);
+      expect(arrows(container)).toEqual([]);
+      expect(dots(container)).toEqual([]);
+      expect(summaries(container)).toEqual([]);
+      await click(container, "Stress");
+      expect(arrows(container)).toHaveLength(2);
+      expect(stressChunk.loads).toBe(1);
+    });
+
+    it("shows a status and no marks when the dictionary fails to load", async () => {
+      installSpeechFakes();
+      stressChunk.fail = true;
+      const { container } = await openLesson();
+
+      await click(container, "Stress");
+      await waitForStressText(container, "Stress marks could not be loaded.");
+      expect(Array.from(container.querySelectorAll('[role="status"]')).map((status) => status.textContent)).toContain(
+        "Stress marks could not be loaded.",
+      );
+      expect(container.textContent).not.toContain(LEGEND);
+      expect(arrows(container)).toEqual([]);
+      expect(dots(container)).toEqual([]);
+      expect(summaries(container)).toEqual([]);
+      for (const sentence of greetingsLesson.sentences) {
+        expect(container.textContent).toContain(sentence.text);
+      }
     });
   });
 });

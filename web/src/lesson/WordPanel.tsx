@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { Link } from "@astryxdesign/core/Link";
@@ -13,6 +13,7 @@ import { Alert, Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { lookupWord, type Definition } from "../lib/dictionary";
 import { speechSupported } from "../lib/speech";
+import { intonation, wordStress, type StressDict } from "../lib/stress";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord, isCardWord, splitWords } from "../lib/words";
 
@@ -22,6 +23,13 @@ const styles = stylex.create({
   },
   spokenWord: {
     backgroundColor: "var(--color-warning-muted)",
+  },
+  stressedWord: {
+    fontWeight: 700,
+  },
+  stressDots: {
+    fontSize: "0.75em",
+    paddingInlineEnd: "0.25rem",
   },
   tapTarget: {
     display: "inline-flex",
@@ -138,46 +146,85 @@ export function SaveToReview({
 // else stays plain text, so the sentence text reads exactly as authored. The
 // word whose character range holds spokenChar is marked as currently spoken.
 // The selected word's button is expanded and controls its word panel, panelId.
+// With stressDict, each stressed word is bold with its syllable dots beside it, the sentence ends
+// with its intonation arrow, and a visually hidden summary describes the sentence.
 export function SentenceWords({
   text,
   selected,
   spokenChar,
   panelId,
   onSelect,
+  stressDict,
 }: {
   text: string;
   selected: string | null;
   spokenChar: number | null;
   panelId: string;
   onSelect: (text: string) => void;
+  stressDict: StressDict | null;
 }) {
+  const summaryId = useId();
+  const parts = splitWords(text);
+  const stresses = parts.map((part) =>
+    stressDict && isCardWord(cardWord(part)) ? wordStress(part, stressDict) : null,
+  );
+  const tone = stressDict && intonation(text);
+  const stressed = parts.filter((_, index) => stresses[index]);
+  const summary = [
+    stressed.length > 0 && `Stressed: ${stressed.join(", ")}.`,
+    tone && `${tone === "falling" ? "Falling" : "Rising"} intonation.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
   let start = 0;
   return (
-    <Text as="p">
-      {splitWords(text).map((part, index) => {
-        const partStart = start;
-        start += part.length;
-        if (!isCardWord(cardWord(part))) {
-          return part;
-        }
-        const spoken =
-          spokenChar !== null && spokenChar >= partStart && spokenChar < start;
-        const expanded = part === selected;
-        return (
-          <Button
-            key={index}
-            label={part}
-            size="sm"
-            variant={expanded ? "secondary" : "ghost"}
-            aria-expanded={expanded}
-            aria-controls={expanded ? panelId : undefined}
-            aria-current={spoken ? "true" : undefined}
-            xstyle={[styles.sentenceWord, spoken && styles.spokenWord]}
-            onClick={() => onSelect(part)}
-          />
-        );
-      })}
-    </Text>
+    <>
+      <Text as="p" aria-describedby={summary ? summaryId : undefined}>
+        {parts.map((part, index) => {
+          const partStart = start;
+          start += part.length;
+          if (!isCardWord(cardWord(part))) {
+            return part;
+          }
+          const stress = stresses[index];
+          const spoken =
+            spokenChar !== null && spokenChar >= partStart && spokenChar < start;
+          const expanded = part === selected;
+          const button = (
+            <Button
+              key={index}
+              label={part}
+              size="sm"
+              variant={expanded ? "secondary" : "ghost"}
+              aria-expanded={expanded}
+              aria-controls={expanded ? panelId : undefined}
+              aria-current={spoken ? "true" : undefined}
+              xstyle={[styles.sentenceWord, spoken && styles.spokenWord, stress && styles.stressedWord]}
+              onClick={() => onSelect(part)}
+            />
+          );
+          if (!stress) {
+            return button;
+          }
+          return (
+            <Fragment key={index}>
+              {button}
+              <span aria-hidden="true" {...stylex.props(styles.stressDots)}>
+                {Array.from({ length: stress.syllables }, (_, syllable) =>
+                  syllable === stress.primary ? "●" : "•",
+                ).join(" ")}
+              </span>
+            </Fragment>
+          );
+        })}
+        {tone && (
+          <span role="img" aria-label={`${tone} intonation`}>
+            {tone === "falling" ? " ↘" : " ↗"}
+          </span>
+        )}
+      </Text>
+      {summary && <VisuallyHidden id={summaryId}>{summary}</VisuallyHidden>}
+    </>
   );
 }
 
