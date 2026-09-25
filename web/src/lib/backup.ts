@@ -1,4 +1,5 @@
 import type { Lesson } from "../api/lessons";
+import type { StoredCard } from "./db";
 import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
@@ -10,6 +11,16 @@ export interface SyncState {
   cards: VocabCard[];
   practiceDays: { date: string }[];
   lessonCompletion: { lessonId: string }[];
+}
+
+// The /sync request: every card carries its stored dirty flag.
+export interface SyncRequest extends Omit<SyncState, "cards"> {
+  cards: StoredCard[];
+}
+
+// A /sync 200: the server's full state and the epoch of the server's copy.
+export interface SyncReply extends SyncState {
+  syncEpoch: string;
 }
 
 // The backup file body: the sync state plus the device's user lessons.
@@ -188,7 +199,12 @@ export function reviveSyncState(value: unknown): SyncState {
   validateSyncState(value);
   return {
     cards: value.cards.map((card) => ({
-      ...card,
+      id: card.id,
+      front: card.front,
+      back: card.back,
+      source: card.source,
+      updatedAt: card.updatedAt,
+      deletedAt: card.deletedAt,
       fsrs: {
         ...card.fsrs,
         due: reviveTimestamp(card.fsrs.due),

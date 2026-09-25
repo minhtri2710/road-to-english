@@ -37,3 +37,8 @@ CREATE TABLE IF NOT EXISTS lesson_completion (
     lesson_id TEXT NOT NULL,
     PRIMARY KEY (user_id, lesson_id)
 );
+
+CREATE TABLE IF NOT EXISTS sync_epochs (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    epoch UUID NOT NULL DEFAULT gen_random_uuid()
+);

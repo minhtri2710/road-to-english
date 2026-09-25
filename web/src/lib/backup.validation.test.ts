@@ -245,3 +245,12 @@ describe("sync state validation", () => {
     })).not.toThrow();
   });
 });
+
+// W2: a revived card has exactly the VocabCard fields: an incoming dirty, from a reply or a backup file, is dropped.
+describe("reviveSyncState card fields", () => {
+  it("drops dirty and any other extra card key", () => {
+    const input = state();
+    Object.assign(input.cards[0]!, { dirty: true, extra: 1 });
+    expect(Object.keys(reviveSyncState(input).cards[0]!).sort()).toEqual(["back", "deletedAt", "front", "fsrs", "id", "source", "updatedAt"]);
+  });
+});

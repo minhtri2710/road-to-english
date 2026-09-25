@@ -4,6 +4,7 @@ import { syncState } from "./sync";
 import { ApiError } from "./client";
 
 const fetchMock = vi.fn<typeof fetch>();
+const SYNC_EPOCH = "epoch-1";
 const local = {
   cards: [],
   practiceDays: [],
@@ -13,6 +14,7 @@ const response = {
   cards: [],
   practiceDays: [{ date: "2026-01-01" }],
   lessonCompletion: [{ lessonId: "lesson-1" }],
+  syncEpoch: SYNC_EPOCH,
 };
 
 describe("sync API", () => {
@@ -45,5 +47,18 @@ describe("sync API", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...response, practiceDays: [{ date: "2026-02-30" }] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(syncState(local)).rejects.toThrow();
+  });
+});
+
+describe("sync API epoch", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fetchMock.mockReset();
+  });
+
+  it.each([["missing", undefined], ["empty", ""], ["not a string", 1]])("rejects a 200 whose syncEpoch is %s", async (_name, syncEpoch) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...response, syncEpoch }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(syncState(local)).rejects.not.toBeInstanceOf(ApiError);
   });
 });

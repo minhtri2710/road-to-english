@@ -1,12 +1,12 @@
 import { restoreCard, reviewCard, type Grade, type VocabCard } from "./vocab";
 
-import { withDb } from "./db";
+import { withDb, type StoredCard } from "./db";
 import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 
 export async function putCard(card: VocabCard): Promise<void> {
   return withDb(async (db) => {
-    await db.put("cards", card);
+    await db.put("cards", { ...card, dirty: true });
     notifyLocalMutation();
   });
 }
@@ -16,7 +16,7 @@ export async function saveCard(card: VocabCard): Promise<void> {
   return withDb(async (db) => {
     const tx = db.transaction("cards", "readwrite");
     const stored = await tx.store.get(card.id);
-    await tx.store.put(stored ? mergeCard(stored, card) : card);
+    await tx.store.put({ ...(stored ? mergeCard(stored, card) : card), dirty: true });
     await tx.done;
     notifyLocalMutation();
   });
@@ -31,18 +31,26 @@ function sameFsrs(left: VocabCard, right: VocabCard): boolean {
   );
 }
 
+// Two copies of a card are the same version.
+export function sameVersion(left: VocabCard, right: VocabCard): boolean {
+  return left.updatedAt === right.updatedAt && left.deletedAt === right.deletedAt && sameFsrs(left, right);
+}
+
+// The card the UI and the backup file see: the stored card without its sync flag.
+export function plainCard(stored: StoredCard): VocabCard {
+  const { dirty, ...card } = stored;
+  void dirty;
+  return card;
+}
+
 // Writes `next` only while the stored copy is still exactly `expected`, in one transaction.
 async function replaceIfUnchanged(expected: VocabCard, next: VocabCard): Promise<boolean> {
   return withDb(async (db) => {
     const tx = db.transaction("cards", "readwrite");
     const stored = await tx.store.get(expected.id);
-    const unchanged =
-      stored !== undefined &&
-      stored.updatedAt === expected.updatedAt &&
-      stored.deletedAt === expected.deletedAt &&
-      sameFsrs(stored, expected);
+    const unchanged = stored !== undefined && sameVersion(stored, expected);
     if (unchanged) {
-      await tx.store.put(next);
+      await tx.store.put({ ...next, dirty: true });
     }
     await tx.done;
     if (unchanged) {
@@ -64,7 +72,7 @@ export function saveReview(card: VocabCard, rating: Grade, now: Date): Promise<b
 
 export async function getAllCards(): Promise<VocabCard[]> {
   return withDb(async (db) => {
-    return await db.getAll("cards");
+    return (await db.getAll("cards")).map(plainCard);
   });
 }
 

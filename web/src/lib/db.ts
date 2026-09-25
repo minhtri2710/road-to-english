@@ -3,11 +3,15 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { Lesson } from "../api/lessons";
 import type { VocabCard } from "./vocab";
 
+// The stored card: dirty until a 200 settles exactly this version.
+export type StoredCard = VocabCard & { dirty: boolean };
+
 interface AppDatabase extends DBSchema {
-  cards: { key: string; value: VocabCard };
+  cards: { key: string; value: StoredCard };
   practiceDays: { key: string; value: { date: string } };
   lessonCompletion: { key: string; value: { lessonId: string } };
-  meta: { key: string; value: { key: string; ownerId: string } };
+  // syncEpoch is the epoch of the server copy this device last synced with.
+  meta: { key: string; value: { key: "owner"; ownerId: string } | { key: "syncEpoch"; epoch: string } };
   // Local-only: not synced, not in backup.
   dailyCounts: { key: string; value: DailyCount };
   // Not synced; carried only by the backup file.

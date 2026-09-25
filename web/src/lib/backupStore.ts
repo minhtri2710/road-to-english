@@ -1,10 +1,11 @@
-import { withDb } from "./db";
+import { withDb, type StoredCard } from "./db";
 import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
-import type { BackupData, SyncState } from "./backup";
+import { plainCard, sameVersion } from "./vocabStore";
+import type { BackupData, SyncReply, SyncRequest } from "./backup";
 
 // The /sync payload: never includes userLessons.
-export async function exportAll(): Promise<SyncState> {
+export async function exportAll(): Promise<SyncRequest> {
   return withDb(async (db) => {
     const [cards, practiceDays, lessonCompletion] = await Promise.all([
       db.getAll("cards"),
@@ -23,7 +24,7 @@ export async function exportBackupData(): Promise<BackupData> {
       db.getAll("lessonCompletion"),
       db.getAll("userLessons"),
     ]);
-    return { cards, practiceDays, lessonCompletion, userLessons };
+    return { cards: cards.map(plainCard), practiceDays, lessonCompletion, userLessons };
   });
 }
 
@@ -37,7 +38,8 @@ export async function replaceAll(data: BackupData): Promise<void> {
     tx.objectStore("practiceDays").clear();
     tx.objectStore("lessonCompletion").clear();
     tx.objectStore("userLessons").clear();
-    data.cards.forEach((card) => tx.objectStore("cards").put(card));
+    // Every imported card is dirty, so the next sync pushes it, even one the server purged.
+    data.cards.forEach((card) => tx.objectStore("cards").put({ ...card, dirty: true }));
     data.practiceDays.forEach((practiceDay) =>
       tx.objectStore("practiceDays").put(practiceDay),
     );
@@ -60,21 +62,43 @@ export async function claimOwner(ownerId: string): Promise<boolean> {
       return true;
     }
     await tx.done;
-    return owner.ownerId === ownerId;
+    return "ownerId" in owner && owner.ownerId === ownerId;
   });
 }
 
-export async function mergeInto(data: SyncState): Promise<void> {
+// Applies a 200 for the request that sent `sent`, in one transaction, and returns whether the epoch mismatched.
+// Same epoch: a card whose stored copy is still the version sent is settled; it is stored clean when the reply has it and
+// deleted when the reply does not (the server purged it or never had it). A card changed during the request stays dirty.
+// Mismatch (the server lost its copy): nothing is deleted and every card is marked dirty, so a follow-up sync re-pushes it.
+export async function mergeInto(data: SyncReply, sent: StoredCard[]): Promise<boolean> {
   return withDb(async (db) => {
     const tx = db.transaction(
-      ["cards", "practiceDays", "lessonCompletion"],
+      ["cards", "practiceDays", "lessonCompletion", "meta"],
       "readwrite",
     );
     const cards = tx.objectStore("cards");
-    for (const incoming of data.cards) {
-      const local = await cards.get(incoming.id);
-      cards.put(local ? mergeCard(local, incoming) : incoming);
+    const meta = tx.objectStore("meta");
+    const [locals, epochRecord] = await Promise.all([cards.getAll(), meta.get("syncEpoch")]);
+    const storedEpoch = epochRecord && "epoch" in epochRecord ? epochRecord.epoch : undefined;
+    const mismatch = storedEpoch === undefined ? locals.some((card) => !card.dirty) : storedEpoch !== data.syncEpoch;
+    const incoming = new Map(data.cards.map((card) => [card.id, card]));
+    const sentById = new Map(sent.map((card) => [card.id, card]));
+    for (const local of locals) {
+      const remote = incoming.get(local.id);
+      incoming.delete(local.id);
+      const merged = remote ? mergeCard(local, remote) : local;
+      const sentCopy = sentById.get(local.id);
+      const settled = !mismatch && sentCopy !== undefined && sameVersion(local, sentCopy);
+      if (remote || !settled) {
+        cards.put({ ...merged, dirty: !settled });
+      } else {
+        cards.delete(local.id);
+      }
     }
+    for (const remote of incoming.values()) {
+      cards.put({ ...remote, dirty: mismatch });
+    }
+    meta.put({ key: "syncEpoch", epoch: data.syncEpoch });
     data.practiceDays.forEach((practiceDay) =>
       tx.objectStore("practiceDays").put(practiceDay),
     );
@@ -82,5 +106,6 @@ export async function mergeInto(data: SyncState): Promise<void> {
       tx.objectStore("lessonCompletion").put(completion),
     );
     await tx.done;
+    return mismatch;
   });
 }

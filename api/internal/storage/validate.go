@@ -39,6 +39,9 @@ func (s State) validate() error {
 		if _, err := parseTimestamp(card.UpdatedAt); err != nil {
 			return ErrInvalidState
 		}
+		if card.Dirty == nil {
+			return ErrInvalidState
+		}
 		if !card.DeletedAt.Present {
 			return ErrInvalidState
 		}

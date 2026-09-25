@@ -14,6 +14,7 @@ import {
   renderApp,
   resetApp,
   setInputValue,
+  SYNC_EPOCH,
   userResponse,
   waitForCondition,
 } from "../test/app";
@@ -245,7 +246,7 @@ describe("useSync", () => {
       "Saved on this device. The sync server sent a reply this app couldn't read, so sync will try again soon."],
     ["local", () => {
       vi.spyOn(backupStore, "mergeInto").mockRejectedValue(new DOMException("write failed", "UnknownError"));
-      return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [] }), { status: 200 });
+      return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }), { status: 200 });
     }, "Sync couldn't read or update the data saved on this device. It will try again soon."],
   ])("renders the %s failure word for word in the supporting style, not the 413 error style", async (_kind, sync, text) => {
     const errorClass = await failedLineClass(tooLarge, tooManyCards);

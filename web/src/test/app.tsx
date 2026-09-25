@@ -13,6 +13,9 @@ import { greetingsLesson, lessonSummaries } from "./fixtures";
 
 export const fetchMock = vi.fn<typeof fetch>();
 
+// The server epoch every mocked 200 /sync reply carries.
+export const SYNC_EPOCH = "epoch-1";
+
 export function pathOf(input: Parameters<typeof fetch>[0]): string {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   return new URL(url, "http://localhost").pathname;
@@ -29,7 +32,7 @@ export function responseFor(path: string, lesson: Lesson = greetingsLesson): Res
   }
 
   if (path === "/sync") {
-    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [] }), {
+    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }), {
       status: 200,
     });
   }

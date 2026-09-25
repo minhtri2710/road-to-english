@@ -1,7 +1,7 @@
 import { ApiError, NetworkError } from "../api/client";
 import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
-import type { SyncState } from "./backup";
+import type { SyncRequest } from "./backup";
 
 // offline, server, rejected, badReply and local are failed runs, named by where they failed.
 export type SyncStatus =
@@ -45,7 +45,7 @@ export function createSyncScheduler(
       if (!active) {
         return null;
       }
-      const local: SyncState = await exportAll();
+      const local: SyncRequest = await exportAll();
       if (!active) {
         return null;
       }
@@ -60,7 +60,10 @@ export function createSyncScheduler(
       if (!active) {
         return null;
       }
-      await mergeInto(remote);
+      // A mismatched epoch marked every card dirty: one follow-up run re-pushes them.
+      if (await mergeInto(remote, local.cards)) {
+        dirty = true;
+      }
       if (!active) {
         return null;
       }

@@ -15,6 +15,7 @@ import { listUserLessons, putUserLesson } from "./userLessons";
 import { card, userLesson } from "../test/fixtures";
 
 const now = new Date("2026-01-05T00:00:00.000Z");
+const SYNC_EPOCH = "epoch-1";
 
 describe("backup store", () => {
   it("round-trips all stores and keeps imported dates usable", async () => {
@@ -41,8 +42,8 @@ describe("backup store", () => {
     const deviceA = card("same", now);
     const deviceB = card("same", now);
     deviceB.front = "device two";
-    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
-    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
 
     expect(await getAllCards()).toHaveLength(1);
   });
@@ -51,13 +52,13 @@ describe("backup store", () => {
     const deviceA = card("same", new Date("2026-01-05T00:00:01.000Z"));
     const deviceB = card("same", new Date("2026-01-05T00:00:00.000Z"));
     deviceA.front = "device A";
-    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
-    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
     expect(await getAllCards()).toEqual([deviceA]);
 
     indexedDB = new IDBFactory();
-    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [] });
-    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [deviceB], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [deviceA], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
     expect(await getAllCards()).toEqual([deviceA]);
   });
 
@@ -65,7 +66,7 @@ describe("backup store", () => {
     const live = card("same", now);
     const tombstone = deleteCard(live, new Date("2026-01-06T00:00:00.000Z"));
     await putCard(tombstone);
-    await mergeInto({ cards: [live], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [live], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
 
     expect(await getAllCards()).toEqual([tombstone]);
   });
@@ -75,12 +76,12 @@ describe("backup store", () => {
     const remoteTombstone = deleteCard(live, new Date("2026-01-06T00:00:00.000Z"));
     const undone = restoreCard(live, new Date("2026-01-07T00:00:00.000Z"));
     await putCard(undone);
-    await mergeInto({ cards: [remoteTombstone], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [remoteTombstone], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
     expect(await getAllCards()).toEqual([undone]);
 
     const resaved = card("same", new Date("2026-01-08T00:00:00.000Z"));
     await putCard(remoteTombstone);
-    await mergeInto({ cards: [resaved], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [resaved], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
     expect(await getAllCards()).toEqual([resaved]);
   });
 
@@ -88,7 +89,7 @@ describe("backup store", () => {
     const reviewed = reviewCard(card("same", now), Rating.Good, new Date("2026-01-06T00:00:00.000Z"));
     await putCard(reviewed);
     const staleSave = card("same", new Date("2026-01-07T00:00:00.000Z"));
-    await mergeInto({ cards: [staleSave], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [staleSave], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
 
     expect(await getAllCards()).toEqual([{ ...staleSave, fsrs: reviewed.fsrs }]);
   });
@@ -116,7 +117,8 @@ describe("backup store", () => {
       cards: [second],
       practiceDays: [{ date: "2026-01-06" }],
       lessonCompletion: [{ lessonId: "lesson-2" }],
-    });
+      syncEpoch: SYNC_EPOCH,
+    }, []);
 
     expect(await getAllCards()).toEqual([second]);
     expect(await getPracticeDays()).toEqual(["2026-01-06"]);
@@ -154,7 +156,7 @@ describe("backup store", () => {
 
   it("merges sync state without touching user lessons", async () => {
     await putUserLesson(userLesson);
-    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [] });
+    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
 
     expect(await listUserLessons()).toEqual([userLesson]);
   });
@@ -164,5 +166,19 @@ describe("backup store", () => {
 
     expect(Object.keys(await exportAll()).sort()).toEqual(["cards", "lessonCompletion", "practiceDays"]);
     expect((await exportBackupData()).userLessons).toEqual([userLesson]);
+  });
+});
+
+// W2: the request carries each card's stored dirty flag; the backup never does.
+describe("dirty flag on export", () => {
+  it("exportAll carries dirty; exportBackupData and exportData do not", async () => {
+    const synced = card("synced", now);
+    await mergeInto({ cards: [synced], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await putCard(card("local", now));
+
+    expect((await exportAll()).cards.map(({ id, dirty }) => [id, dirty])).toEqual([["lesson-1:local", true], ["lesson-1:synced", false]]);
+    const backup = await exportBackupData();
+    expect(backup.cards.every((stored) => !("dirty" in stored))).toBe(true);
+    expect(exportData(backup, now)).not.toContain("dirty");
   });
 });

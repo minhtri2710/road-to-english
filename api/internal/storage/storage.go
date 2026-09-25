@@ -58,6 +58,8 @@ type Card struct {
 	Fsrs      json.RawMessage `json:"fsrs"`
 	UpdatedAt string          `json:"updatedAt"`
 	DeletedAt DeletedAt       `json:"deletedAt"`
+	// Dirty is required on a request card and absent from a response card: a dirty card upserts, a clean one only updates.
+	Dirty *bool `json:"dirty,omitempty"`
 }
 
 // DeletedAt is a card's required, nullable deletedAt: Present tells a missing field from null.
@@ -99,6 +101,12 @@ type State struct {
 	Cards            []Card             `json:"cards"`
 	PracticeDays     []PracticeDay      `json:"practiceDays"`
 	LessonCompletion []LessonCompletion `json:"lessonCompletion"`
+}
+
+// Synced is a sync's 200 body: the user's full state and the epoch of the server's copy of it.
+type Synced struct {
+	State
+	SyncEpoch string `json:"syncEpoch"`
 }
 
 type User struct {
@@ -294,9 +302,9 @@ func (r *Repository) DeleteSession(ctx context.Context, tokenHash string) error 
 
 // SyncState validates the whole input before any write, returning ErrInvalidState when it breaks the wire contract,
 // then merges it in one transaction and returns the user's full state.
-func (r *Repository) SyncState(ctx context.Context, userID string, in State) (State, error) {
+func (r *Repository) SyncState(ctx context.Context, userID string, in State) (Synced, error) {
 	if err := in.validate(); err != nil {
-		return State{}, err
+		return Synced{}, err
 	}
 	// Upserts in key order, so concurrent syncs of one user lock shared rows in the same order and cannot deadlock.
 	slices.SortFunc(in.Cards, func(a, b Card) int { return strings.Compare(a.ID, b.ID) })
@@ -304,33 +312,56 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 	slices.SortFunc(in.LessonCompletion, func(a, b LessonCompletion) int { return strings.Compare(a.LessonID, b.LessonID) })
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return State{}, fmt.Errorf("begin sync transaction: %w", err)
+		return Synced{}, fmt.Errorf("begin sync transaction: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
 
 	if err := syncBatch(ctx, tx, userID, in); err != nil {
-		return State{}, err
+		return Synced{}, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM cards WHERE user_id = $1 AND deleted_at < now() - make_interval(secs => $2)`, userID, TombstoneRetention.Seconds()); err != nil {
+		return Synced{}, fmt.Errorf("purge tombstones: %w", err)
+	}
+	epoch, err := syncEpoch(ctx, tx, userID)
+	if err != nil {
+		return Synced{}, err
 	}
 
 	out, err := readState(ctx, tx, userID)
 	if err != nil {
-		return State{}, err
+		return Synced{}, err
 	}
 	if len(out.Cards) > MaxCards {
-		return State{}, ErrTooManyCards
+		return Synced{}, ErrTooManyCards
 	}
 	if len(out.PracticeDays) > MaxPracticeDays {
-		return State{}, ErrTooManyPracticeDays
+		return Synced{}, ErrTooManyPracticeDays
 	}
 	if len(out.LessonCompletion) > MaxLessonCompletions {
-		return State{}, ErrTooManyLessonCompletions
+		return Synced{}, ErrTooManyLessonCompletions
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return State{}, fmt.Errorf("commit sync transaction: %w", err)
+		return Synced{}, fmt.Errorf("commit sync transaction: %w", err)
 	}
-	return out, nil
+	return Synced{State: out, SyncEpoch: epoch}, nil
+}
+
+// ponytail: a purged tombstone is forgotten, so an offline edit made before a deletion on another device and synced after the purge brings the card back; upgrade = server-assigned per-card version.
+const TombstoneRetention = 180 * 24 * time.Hour
+
+// syncEpoch returns the user's epoch, creating it on first use. A lost row yields a new epoch, which tells each client
+// that the server's copy was lost, so it re-pushes its cards instead of deleting the ones the server no longer returns.
+func syncEpoch(ctx context.Context, tx pgx.Tx, userID string) (string, error) {
+	if _, err := tx.Exec(ctx, `INSERT INTO sync_epochs (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, userID); err != nil {
+		return "", fmt.Errorf("create sync epoch: %w", err)
+	}
+	var epoch string
+	if err := tx.QueryRow(ctx, `SELECT epoch::text FROM sync_epochs WHERE user_id = $1`, userID).Scan(&epoch); err != nil {
+		return "", fmt.Errorf("read sync epoch: %w", err)
+	}
+	return epoch, nil
 }
 
 // ponytail: LWW on device wall-clock updatedAt, so clock skew between devices can pick the wrong write; upgrade = server-assigned per-card version.
@@ -340,9 +371,12 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 const incomingWins = `(EXCLUDED.updated_at > cards.updated_at
 	OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL))`
 
-var upsertCardSQL = strings.ReplaceAll(`
+// A dirty card ($11 true) upserts. A clean card only merges into an existing row: the server may have purged it, and
+// re-inserting it would undo the purge. FOR UPDATE makes the existence check wait out a concurrent purge.
+var syncCardSQL = strings.ReplaceAll(`
 	INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::timestamptz)
+	SELECT $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::json, $9::timestamptz, $10::timestamptz
+	WHERE $11::boolean OR EXISTS (SELECT 1 FROM cards WHERE user_id = $1::uuid AND id = $2::text FOR UPDATE)
 	ON CONFLICT (user_id, id) DO UPDATE SET
 		front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
 		back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
@@ -365,7 +399,7 @@ var upsertCardSQL = strings.ReplaceAll(`
 func syncBatch(ctx context.Context, tx pgx.Tx, userID string, in State) error {
 	batch := &pgx.Batch{}
 	for _, card := range in.Cards {
-		batch.Queue(upsertCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, card.UpdatedAt, card.DeletedAt.Value)
+		batch.Queue(syncCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, card.UpdatedAt, card.DeletedAt.Value, *card.Dirty)
 	}
 	for _, practiceDay := range in.PracticeDays {
 		batch.Queue(`
