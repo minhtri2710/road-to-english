@@ -383,6 +383,28 @@ func TestCardTimestampTextStoresExactInstant(t *testing.T) {
 	}
 }
 
+// SyncState on a done context returns the context's error and writes nothing.
+func TestSyncStateDoneContextReturnsContextError(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "done-context@example.com")
+	in := emptyState()
+	in.Cards = []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))}
+
+	expired, cancelExpired := context.WithTimeout(context.Background(), 0)
+	defer cancelExpired()
+	if _, err := repo.SyncState(expired, user.ID, in); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("SyncState(expired) error = %v, want context.DeadlineExceeded", err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := repo.SyncState(cancelled, user.ID, in); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SyncState(cancelled) error = %v, want context.Canceled", err)
+	}
+	if got := syncState(t, repo, user.ID, emptyState()); len(got.Cards) != 0 {
+		t.Fatalf("cards = %#v, want none", got.Cards)
+	}
+}
+
 // A Postgres error in the middle batch group is returned with that item's message and rolls back the cards before it.
 func TestSyncStateBatchErrorRollsBack(t *testing.T) {
 	repo := newTestRepo(t)

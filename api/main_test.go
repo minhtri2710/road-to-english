@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -58,6 +59,41 @@ func TestNewServerTimeouts(t *testing.T) {
 	}
 	if server.IdleTimeout != 120*time.Second {
 		t.Fatalf("IdleTimeout = %v, want %v", server.IdleTimeout, 120*time.Second)
+	}
+	if requestTimeout >= server.WriteTimeout {
+		t.Fatalf("requestTimeout = %v, want below WriteTimeout %v", requestTimeout, server.WriteTimeout)
+	}
+
+	var ctx context.Context
+	var deadline time.Time
+	var hasDeadline bool
+	probe := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		ctx = r.Context()
+		deadline, hasDeadline = ctx.Deadline()
+	})
+	before := time.Now()
+	newServer(":8080", probe).Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	if !hasDeadline || deadline.After(time.Now().Add(requestTimeout)) || deadline.Before(before.Add(requestTimeout)) {
+		t.Fatalf("deadline = %v (set %v), want about now + %v", deadline, hasDeadline, requestTimeout)
+	}
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("context error after handler = %v, want context.Canceled", ctx.Err())
+	}
+}
+
+// A sync whose request deadline has passed answers 500 and writes nothing.
+func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-deadline@example.com")
+
+	expired := syncWithCookie(withRequestTimeout(api.handler, 0), validSyncState, cookie)
+	if expired.Code != http.StatusInternalServerError || compactJSON(t, expired.Body.Bytes()) != `{"error":"internal server error"}` {
+		t.Fatalf("expired sync = %d %s, want 500 internal server error", expired.Code, expired.Body.String())
+	}
+	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`
+	later := syncWithCookie(api.handler, empty, cookie)
+	if later.Code != http.StatusOK || compactJSON(t, later.Body.Bytes()) != compactJSON(t, []byte(empty)) {
+		t.Fatalf("later sync = %d %s, want empty state", later.Code, later.Body.String())
 	}
 }
 
