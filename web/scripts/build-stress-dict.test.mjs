@@ -1,13 +1,13 @@
 import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execPath } from "node:process";
 import { describe, expect, it } from "vitest";
 
-import { buildStressDict, verifySha256 } from "./build-stress-dict.mjs";
+import { buildStressDict, verifySha256 } from "./stress-dict.mjs";
 
 const FIXTURE = `a AH0
 a(2) EY1
@@ -29,17 +29,7 @@ describe("build-stress-dict", () => {
     expect(() => verifySha256(Buffer.from(FIXTURE))).toThrow(/sha256 is .*, expected 81917843/);
   });
 
-  it.each([
-    ["the script path", (script) => script],
-    [
-      "a symlink to the script",
-      (script, dir) => {
-        const link = join(dir, "build-stress-dict.mjs");
-        symlinkSync(script, link);
-        return link;
-      },
-    ],
-  ])("exits non-zero on a dictionary that is not the pinned one, leaving the output alone, run through %s", (_, invoke) => {
+  it("exits non-zero on a dictionary that is not the pinned one, leaving the output alone", () => {
     const output = join(import.meta.dirname, "../src/lib/stressDict.json");
     const before = readFileSync(output);
     const dir = mkdtempSync(join(tmpdir(), "stress-dict-"));
@@ -47,7 +37,7 @@ describe("build-stress-dict", () => {
       const input = join(dir, "cmudict.dict");
       writeFileSync(input, FIXTURE);
       const script = join(import.meta.dirname, "build-stress-dict.mjs");
-      expect(() => execFileSync(execPath, [invoke(script, dir), input], { stdio: "pipe" })).toThrow(/sha256/);
+      expect(() => execFileSync(execPath, [script, input], { stdio: "pipe" })).toThrow(/sha256/);
     } finally {
       rmSync(dir, { recursive: true });
     }

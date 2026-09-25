@@ -1,7 +1,7 @@
 import { splitWords } from "./words";
 
 // Word -> its distinct CMUdict stress patterns joined by "," ("010", "01,10"); see
-// web/scripts/build-stress-dict.mjs.
+// web/scripts/stress-dict.mjs.
 export type StressDict = Readonly<Record<string, string>>;
 
 export type Intonation = "falling" | "rising";
