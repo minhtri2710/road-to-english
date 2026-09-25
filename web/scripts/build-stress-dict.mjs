@@ -9,7 +9,7 @@
 // in order (0 none, 1 primary, 2 secondary): "banana" -> "010", "record" -> "01,10". The "(n)"
 // variants merge into their word and duplicate patterns are dropped, in dictionary order.
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { argv, exit, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
@@ -41,7 +41,7 @@ export function buildStressDict(text) {
   return "{" + entries.map(([word, value]) => `${JSON.stringify(word)}:${JSON.stringify(value)}`).join(",") + "}\n";
 }
 
-if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
+if (argv[1] && import.meta.url === pathToFileURL(realpathSync(argv[1])).href) {
   if (argv.length !== 3) {
     stderr.write("usage: node web/scripts/build-stress-dict.mjs <path-to-cmudict.dict>\n");
     exit(2);
