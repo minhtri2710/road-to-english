@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, request } from "./client";
+import { ApiError, NetworkError, request } from "./client";
 
 async function failure(status: number, headers?: Record<string, string>, body: string | null = null): Promise<ApiError> {
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status, headers })));
@@ -12,6 +12,22 @@ async function failure(status: number, headers?: Record<string, string>, body: s
 describe("request", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("throws a NetworkError carrying the fetch rejection as its cause", async () => {
+    const cause = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(cause));
+    const error: unknown = await request("/sync").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(NetworkError);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect((error as NetworkError).cause).toBe(cause);
+    expect((error as NetworkError).message).toBe("Failed to fetch");
+  });
+
+  it("still throws an ApiError for a non-ok response", async () => {
+    const error = await failure(500);
+    expect(error).not.toBeInstanceOf(NetworkError);
+    expect(error.status).toBe(500);
   });
 
   it("reads a 429's Retry-After delta-seconds", async () => {

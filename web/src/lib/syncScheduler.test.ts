@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError } from "../api/client";
+import { ApiError, NetworkError } from "../api/client";
 import { syncState } from "../api/sync";
 import { createSyncScheduler, syncedAgo, type SyncStatus } from "./syncScheduler";
 import { getAllCards } from "./vocabStore";
 import { putCard } from "./vocabStore";
 import { setSyncTrigger } from "./syncEvents";
+import * as backupStore from "./backupStore";
 import { card as fixtureCard, deferred } from "../test/fixtures";
 
 vi.mock("../api/sync", () => ({ syncState: vi.fn() }));
@@ -127,31 +128,31 @@ describe("sync scheduler", () => {
     scheduler.stop();
   });
 
-  it("reports a failed sync, a 401 as signed out, and success after a failure", async () => {
+  it("reports an offline sync, a 401 as signed out, and success after a failure", async () => {
     const statuses: SyncStatus[] = [];
-    syncMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    syncMock.mockRejectedValueOnce(new NetworkError(new TypeError("Failed to fetch")));
     syncMock.mockRejectedValueOnce(new ApiError(401, null));
     syncMock.mockResolvedValueOnce({ cards: [], practiceDays: [], lessonCompletion: [] });
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
+    await vi.waitFor(() => expect(statuses).toEqual(["offline"]));
 
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["failed", "signedOut"]));
+    await vi.waitFor(() => expect(statuses).toEqual(["offline", "signedOut"]));
 
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["failed", "signedOut", "synced"]));
+    await vi.waitFor(() => expect(statuses).toEqual(["offline", "signedOut", "synced"]));
     scheduler.stop();
   });
 
-  it("reports a server error as a failure, not signed out", async () => {
+  it("reports a server error as a server failure, not signed out", async () => {
     const statuses: SyncStatus[] = [];
     syncMock.mockRejectedValueOnce(new ApiError(500, null));
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["failed"]));
+    await vi.waitFor(() => expect(statuses).toEqual(["server"]));
     scheduler.stop();
   });
 
@@ -216,6 +217,103 @@ describe("sync scheduler", () => {
 
     expect(syncMock).toHaveBeenCalledTimes(4);
     expect(JSON.stringify(syncMock.mock.calls[3]?.[0])).toBe(JSON.stringify(syncMock.mock.calls[0]?.[0]));
+    scheduler.stop();
+  });
+});
+
+describe("sync scheduler failures", () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+
+  beforeEach(async () => {
+    const { syncState: realSyncState } = await vi.importActual<typeof import("../api/sync")>("../api/sync");
+    syncMock.mockReset();
+    syncMock.mockImplementation(realSyncState);
+    setSyncTrigger(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  // Runs the real syncState against fetchImpl, triggering twice with unchanged data.
+  async function twice(fetchImpl: () => Promise<Response>): Promise<{ statuses: SyncStatus[]; fetch: ReturnType<typeof vi.fn> }> {
+    const fetch = vi.fn(fetchImpl);
+    vi.stubGlobal("fetch", fetch);
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toHaveLength(1));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toHaveLength(2));
+    scheduler.stop();
+    return { statuses, fetch };
+  }
+
+  it.each<[string, SyncStatus, () => Promise<Response>]>([
+    ["a network failure", "offline", async () => { throw new TypeError("Failed to fetch"); }],
+    ["a 500", "server", async () => json({ error: "internal error" }, 500)],
+    ["a 502 non-JSON proxy page", "server", async () => new Response("<html>Bad Gateway</html>", { status: 502 })],
+    ["a 200 non-JSON body", "badReply", async () => new Response("<html>ok</html>", { status: 200 })],
+    ["a 200 invalid state shape", "badReply", async () => json({ cards: "nope" })],
+  ])("reports %s as %s and retries it on the next unchanged trigger", async (_name, status, fetchImpl) => {
+    const { statuses, fetch } = await twice(fetchImpl);
+    expect(statuses).toEqual([status, status]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["export", () => vi.spyOn(backupStore, "exportAll").mockRejectedValue(new DOMException("read failed", "UnknownError"))],
+    ["merge", () => vi.spyOn(backupStore, "mergeInto").mockRejectedValue(new DOMException("write failed", "UnknownError"))],
+  ])("reports an IndexedDB %s failure as local and retries it on the next unchanged trigger", async (_name, fail) => {
+    const spy = fail();
+    const { statuses } = await twice(async () => json({ cards: [], practiceDays: [], lessonCompletion: [] }));
+    expect(statuses).toEqual(["local", "local"]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a failed reload after a merge as local", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ cards: [], practiceDays: [], lessonCompletion: [] })));
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => { throw new Error("reload failed"); }, (status) => statuses.push(status));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["local"]));
+    scheduler.stop();
+  });
+
+  it("sends an unchanged body rejected with 400 no more, and a changed body once", async () => {
+    await putCard(card("2026-01-02T00:00:00Z"));
+    const { statuses, fetch } = await twice(async () => json({ error: "invalid sync state" }, 400));
+    expect(statuses).toEqual(["rejected", "rejected"]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    const later: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => later.push(status));
+    setSyncTrigger(scheduler.trigger);
+    await putCard(card("2026-01-03T00:00:00Z"));
+    await vi.waitFor(() => expect(later).toEqual(["rejected"]));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    scheduler.stop();
+  });
+
+  it("forgets the rejected body after a 200", async () => {
+    await putCard(card("2026-01-02T00:00:00Z"));
+    const fetch = vi.fn(async () => json({ error: "invalid sync state" }, 400));
+    vi.stubGlobal("fetch", fetch);
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["rejected"]));
+
+    fetch.mockImplementation(async () => json({ cards: [], practiceDays: [], lessonCompletion: [] }));
+    await putCard(card("2026-01-03T00:00:00Z"));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["rejected", "synced"]));
+    await putCard(card("2026-01-02T00:00:00Z"));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(statuses).toEqual(["rejected", "synced", "synced"]));
+    expect(fetch).toHaveBeenCalledTimes(3);
     scheduler.stop();
   });
 });

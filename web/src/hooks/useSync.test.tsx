@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as backupStore from "../lib/backupStore";
 import {
   accountDisclosure,
   callsTo,
@@ -194,13 +195,82 @@ describe("useSync", () => {
     expect(syncLine(container)).toBeUndefined();
   });
 
-  it("still shows the failed text for a server error", async () => {
+  it("still shows the server text for a server error", async () => {
     const { container } = await renderApp({ route: (path) => {
       if (path === "/me") return userResponse();
       if (path === "/sync") return new Response(JSON.stringify({ error: "internal error" }), { status: 500 });
       return undefined;
     } });
-    await waitForCondition(() => liveRegions(container).includes(syncFailed));
+    await waitForCondition(() => liveRegions(container).includes(serverText));
     expect(container.textContent).not.toContain("Sync is paused");
+    expect(container.textContent).not.toContain(syncFailed);
+  });
+
+  const serverText = "Saved on this device. The sync server had a problem, so sync will try again soon.";
+  const lineClass = (container: HTMLElement, text: string) =>
+    Array.from(container.querySelectorAll("p")).find((el) => el.textContent === text)?.className;
+
+  const tooManyCards = "Sync is paused: this account has more saved cards than sync can hold. Everything is still saved on this device.";
+  const tooLarge = () => new Response(JSON.stringify({ error: "too many cards" }), { status: 413 });
+
+  // Renders the App with /sync answered by sync, waits for text in a live region and returns that line's class.
+  async function failedLineClass(sync: () => Response, text: string): Promise<string | undefined> {
+    const view = await renderApp({ route: (path) => {
+      if (path === "/me") return userResponse();
+      if (path === "/sync") return sync();
+      return undefined;
+    } });
+    await waitForCondition(() => liveRegions(view.container).includes(text));
+    const className = lineClass(view.container, text);
+    await close(view);
+    return className;
+  }
+
+  it("renders a 413 in the owner mismatch error style", async () => {
+    await backupStore.claimOwner("another-user");
+    const mismatchClass = await failedLineClass(tooLarge,
+      "This device's data belongs to another account, so sync is off. Sign in with that account to sync.");
+    expect(mismatchClass).toBeTruthy();
+    vi.spyOn(backupStore, "claimOwner").mockResolvedValue(true);
+    const tooLargeClass = await failedLineClass(tooLarge, tooManyCards);
+    expect(tooLargeClass).toBe(mismatchClass);
+  });
+
+  it.each<[string, () => Response, string]>([
+    ["offline", () => { throw new TypeError("Failed to fetch"); }, syncFailed],
+    ["server", () => new Response("<html>Bad Gateway</html>", { status: 502 }), serverText],
+    ["rejected", () => new Response(JSON.stringify({ error: "invalid sync state" }), { status: 400 }),
+      "Saved on this device. The sync server didn't accept this data, so sync will try again after your next change."],
+    ["badReply", () => new Response("not json", { status: 200 }),
+      "Saved on this device. The sync server sent a reply this app couldn't read, so sync will try again soon."],
+    ["local", () => {
+      vi.spyOn(backupStore, "mergeInto").mockRejectedValue(new DOMException("write failed", "UnknownError"));
+      return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [] }), { status: 200 });
+    }, "Sync couldn't read or update the data saved on this device. It will try again soon."],
+  ])("renders the %s failure word for word in the supporting style, not the 413 error style", async (_kind, sync, text) => {
+    const errorClass = await failedLineClass(tooLarge, tooManyCards);
+    const supportingClass = await failedLineClass(sync, text);
+    expect(supportingClass).toBeTruthy();
+    expect(supportingClass).not.toBe(errorClass);
+    vi.restoreAllMocks();
+    const synced = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
+    await waitForCondition(() => syncLine(synced.container) !== undefined);
+    expect(syncLine(synced.container)?.className).toBe(supportingClass);
+  });
+
+  it("announces Synced. once after a server failure recovers", async () => {
+    let failing = true;
+    const { container } = await renderApp({ route: (path) => {
+      if (path === "/me") return userResponse();
+      if (path === "/sync" && failing) return new Response(null, { status: 500 });
+      return undefined;
+    } });
+    await waitForCondition(() => liveRegions(container).includes(serverText));
+    failing = false;
+    await harnessAct(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitForCondition(() => liveRegions(container).includes("Synced."));
+    expect(container.textContent).not.toContain(serverText);
   });
 });

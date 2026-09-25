@@ -57,11 +57,12 @@ export function AppHeader({
       {backupError && <Alert>Backup error: {backupError}</Alert>}
       {/* The synced line changes every minute, so the live region carries only problems and one "Synced." after a failure. */}
       <Status>
-        {syncLine?.status === "failed" && <Text as="p" type="supporting">{syncLine.text}</Text>}
-        {(syncLine?.status === "ownerMismatch" || syncLine?.status === "tooLarge") && (
+        {syncLine?.status === "ownerMismatch" || syncLine?.status === "tooLarge" ? (
           <Text as="p" color="primary" xstyle={sharedStyles.error}>
             {syncLine.text}
           </Text>
+        ) : (
+          syncLine && syncLine.status !== "synced" && <Text as="p" type="supporting">{syncLine.text}</Text>
         )}
         {syncLine?.recovered && <VisuallyHidden>Synced.</VisuallyHidden>}
       </Status>

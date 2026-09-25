@@ -588,7 +588,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["sync failed", async (page, inspect) => {
     await signUpWithSync(page, 500);
-    await expect(page.getByText("Saved on this device. Will sync when you're back online.")).toBeVisible();
+    await expect(page.getByText("Saved on this device. The sync server had a problem, so sync will try again soon.")).toBeVisible();
     await inspect();
   }],
 ];

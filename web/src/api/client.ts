@@ -14,6 +14,14 @@ export class ApiError extends Error {
   }
 }
 
+// fetch itself rejected: no response arrived. The original error is the cause and its message is kept.
+export class NetworkError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "NetworkError";
+  }
+}
+
 const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
 function getUrl(path: string): string {
@@ -38,7 +46,12 @@ async function errorCode(response: Response): Promise<string | null> {
 
 // init is a rest tuple so a bare request(path) calls fetch(url) with no second argument.
 export async function request<T>(path: string, ...init: [RequestInit?]): Promise<T> {
-  const response = await fetch(getUrl(path), ...init);
+  let response: Response;
+  try {
+    response = await fetch(getUrl(path), ...init);
+  } catch (error) {
+    throw new NetworkError(error);
+  }
 
   if (!response.ok) {
     throw new ApiError(response.status, retryAfterSeconds(response), await errorCode(response));

@@ -1,9 +1,19 @@
-import { ApiError } from "../api/client";
+import { ApiError, NetworkError } from "../api/client";
 import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
 import type { SyncState } from "./backup";
 
-export type SyncStatus = "synced" | "failed" | "signedOut" | "ownerMismatch" | "tooLarge";
+// offline, server, rejected, badReply and local are failed runs, named by where they failed.
+export type SyncStatus =
+  | "synced"
+  | "offline"
+  | "server"
+  | "rejected"
+  | "badReply"
+  | "local"
+  | "signedOut"
+  | "ownerMismatch"
+  | "tooLarge";
 
 export interface SyncScheduler {
   trigger(): void;
@@ -20,12 +30,14 @@ export function createSyncScheduler(
   let active = true;
   let running = false;
   let dirty = false;
-  // The body the server refused with 413 and its code; the same body is never re-sent.
-  let refused: { body: string; code: string | null } | null = null;
+  // The body the server refused with 413 or 400, its status and code; the same body is never re-sent.
+  let refused: { body: string; status: "tooLarge" | "rejected"; code: string | null } | null = null;
 
   // Returns null when the scheduler stopped mid-run.
   const attempt = async (): Promise<{ status: SyncStatus; code: string | null } | null> => {
     let body = "";
+    // Only syncState's errors come from the server; every other call reads or writes IndexedDB.
+    let sending = false;
     try {
       if (!await claimOwner(userId)) {
         return { status: "ownerMismatch", code: null };
@@ -39,9 +51,11 @@ export function createSyncScheduler(
       }
       body = JSON.stringify(local);
       if (refused?.body === body) {
-        return { status: "tooLarge", code: refused.code };
+        return { status: refused.status, code: refused.code };
       }
+      sending = true;
       const remote = await syncState(local);
+      sending = false;
       refused = null;
       if (!active) {
         return null;
@@ -54,11 +68,21 @@ export function createSyncScheduler(
       return { status: "synced", code: null };
     } catch (error) {
       // Local IndexedDB stays the source of truth; the status tells the App what happened.
-      if (error instanceof ApiError && error.status === 413) {
-        refused = { body, code: error.code };
-        return { status: "tooLarge", code: error.code };
+      if (!sending) {
+        return { status: "local", code: null };
       }
-      return { status: error instanceof ApiError && error.status === 401 ? "signedOut" : "failed", code: null };
+      if (error instanceof NetworkError) {
+        return { status: "offline", code: null };
+      }
+      // A reply arrived but its JSON or its state shape could not be read.
+      if (!(error instanceof ApiError)) {
+        return { status: "badReply", code: null };
+      }
+      if (error.status === 413 || error.status === 400) {
+        refused = { body, status: error.status === 413 ? "tooLarge" : "rejected", code: error.status === 413 ? error.code : null };
+        return { status: refused.status, code: refused.code };
+      }
+      return { status: error.status === 401 ? "signedOut" : "server", code: null };
     }
   };
 

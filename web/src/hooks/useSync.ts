@@ -9,7 +9,7 @@ import { setSyncTrigger } from "../lib/syncEvents";
 // The last finished run. syncedAt is when it synced (ms); recovered marks a sync that followed a failure.
 type SyncRun =
   | { status: "synced"; syncedAt: number; recovered: boolean }
-  | { status: "failed" | "ownerMismatch" }
+  | { status: RetryStatus | "ownerMismatch" }
   | { status: "tooLarge"; code: string | null };
 
 export interface SyncLine {
@@ -18,10 +18,18 @@ export interface SyncLine {
   recovered: boolean;
 }
 
-const problemText = {
-  failed: "Saved on this device. Will sync when you're back online.",
-  ownerMismatch: "This device's data belongs to another account, so sync is off. Sign in with that account to sync.",
+type RetryStatus = "offline" | "server" | "rejected" | "badReply" | "local";
+
+// The failed runs a later trigger retries; a sync after one of them is announced as recovered.
+const retryText: Record<RetryStatus, string> = {
+  offline: "Saved on this device. Will sync when you're back online.",
+  server: "Saved on this device. The sync server had a problem, so sync will try again soon.",
+  rejected: "Saved on this device. The sync server didn't accept this data, so sync will try again after your next change.",
+  badReply: "Saved on this device. The sync server sent a reply this app couldn't read, so sync will try again soon.",
+  local: "Sync couldn't read or update the data saved on this device. It will try again soon.",
 };
+
+const ownerMismatchText = "This device's data belongs to another account, so sync is off. Sign in with that account to sync.";
 
 // Keyed by the server's 413 error; any other code reads as the body-too-large text.
 const tooLargeText: Record<string, string> = {
@@ -81,7 +89,7 @@ export function useSync(
           setRun((previous) => ({
             status,
             syncedAt: finishedAt,
-            recovered: previous?.status === "failed" || (previous?.status === "synced" && previous.recovered),
+            recovered: (previous !== null && Object.hasOwn(retryText, previous.status)) || (previous?.status === "synced" && previous.recovered),
           }));
           return;
         }
@@ -119,5 +127,5 @@ export function useSync(
     const text = (run.code !== null && Object.hasOwn(tooLargeText, run.code) ? tooLargeText[run.code] : undefined) ?? tooLargeText["request body too large"];
     return { status: run.status, text, recovered: false };
   }
-  return { status: run.status, text: problemText[run.status], recovered: false };
+  return { status: run.status, text: run.status === "ownerMismatch" ? ownerMismatchText : retryText[run.status], recovered: false };
 }
