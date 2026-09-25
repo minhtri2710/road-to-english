@@ -436,6 +436,102 @@ func TestSyncStateBatchErrorRollsBack(t *testing.T) {
 	}
 }
 
+func TestSyncStateCapsStoredCards(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "card-cap@example.com")
+	ctx := context.Background()
+	capCard := func(i int) Card {
+		sentenceID := "s" + strconv.Itoa(i)
+		return testCard(cardID("l", sentenceID, ""), "l", sentenceID, "front", "back", fsrs("2026-01-01T00:00:00Z", 0))
+	}
+	in := emptyState()
+	for i := range MaxCards {
+		in.Cards = append(in.Cards, capCard(i))
+	}
+	if out := syncState(t, repo, user.ID, in); len(out.Cards) != MaxCards {
+		t.Fatalf("cards = %d, want %d", len(out.Cards), MaxCards)
+	}
+	storedCards := func() int {
+		t.Helper()
+		var count int
+		if err := repo.pool.QueryRow(ctx, "SELECT count(*) FROM cards WHERE user_id = $1", user.ID).Scan(&count); err != nil {
+			t.Fatalf("count cards: %v", err)
+		}
+		return count
+	}
+
+	over := emptyState()
+	over.Cards = []Card{capCard(MaxCards)}
+	if _, err := repo.SyncState(ctx, user.ID, over); !errors.Is(err, ErrTooManyCards) {
+		t.Fatalf("SyncState() error = %v, want ErrTooManyCards", err)
+	}
+	if count := storedCards(); count != MaxCards {
+		t.Fatalf("stored cards = %d, want %d", count, MaxCards)
+	}
+
+	update := capCard(0)
+	update.Front = "updated"
+	update.UpdatedAt = "2026-02-01T00:00:00Z"
+	out := syncState(t, repo, user.ID, oneCardState(update))
+	if len(out.Cards) != MaxCards {
+		t.Fatalf("cards = %d, want %d", len(out.Cards), MaxCards)
+	}
+	var front string
+	if err := repo.pool.QueryRow(ctx, "SELECT front FROM cards WHERE user_id = $1 AND id = $2", user.ID, update.ID).Scan(&front); err != nil {
+		t.Fatalf("read card: %v", err)
+	}
+	if front != "updated" {
+		t.Fatalf("front = %q, want updated", front)
+	}
+}
+
+func TestSyncStateCapsPracticeDaysAndLessonCompletion(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	day := func(i int) PracticeDay {
+		return PracticeDay{Date: time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")}
+	}
+	completion := func(i int) LessonCompletion { return LessonCompletion{LessonID: "l" + strconv.Itoa(i)} }
+	for _, list := range []struct {
+		name  string
+		max   int
+		err   error
+		table string
+		add   func(in *State, i int)
+	}{
+		{"practiceDays", MaxPracticeDays, ErrTooManyPracticeDays, "practice_days", func(in *State, i int) { in.PracticeDays = append(in.PracticeDays, day(i)) }},
+		{"lessonCompletion", MaxLessonCompletions, ErrTooManyLessonCompletions, "lesson_completion", func(in *State, i int) { in.LessonCompletion = append(in.LessonCompletion, completion(i)) }},
+	} {
+		t.Run(list.name, func(t *testing.T) {
+			user := createTestUser(t, repo, list.name+"-cap@example.com")
+			in := emptyState()
+			for i := range list.max {
+				list.add(&in, i)
+			}
+			syncState(t, repo, user.ID, in)
+			stored := func() int {
+				t.Helper()
+				var count int
+				if err := repo.pool.QueryRow(ctx, "SELECT count(*) FROM "+list.table+" WHERE user_id = $1", user.ID).Scan(&count); err != nil {
+					t.Fatalf("count %s: %v", list.table, err)
+				}
+				return count
+			}
+			if count := stored(); count != list.max {
+				t.Fatalf("stored = %d, want %d", count, list.max)
+			}
+			over := emptyState()
+			list.add(&over, list.max)
+			if _, err := repo.SyncState(ctx, user.ID, over); !errors.Is(err, list.err) {
+				t.Fatalf("SyncState() error = %v, want %v", err, list.err)
+			}
+			if count := stored(); count != list.max {
+				t.Fatalf("stored after refused sync = %d, want %d", count, list.max)
+			}
+		})
+	}
+}
+
 // Mirrors web mergeCard.test.ts case for case.
 func TestCardUpsertMergeRule(t *testing.T) {
 	fresh := fsrs("2026-01-01T00:00:00Z", 0)

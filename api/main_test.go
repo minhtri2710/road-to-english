@@ -24,6 +24,7 @@ import (
 type testAPI struct {
 	handler http.Handler
 	pool    *pgxpool.Pool
+	repo    *storage.Repository
 }
 
 func newTestAPI(t *testing.T) *testAPI {
@@ -43,6 +44,7 @@ func newTestAPI(t *testing.T) *testAPI {
 	return &testAPI{
 		handler: corsMiddleware(jsonResponseMiddleware(newMux(store, repo)), defaultCORSOrigin),
 		pool:    pool,
+		repo:    repo,
 	}
 }
 
@@ -856,6 +858,89 @@ func TestSyncRejectsOversizedBody(t *testing.T) {
 	}
 	if compactJSON(t, response.Body.Bytes()) != `{"error":"request body too large"}` {
 		t.Fatalf("body = %s", response.Body.String())
+	}
+}
+
+func TestSyncRejectsCardsOverCap(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-card-cap@example.com")
+	card := func(i int) string {
+		sentenceID := "s" + strconv.Itoa(i)
+		return `{"id":"l:` + sentenceID + `","front":"f","back":"","source":{"lessonId":"l","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}`
+	}
+	cards := make([]string, storage.MaxCards)
+	for i := range cards {
+		cards[i] = card(i)
+	}
+	half := storage.MaxCards / 2
+	syncCardsJSON(t, api, cookie, strings.Join(cards[:half], ","))
+	if got := syncCardsJSON(t, api, cookie, strings.Join(cards[half:], ",")); len(got) != storage.MaxCards {
+		t.Fatalf("seeded cards = %d, want %d", len(got), storage.MaxCards)
+	}
+
+	response := syncWithCookie(api.handler, `{"cards":[`+card(storage.MaxCards)+`],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusRequestEntityTooLarge, response.Body.String())
+	}
+	if compactJSON(t, response.Body.Bytes()) != `{"error":"too many cards"}` {
+		t.Fatalf("body = %s", response.Body.String())
+	}
+	if got := syncCardsJSON(t, api, cookie, ""); len(got) != storage.MaxCards {
+		t.Fatalf("cards after refused sync = %d, want %d", len(got), storage.MaxCards)
+	}
+}
+
+func TestSyncRejectsListsOverCap(t *testing.T) {
+	api := newTestAPI(t)
+	for _, list := range []struct {
+		name, over, body string
+		seed             func(in *storage.State)
+		count            func(state storage.State) int
+		max              int
+	}{
+		{
+			"practice-days", `{"cards":[],"practiceDays":[{"date":"9999-12-31"}],"lessonCompletion":[]}`, `{"error":"too many practice days"}`,
+			func(in *storage.State) {
+				for i := range storage.MaxPracticeDays {
+					in.PracticeDays = append(in.PracticeDays, storage.PracticeDay{Date: time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")})
+				}
+			},
+			func(state storage.State) int { return len(state.PracticeDays) }, storage.MaxPracticeDays,
+		},
+		{
+			"lesson-completion", `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":"over"}]}`, `{"error":"too many lesson completions"}`,
+			func(in *storage.State) {
+				for i := range storage.MaxLessonCompletions {
+					in.LessonCompletion = append(in.LessonCompletion, storage.LessonCompletion{LessonID: "l" + strconv.Itoa(i)})
+				}
+			},
+			func(state storage.State) int { return len(state.LessonCompletion) }, storage.MaxLessonCompletions,
+		},
+	} {
+		t.Run(list.name, func(t *testing.T) {
+			cookie := signupForSync(t, api, "sync-"+list.name+"-cap@example.com")
+			me := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie)
+			var user struct {
+				ID string `json:"id"`
+			}
+			decodeJSON(t, me, &user)
+			seed := storage.State{Cards: []storage.Card{}, PracticeDays: []storage.PracticeDay{}, LessonCompletion: []storage.LessonCompletion{}}
+			list.seed(&seed)
+			if _, err := api.repo.SyncState(context.Background(), user.ID, seed); err != nil {
+				t.Fatalf("seed SyncState() error = %v", err)
+			}
+
+			response := syncWithCookie(api.handler, list.over, cookie)
+			if response.Code != http.StatusRequestEntityTooLarge || compactJSON(t, response.Body.Bytes()) != list.body {
+				t.Fatalf("status = %d, body = %s; want 413 %s", response.Code, response.Body.String(), list.body)
+			}
+			after := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+			var state storage.State
+			decodeJSON(t, after, &state)
+			if list.count(state) != list.max {
+				t.Fatalf("count after refused sync = %d, want %d", list.count(state), list.max)
+			}
+		})
 	}
 }
 

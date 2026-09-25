@@ -20,6 +20,18 @@ func syncHandler(w http.ResponseWriter, r *http.Request, repo *storage.Repositor
 		writeError(w, http.StatusBadRequest, "invalid sync state")
 		return
 	}
+	if errors.Is(err, storage.ErrTooManyCards) {
+		writeError(w, http.StatusRequestEntityTooLarge, "too many cards")
+		return
+	}
+	if errors.Is(err, storage.ErrTooManyPracticeDays) {
+		writeError(w, http.StatusRequestEntityTooLarge, "too many practice days")
+		return
+	}
+	if errors.Is(err, storage.ErrTooManyLessonCompletions) {
+		writeError(w, http.StatusRequestEntityTooLarge, "too many lesson completions")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return

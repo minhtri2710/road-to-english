@@ -28,7 +28,22 @@ var (
 	ErrSessionInvalid = errors.New("session invalid")
 	// ErrInvalidState is SyncState's error for an input that breaks the wire contract; nothing was written.
 	ErrInvalidState = errors.New("invalid sync state")
+	// ErrTooManyCards is SyncState's error when the merged state would store more than MaxCards cards; nothing was written.
+	ErrTooManyCards = errors.New("too many cards")
+	// ErrTooManyPracticeDays and ErrTooManyLessonCompletions are the same refusal for the other two lists.
+	ErrTooManyPracticeDays      = errors.New("too many practice days")
+	ErrTooManyLessonCompletions = errors.New("too many lesson completions")
 )
+
+// MaxCards caps an account's stored cards to one push's worth: a full-state sync body (4 MiB, api/sync.go)
+// holds at most 4,194,304 / (299 + 1) = 13,981 of the smallest web card (299 B of JSON plus a comma).
+const MaxCards = 13981
+
+// MaxPracticeDays is one push's worth of the smallest practice day, {"date":"2026-09-25"} (21 B plus a comma): 4,194,304 / 22.
+const MaxPracticeDays = 190650
+
+// MaxLessonCompletions is one push's worth of the smallest completion, {"lessonId":"a"} (16 B plus a comma): 4,194,304 / 17.
+const MaxLessonCompletions = 246723
 
 // Card is the client-compatible persisted vocabulary card.
 type Card struct {
@@ -302,6 +317,15 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 	out, err := readState(ctx, tx, userID)
 	if err != nil {
 		return State{}, err
+	}
+	if len(out.Cards) > MaxCards {
+		return State{}, ErrTooManyCards
+	}
+	if len(out.PracticeDays) > MaxPracticeDays {
+		return State{}, ErrTooManyPracticeDays
+	}
+	if len(out.LessonCompletion) > MaxLessonCompletions {
+		return State{}, ErrTooManyLessonCompletions
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return State{}, fmt.Errorf("commit sync transaction: %w", err)
