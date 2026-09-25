@@ -106,9 +106,8 @@ func parseTimestamp(value string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	_, offset := timestamp.Zone()
-	if timestamp.Year() < 1 || offset != 0 {
-		return time.Time{}, fmt.Errorf("timestamp must be UTC and have year >= 1")
+	if timestamp.Year() < 1 {
+		return time.Time{}, fmt.Errorf("timestamp must have year >= 1")
 	}
 	return timestamp, nil
 }
@@ -142,9 +141,6 @@ func Open(ctx context.Context, dsn string) (*Repository, error) {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit schema transaction: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	closePool = false
@@ -299,20 +295,8 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (St
 		_ = tx.Rollback(ctx)
 	}()
 
-	for _, card := range in.Cards {
-		if err := syncCard(ctx, tx, userID, card); err != nil {
-			return State{}, err
-		}
-	}
-	for _, practiceDay := range in.PracticeDays {
-		if err := syncPracticeDay(ctx, tx, userID, practiceDay); err != nil {
-			return State{}, err
-		}
-	}
-	for _, completion := range in.LessonCompletion {
-		if err := syncLessonCompletion(ctx, tx, userID, completion); err != nil {
-			return State{}, err
-		}
+	if err := syncBatch(ctx, tx, userID, in); err != nil {
+		return State{}, err
 	}
 
 	out, err := readState(ctx, tx, userID)
@@ -334,7 +318,7 @@ const incomingWins = `(EXCLUDED.updated_at > cards.updated_at
 
 var upsertCardSQL = strings.ReplaceAll(`
 	INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::timestamptz)
 	ON CONFLICT (user_id, id) DO UPDATE SET
 		front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
 		back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
@@ -353,49 +337,44 @@ var upsertCardSQL = strings.ReplaceAll(`
 		OR ((EXCLUDED.fsrs->>'reps')::numeric > 0 AND (cards.fsrs->>'reps')::numeric = 0)
 `, "{wins}", incomingWins)
 
-// syncCard upserts one card SyncState has already validated.
-func syncCard(ctx context.Context, tx pgx.Tx, userID string, card Card) error {
-	updatedAt, err := parseTimestamp(card.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("sync card %q: invalid updatedAt: %w", card.ID, err)
+// syncBatch sends every upsert of an already validated, sorted State as one batch on tx and checks each result in order.
+func syncBatch(ctx context.Context, tx pgx.Tx, userID string, in State) error {
+	batch := &pgx.Batch{}
+	for _, card := range in.Cards {
+		batch.Queue(upsertCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, card.UpdatedAt, card.DeletedAt.Value)
 	}
-	var deletedAt *time.Time
-	if card.DeletedAt.Value != nil {
-		value, err := parseTimestamp(*card.DeletedAt.Value)
-		if err != nil {
-			return fmt.Errorf("sync card %q: invalid deletedAt: %w", card.ID, err)
+	for _, practiceDay := range in.PracticeDays {
+		batch.Queue(`
+			INSERT INTO practice_days (user_id, date)
+			VALUES ($1, $2::date)
+			ON CONFLICT (user_id, date) DO NOTHING
+		`, userID, practiceDay.Date)
+	}
+	for _, completion := range in.LessonCompletion {
+		batch.Queue(`
+			INSERT INTO lesson_completion (user_id, lesson_id)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, lesson_id) DO NOTHING
+		`, userID, completion.LessonID)
+	}
+	results := tx.SendBatch(ctx, batch)
+	defer results.Close()
+	for _, card := range in.Cards {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("sync card %q: %w", card.ID, err)
 		}
-		deletedAt = &value
 	}
-	_, err = tx.Exec(ctx, upsertCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, updatedAt, deletedAt)
-	if err != nil {
-		return fmt.Errorf("sync card %q: %w", card.ID, err)
+	for _, practiceDay := range in.PracticeDays {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("sync practice day %q: %w", practiceDay.Date, err)
+		}
 	}
-	return nil
-}
-
-func syncPracticeDay(ctx context.Context, tx pgx.Tx, userID string, practiceDay PracticeDay) error {
-	_, err := tx.Exec(ctx, `
-		INSERT INTO practice_days (user_id, date)
-		VALUES ($1, $2::date)
-		ON CONFLICT (user_id, date) DO NOTHING
-	`, userID, practiceDay.Date)
-	if err != nil {
-		return fmt.Errorf("sync practice day %q: %w", practiceDay.Date, err)
+	for _, completion := range in.LessonCompletion {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("sync lesson %q: %w", completion.LessonID, err)
+		}
 	}
-	return nil
-}
-
-func syncLessonCompletion(ctx context.Context, tx pgx.Tx, userID string, completion LessonCompletion) error {
-	_, err := tx.Exec(ctx, `
-		INSERT INTO lesson_completion (user_id, lesson_id)
-		VALUES ($1, $2)
-		ON CONFLICT (user_id, lesson_id) DO NOTHING
-	`, userID, completion.LessonID)
-	if err != nil {
-		return fmt.Errorf("sync lesson %q: %w", completion.LessonID, err)
-	}
-	return nil
+	return results.Close()
 }
 
 func readState(ctx context.Context, tx pgx.Tx, userID string) (State, error) {
@@ -472,18 +451,14 @@ func readPracticeDays(ctx context.Context, tx pgx.Tx, userID string) ([]Practice
 	if err != nil {
 		return nil, fmt.Errorf("list practice days: %w", err)
 	}
-	defer rows.Close()
 
-	practiceDays := make([]PracticeDay, 0)
-	for rows.Next() {
+	practiceDays, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (PracticeDay, error) {
 		var date time.Time
-		if err := rows.Scan(&date); err != nil {
-			return nil, fmt.Errorf("scan practice day: %w", err)
-		}
-		practiceDays = append(practiceDays, PracticeDay{Date: date.Format("2006-01-02")})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate practice days: %w", err)
+		err := row.Scan(&date)
+		return PracticeDay{Date: date.Format("2006-01-02")}, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan practice days: %w", err)
 	}
 	return practiceDays, nil
 }
@@ -498,18 +473,10 @@ func readLessonCompletion(ctx context.Context, tx pgx.Tx, userID string) ([]Less
 	if err != nil {
 		return nil, fmt.Errorf("list completed lessons: %w", err)
 	}
-	defer rows.Close()
 
-	lessonCompletion := make([]LessonCompletion, 0)
-	for rows.Next() {
-		var lessonID string
-		if err := rows.Scan(&lessonID); err != nil {
-			return nil, fmt.Errorf("scan completed lesson: %w", err)
-		}
-		lessonCompletion = append(lessonCompletion, LessonCompletion{LessonID: lessonID})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate completed lessons: %w", err)
+	lessonCompletion, err := pgx.CollectRows(rows, pgx.RowToStructByPos[LessonCompletion])
+	if err != nil {
+		return nil, fmt.Errorf("scan completed lessons: %w", err)
 	}
 	return lessonCompletion, nil
 }

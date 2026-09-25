@@ -90,8 +90,9 @@ func TestMuxLibraryEndpoints(t *testing.T) {
 		{name: "lesson summaries", method: http.MethodGet, path: "/lessons", wantStatus: http.StatusOK},
 		{name: "fixture lesson", method: http.MethodGet, path: "/lessons/greetings-basics", wantStatus: http.StatusOK},
 		{name: "unknown lesson", method: http.MethodGet, path: "/lessons/does-not-exist", wantStatus: http.StatusNotFound, wantBody: `{"error":"not found"}`},
-		{name: "wrong method collection", method: http.MethodPost, path: "/lessons", wantStatus: http.StatusMethodNotAllowed},
-		{name: "wrong method item", method: http.MethodPost, path: "/lessons/greetings-basics", wantStatus: http.StatusMethodNotAllowed},
+		{name: "wrong method collection", method: http.MethodPost, path: "/lessons", wantStatus: http.StatusMethodNotAllowed, wantBody: `{"error":"method not allowed"}`},
+		{name: "wrong method item", method: http.MethodPost, path: "/lessons/greetings-basics", wantStatus: http.StatusMethodNotAllowed, wantBody: `{"error":"method not allowed"}`},
+		{name: "unknown path", method: http.MethodGet, path: "/nope", wantStatus: http.StatusNotFound, wantBody: `{"error":"not found"}`},
 	}
 
 	for _, test := range tests {
@@ -309,6 +310,24 @@ func TestLogoutClearsSession(t *testing.T) {
 	api.handler.ServeHTTP(meResponse, meRequest)
 	if meResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("/me after logout status = %d, want 401", meResponse.Code)
+	}
+}
+
+func TestLogoutNoContentHasNoContentType(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := responseCookie(t, doJSON(api.handler, http.MethodPost, "/signup", `{"email":"logout-204@example.com","password":"password"}`))
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.AddCookie(cookie)
+	recorder := httptest.NewRecorder()
+	api.handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("logout status = %d, want 204", recorder.Code)
+	}
+	if contentType, ok := recorder.Header()["Content-Type"]; ok {
+		t.Fatalf("Content-Type = %q, want none", contentType)
+	}
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("body = %q, want empty", recorder.Body.String())
 	}
 }
 

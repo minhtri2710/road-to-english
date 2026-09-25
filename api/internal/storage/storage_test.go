@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,6 +350,67 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	}
 	if deletedAt != nil {
 		t.Fatalf("live deleted_at = %v, want NULL", deletedAt)
+	}
+}
+
+// Timestamps reach Postgres as text cast to timestamptz: each stored instant must equal parseTimestamp of the wire string.
+func TestCardTimestampTextStoresExactInstant(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "timestamp-text@example.com")
+	values := []string{"2026-01-02T03:04:05Z", "2026-01-02T03:04:05.1Z", "2026-01-02T03:04:05.12Z", "2026-01-02T03:04:05.123Z", "0001-01-01T00:00:00Z"}
+	in := emptyState()
+	for i, value := range values {
+		sentenceID := "sentence-" + strconv.Itoa(i)
+		in.Cards = append(in.Cards, tombstone(testCard("lesson-1:"+sentenceID, "lesson-1", sentenceID, "front", "back", fsrs("2026-01-01T00:00:00Z", 0)), value))
+	}
+
+	got := syncState(t, repo, user.ID, in)
+	if !reflect.DeepEqual(got.Cards, in.Cards) {
+		t.Fatalf("cards = %#v, want %#v", got.Cards, in.Cards)
+	}
+	for _, card := range in.Cards {
+		want, err := parseTimestamp(card.UpdatedAt)
+		if err != nil {
+			t.Fatalf("parseTimestamp(%q) error = %v", card.UpdatedAt, err)
+		}
+		var updatedAt, deletedAt time.Time
+		if err := repo.pool.QueryRow(context.Background(), "SELECT updated_at, deleted_at FROM cards WHERE user_id = $1 AND id = $2", user.ID, card.ID).Scan(&updatedAt, &deletedAt); err != nil {
+			t.Fatalf("query %s: %v", card.ID, err)
+		}
+		if !updatedAt.Equal(want) || !deletedAt.Equal(want) || formatTimestamp(updatedAt) != card.UpdatedAt {
+			t.Fatalf("%s stored %v, %v, want %v", card.UpdatedAt, updatedAt.UTC(), deletedAt.UTC(), want)
+		}
+	}
+}
+
+// A Postgres error in the middle batch group is returned with that item's message and rolls back the cards before it.
+func TestSyncStateBatchErrorRollsBack(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "batch-error@example.com")
+	ctx := context.Background()
+	if _, err := repo.pool.Exec(ctx, "ALTER TABLE practice_days ADD CONSTRAINT test_reject_day CHECK (date <> '1999-12-31') NOT VALID"); err != nil {
+		t.Fatalf("add constraint: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := repo.pool.Exec(ctx, "ALTER TABLE practice_days DROP CONSTRAINT test_reject_day"); err != nil {
+			t.Errorf("drop constraint: %v", err)
+		}
+	})
+
+	in := emptyState()
+	in.Cards = []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))}
+	in.PracticeDays = []PracticeDay{{Date: "1999-12-30"}, {Date: "1999-12-31"}}
+	in.LessonCompletion = []LessonCompletion{{LessonID: "lesson-1"}}
+	_, err := repo.SyncState(ctx, user.ID, in)
+	if err == nil || !strings.Contains(err.Error(), `sync practice day "1999-12-31": `) || errors.Is(err, ErrInvalidState) {
+		t.Fatalf("SyncState() error = %v, want the practice day's Postgres error", err)
+	}
+	var rows int
+	if err := repo.pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM cards) + (SELECT count(*) FROM practice_days) + (SELECT count(*) FROM lesson_completion)").Scan(&rows); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("rows = %d, want 0", rows)
 	}
 }
 

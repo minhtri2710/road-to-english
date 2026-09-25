@@ -1,8 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"io"
 	"net/http"
 )
 
@@ -29,68 +28,55 @@ func corsMiddleware(next http.Handler, configuredOrigin string) http.Handler {
 	})
 }
 
-type responseBuffer struct {
-	target      http.ResponseWriter
-	header      http.Header
-	body        bytes.Buffer
-	status      int
+// errorBodies replaces the body of a 404 or 405 the handler did not answer in JSON (the mux's plain-text errors).
+var errorBodies = map[int]string{
+	http.StatusNotFound:         `{"error":"not found"}` + "\n",
+	http.StatusMethodNotAllowed: `{"error":"method not allowed"}` + "\n",
+}
+
+// jsonResponseWriter passes the response through, marking it application/json (except a 204) when the header is written.
+type jsonResponseWriter struct {
+	http.ResponseWriter
 	wroteHeader bool
+	discard     bool
 }
 
-func newResponseBuffer(target http.ResponseWriter) *responseBuffer {
-	header := make(http.Header, len(target.Header()))
-	for key, values := range target.Header() {
-		header[key] = append([]string(nil), values...)
-	}
-	return &responseBuffer{target: target, header: header}
-}
-
-func (w *responseBuffer) Header() http.Header {
-	return w.header
-}
-
-func (w *responseBuffer) WriteHeader(status int) {
+func (w *jsonResponseWriter) WriteHeader(status int) {
 	if w.wroteHeader {
 		return
 	}
-	w.status = status
 	w.wroteHeader = true
+	header := w.Header()
+	body, replace := errorBodies[status]
+	w.discard = replace && header.Get("Content-Type") != "application/json"
+	if status != http.StatusNoContent {
+		header.Set("Content-Type", "application/json")
+	}
+	if w.discard {
+		header.Del("Content-Length")
+	}
+	w.ResponseWriter.WriteHeader(status)
+	if w.discard {
+		_, _ = io.WriteString(w.ResponseWriter, body)
+	}
 }
 
-func (w *responseBuffer) Write(body []byte) (int, error) {
+func (w *jsonResponseWriter) Write(body []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.body.Write(body)
-}
-
-func (w *responseBuffer) flush() {
-	if !w.wroteHeader {
-		w.status = http.StatusOK
+	if w.discard {
+		return len(body), nil
 	}
-	if w.status == http.StatusNotFound && w.header.Get("Content-Type") != "application/json" {
-		w.body.Reset()
-		_ = json.NewEncoder(&w.body).Encode(map[string]string{"error": "not found"})
-	}
-	if w.status == http.StatusMethodNotAllowed && w.header.Get("Content-Type") != "application/json" {
-		w.body.Reset()
-		_ = json.NewEncoder(&w.body).Encode(map[string]string{"error": "method not allowed"})
-	}
-	w.header.Set("Content-Type", "application/json")
-	for key := range w.target.Header() {
-		w.target.Header().Del(key)
-	}
-	for key, values := range w.header {
-		w.target.Header()[key] = append([]string(nil), values...)
-	}
-	w.target.WriteHeader(w.status)
-	_, _ = w.target.Write(w.body.Bytes())
+	return w.ResponseWriter.Write(body)
 }
 
 func jsonResponseMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buffer := newResponseBuffer(w)
-		next.ServeHTTP(buffer, r)
-		buffer.flush()
+		writer := &jsonResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(writer, r)
+		if !writer.wroteHeader {
+			writer.WriteHeader(http.StatusOK)
+		}
 	})
 }
