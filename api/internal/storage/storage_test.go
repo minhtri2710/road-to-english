@@ -1063,6 +1063,35 @@ func TestSyncPurgeBoundary(t *testing.T) {
 	}
 }
 
+// G4: a user's purge never touches another user's tombstones.
+func TestSyncPurgeLeavesOtherUsersTombstones(t *testing.T) {
+	repo := newTestRepo(t)
+	a := createTestUser(t, repo, "purge-scope-a@example.com")
+	b := createTestUser(t, repo, "purge-scope-b@example.com")
+	live := dirtyCard(testCard("lesson-1:live", "lesson-1", "live", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))
+	deleted := dirtyCard(tombstone(testCard("lesson-1:deleted", "lesson-1", "deleted", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)), inWindow().Format(time.RFC3339)))
+	for _, user := range []User{a, b} {
+		syncCards(t, repo, user.ID, live, deleted)
+	}
+	for _, user := range []User{a, b} {
+		purgeAge(t, repo, user.ID, deleted.ID, "181 days")
+	}
+	want := []string{live.ID}
+	if out := syncCards(t, repo, b.ID); !slices.Equal(responseIDs(out.Cards), want) {
+		t.Fatalf("B response = %v, want %v", responseIDs(out.Cards), want)
+	}
+	if ids := storedCardIDs(t, repo, b.ID); !slices.Equal(ids, want) {
+		t.Fatalf("B stored = %v, want %v", ids, want)
+	}
+	if ids := storedCardIDs(t, repo, a.ID); !slices.Equal(ids, []string{deleted.ID, live.ID}) {
+		t.Fatalf("A stored after B's purge = %v, want %v", ids, []string{deleted.ID, live.ID})
+	}
+	syncCards(t, repo, a.ID)
+	if ids := storedCardIDs(t, repo, a.ID); !slices.Equal(ids, want) {
+		t.Fatalf("A stored after own purge = %v, want %v", ids, want)
+	}
+}
+
 // G4: tombstones past retention do not count toward MaxCards.
 func TestSyncPurgedTombstonesDoNotCountTowardMaxCards(t *testing.T) {
 	repo := newTestRepo(t)
