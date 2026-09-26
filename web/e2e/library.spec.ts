@@ -16,7 +16,7 @@ test("the level filter narrows the library rows and survives a reload", async ({
   await page.goto("/");
   const rows = page.getByRole("button").filter({ hasText: /· \d+ sentences/ });
   await expect(rows.first()).toContainText("About Me");
-  await expect(page.getByText("0 of 31 completed")).toBeVisible();
+  await expect(page.getByText("0 of 32 completed")).toBeVisible();
 
   const level = page.getByRole("radiogroup", { name: "Library level" });
   await level.getByRole("radio", { name: "B2" }).click();
@@ -119,7 +119,7 @@ test.describe("first-run welcome", () => {
     await expect(welcome).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today" })).toBeFocused();
     await expect(page.getByText("0 of 10 practice actions today")).toBeVisible();
-    await expect(page.getByText("0 of 31 completed")).toBeVisible();
+    await expect(page.getByText("0 of 32 completed")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(welcome).toHaveCount(0);

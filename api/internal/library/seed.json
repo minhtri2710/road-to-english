@@ -289,6 +289,23 @@
     ]
   },
   {
+    "id": "stress-pairs-nouns-verbs",
+    "title": "Stress Pairs: Nouns and Verbs",
+    "level": "B1",
+    "targetWpm": 110,
+    "sentences": [
+      { "id": "stress-pairs-nouns-verbs-1", "text": "The band will record a new record for its next album.", "vi": "Ban nhạc sẽ thu âm một bản thu âm mới cho album tiếp theo.", "viStatus": "draft", "notes": "\"record\": noun RE-cord (stress 1st), verb re-CORD (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-2", "text": "They present each guest with a present at the door.", "vi": "Họ tặng mỗi vị khách một món quà ở cửa.", "viStatus": "draft", "notes": "\"present\": noun PRE-sent (stress 1st), verb pre-SENT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-3", "text": "I object to moving that object from the shelf.", "vi": "Tôi phản đối việc chuyển đồ vật đó khỏi kệ.", "viStatus": "draft", "notes": "\"object\": noun OB-ject (stress 1st), verb ob-JECT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-4", "text": "Each permit allows us to permit one extra guest inside.", "vi": "Mỗi giấy phép cho phép chúng tôi đưa thêm một vị khách vào trong.", "viStatus": "draft", "notes": "\"permit\": noun PER-mit (stress 1st), verb per-MIT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-5", "text": "The conflict may conflict with our plans for the weekend.", "vi": "Cuộc xung đột có thể mâu thuẫn với kế hoạch cuối tuần của chúng tôi.", "viStatus": "draft", "notes": "\"conflict\": noun CON-flict (stress 1st), verb con-FLICT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-6", "text": "We hope to increase sales after the increase in demand.", "vi": "Chúng tôi hy vọng doanh số sẽ tăng sau khi nhu cầu tăng lên.", "viStatus": "draft", "notes": "\"increase\": noun IN-crease (stress 1st), verb in-CREASE (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-7", "text": "They project the project costs before making a final decision.", "vi": "Họ dự đoán chi phí dự án trước khi đưa ra quyết định cuối cùng.", "viStatus": "draft", "notes": "\"project\": noun PRO-ject (stress 1st), verb pro-JECT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-8", "text": "The police suspect the suspect may be hiding nearby.", "vi": "Cảnh sát nghi ngờ nghi phạm có thể đang ẩn náu gần đây.", "viStatus": "draft", "notes": "\"suspect\": noun SUS-pect (stress 1st), verb sus-PECT (stress 2nd)" },
+      { "id": "stress-pairs-nouns-verbs-9", "text": "We progress faster when we track our progress each week.", "vi": "Chúng tôi tiến bộ nhanh hơn khi theo dõi tiến độ mỗi tuần.", "viStatus": "draft", "notes": "\"progress\": noun PRO-gress (stress 1st), verb pro-GRESS (stress 2nd)" }
+    ]
+  },
+  {
     "id": "daily-routine",
     "title": "Daily Routine",
     "level": "B1",
