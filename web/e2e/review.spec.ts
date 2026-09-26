@@ -92,6 +92,17 @@ for (const width of [360, 320]) {
   });
 }
 
+test("the due badge is narrower than the review column", async ({ page }) => {
+  await saveWords(page, ["morning"]);
+  const badge = page.locator("main span[title='1 due']");
+  const column = page.locator("main > div").last();
+  const badgeBox = await badge.boundingBox();
+  const columnBox = await column.boundingBox();
+  expect(badgeBox).not.toBeNull();
+  expect(columnBox).not.toBeNull();
+  expect(badgeBox!.width).toBeLessThan(columnBox!.width);
+});
+
 test("Listen first hides the card front until Show answer and speaks it", async ({ page }) => {
   await saveWords(page, ["morning"]);
   const toggle = page.getByRole("button", { name: "Listen first" });

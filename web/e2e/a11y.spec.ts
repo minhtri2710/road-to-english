@@ -400,7 +400,8 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["Today card with the daily goal met", async (page, inspect) => {
     await seedStore(page, "goalMet");
-    await expect(todayCard(page).getByText("5 of 5 practice actions today · Daily goal met")).toBeVisible();
+    await expect(todayCard(page).getByRole("progressbar", { name: "5 of 5 practice actions today · Daily goal met" })).toBeVisible();
+    await expect(todayCard(page).getByText("Daily goal met", { exact: true })).toBeVisible();
     await inspect();
   }],
   ["lesson unavailable", async (page, inspect) => {

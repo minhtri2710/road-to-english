@@ -4,7 +4,6 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
-import { ProgressBar } from "@astryxdesign/core/ProgressBar";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
@@ -15,10 +14,14 @@ import * as stylex from "@stylexjs/stylex";
 import { sharedStyles } from "../components/styles";
 import { DAILY_GOALS, GOAL_NAMES, type DailyGoal } from "../hooks/useDailyGoal";
 import { MAX_FREEZES } from "../lib/progress";
+import { GoalRing } from "./GoalRing";
 
 const styles = stylex.create({
   todayCard: {
-    padding: "var(--spacing-3)",
+    padding: "var(--spacing-2)",
+  },
+  todayContent: {
+    gap: "var(--spacing-0-5)",
   },
   // One line down to 320px: the longest streak text and the freezes fit at this size.
   // Larger text wraps rather than overflowing the card.
@@ -40,16 +43,54 @@ const styles = stylex.create({
     padding: 0,
     listStyle: "none",
   },
+  goalRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-1)",
+  },
+  goalDetails: {
+    minWidth: 0,
+    flex: "1 1 auto",
+  },
+  goalPicker: {
+    flexWrap: "wrap",
+    gap: "var(--spacing-0-5)",
+  },
+  goalText: {
+    fontVariantNumeric: "tabular-nums",
+  },
   day: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "var(--spacing-0-5)",
+    minWidth: 0,
+    minHeight: "1.5rem",
+    paddingInline: "var(--spacing-0-5)",
     textAlign: "center",
     whiteSpace: "nowrap",
     fontSize: "var(--font-size-sm)",
-    border: "var(--border-width) solid transparent",
+    border: "var(--border-width) solid var(--color-border)",
     borderRadius: "var(--radius-element)",
   },
+  practised: {
+    backgroundColor: "var(--color-success-muted)",
+  },
   today: {
-    borderColor: "var(--color-border)",
+    outline: "2px solid var(--color-accent)",
+    outlineOffset: "2px",
     fontWeight: "var(--font-weight-semibold)",
+  },
+  dayCheck: {
+    color: "var(--color-success)",
+    fontWeight: "var(--font-weight-bold)",
+  },
+  statRow: {
+    flexWrap: "wrap",
+    fontVariantNumeric: "tabular-nums",
+  },
+  xp: {
+    marginInlineStart: "auto",
   },
 });
 
@@ -100,7 +141,7 @@ export function TodayCard({
   const today = week.at(-1)?.key;
   return (
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
-      <VStack gap={1}>
+      <VStack xstyle={styles.todayContent}>
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
           <Heading level={2} tabIndex={-1} ref={headingRef}>Today</Heading>
           {(dueText || suggestionText) && (
@@ -118,25 +159,33 @@ export function TodayCard({
             )
           )}
         </HStack>
-        <ProgressBar
-          label={`${actionsToday} of ${dailyGoal} practice actions today${goalMet ? " · Daily goal met" : ""}`}
-          value={Math.min(actionsToday, Number(dailyGoal))}
-          max={Number(dailyGoal)}
-        />
-        <ToggleButtonGroup
-          label="Daily goal"
-          value={dailyGoal}
-          onChange={(nextGoal) => {
-            if (nextGoal) {
-              chooseGoal(nextGoal as DailyGoal);
-            }
-          }}
-        >
-          {DAILY_GOALS.map((value) => (
-            <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} />
-          ))}
-        </ToggleButtonGroup>
-        <HStack gap={1} align="center" xstyle={styles.streakRow}>
+        <div className={stylex.props(styles.goalRow).className}>
+          <GoalRing
+            label={`${actionsToday} of ${dailyGoal} practice actions today${goalMet ? " · Daily goal met" : ""}`}
+            value={actionsToday}
+            max={Number(dailyGoal)}
+            goalMet={goalMet}
+          />
+          <VStack xstyle={[styles.goalDetails, styles.goalText]}>
+            <Text>{`${actionsToday} of ${dailyGoal} practice actions today`}</Text>
+            {goalMet && <Text weight="semibold">Daily goal met</Text>}
+            <ToggleButtonGroup
+              label="Daily goal"
+              value={dailyGoal}
+              xstyle={styles.goalPicker}
+              onChange={(nextGoal) => {
+                if (nextGoal) {
+                  chooseGoal(nextGoal as DailyGoal);
+                }
+              }}
+            >
+              {DAILY_GOALS.map((value) => (
+                <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} size="sm" />
+              ))}
+            </ToggleButtonGroup>
+          </VStack>
+        </div>
+        <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
           <Text weight="semibold">{streak > 0 ? `${streak}-day streak` : "Start a new streak today"}</Text>
           <Text type="supporting">
             <Tooltip content={FREEZE_HELP}>
@@ -146,24 +195,23 @@ export function TodayCard({
               </span>
             </Tooltip>
           </Text>
+          <Text type="supporting" xstyle={styles.xp}>{xp} XP</Text>
         </HStack>
         <ul aria-label="This week" className={stylex.props(styles.week).className}>
           {week.map((day) => (
             <li
               key={day.key}
               aria-current={day.key === today ? "date" : undefined}
-              className={stylex.props(styles.day, day.key === today && styles.today).className}
+              className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
             >
-              <span aria-hidden="true">
-                {day.label.slice(0, 2)} {day.practiced ? "✓" : "·"}
-              </span>
+              <span aria-hidden="true">{day.label.slice(0, 2)}</span>
+              <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
               <VisuallyHidden>
                 {WEEKDAY_NAMES[day.label]} {day.practiced ? "practised" : "not practised"}
               </VisuallyHidden>
             </li>
           ))}
         </ul>
-        <Text type="supporting">{xp} XP</Text>
       </VStack>
     </Card>
   );

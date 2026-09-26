@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as progressStore from "../lib/progressStore";
 import { todayKey } from "../lib/progress";
+import type { LessonSummary } from "../api/lessons";
 import { putUserLesson } from "../lib/userLessons";
 import { createCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
@@ -45,6 +46,38 @@ describe("LessonList", () => {
     };
     expect(described("Greetings & Basics")).toBe("A2 · 3 sentences 90 WPM Completed");
     expect(described("Daily Routine")).toBe("B1 · 3 sentences 110 WPM");
+  });
+
+  it("shows four ordered level groups and group completion counts under All, then one group for a level filter", async () => {
+    const lessons: LessonSummary[] = ["A1", "A2", "B1", "B2"].map((level) => ({
+      id: `lesson-${level}`,
+      title: `Lesson ${level}`,
+      level: level as LessonSummary["level"],
+      sentenceCount: 2,
+      targetWpm: 90,
+    }));
+    await progressStore.markLessonComplete("lesson-A2");
+    const { container } = await renderApp({ route: (path) =>
+      path === "/lessons" ? new Response(JSON.stringify(lessons), { status: 200 }) : undefined,
+    });
+    await waitForCondition(hasText(container, "Lesson B2"));
+
+    const groups = Array.from(container.querySelectorAll("main section")).filter((section) =>
+      ["A1", "A2", "B1", "B2"].includes(section.querySelector("h3")?.textContent ?? ""),
+    );
+    expect(groups.map((group) => group.querySelector("h3")?.textContent)).toEqual(["A1", "A2", "B1", "B2"]);
+    expect(groups.map((group) => group.textContent)).toEqual([
+      expect.stringContaining("0 of 1 completed"),
+      expect.stringContaining("1 of 1 completed"),
+      expect.stringContaining("0 of 1 completed"),
+      expect.stringContaining("0 of 1 completed"),
+    ]);
+    await choose(container, "B1");
+    const filteredGroups = Array.from(container.querySelectorAll("main section")).filter((section) =>
+      ["A1", "A2", "B1", "B2"].includes(section.querySelector("h3")?.textContent ?? ""),
+    );
+    expect(filteredGroups.map((group) => group.querySelector("h3")?.textContent)).toEqual(["B1"]);
+    expect(container.textContent).toContain("B1: 0 of 1 completed");
   });
 
   it("describes Start lesson and Continue by the lesson they open", async () => {
@@ -157,7 +190,7 @@ describe("LessonList", () => {
     expect(card.textContent).not.toContain("due");
   });
 
-  const progressBar = (card: HTMLElement) => card.querySelector<HTMLElement>('[role="progressbar"]')!;
+  const goalRing = (card: HTMLElement) => card.querySelector<HTMLElement>('[role="progressbar"]')!;
   const dayMarks = (card: HTMLElement) => Array.from(card.querySelectorAll<HTMLElement>('[aria-label="This week"] li'));
 
   it("shows the daily goal, the goal picker, a fresh streak, the week, freezes and XP in the Today card", async () => {
@@ -167,10 +200,12 @@ describe("LessonList", () => {
     await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
     const card = todayCard(container)!;
 
-    const bar = progressBar(card);
-    expect(card.textContent).toContain("0 of 10 practice actions today");
-    expect(bar.getAttribute("aria-valuenow")).toBe("0");
-    expect(bar.getAttribute("aria-valuemax")).toBe("10");
+    const ring = goalRing(card);
+    expect(ring.getAttribute("aria-label")).toBe("0 of 10 practice actions today");
+    expect(ring.getAttribute("aria-valuemin")).toBe("0");
+    expect(ring.getAttribute("aria-valuenow")).toBe("0");
+    expect(ring.getAttribute("aria-valuemax")).toBe("10");
+    expect(ring.textContent).toBe("0");
     expect(card.textContent).not.toContain("Daily goal met");
     const picker = card.querySelector<HTMLElement>('[role="group"][aria-label="Daily goal"]')!;
     expect(["5 Light", "10 Regular", "20 Intense"].map((name) => buttonsNamed(picker, name).length)).toEqual([1, 1, 1]);
@@ -182,6 +217,7 @@ describe("LessonList", () => {
       ["Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu"].map((label) => expect.stringContaining(label)),
     );
     expect(marks.every((mark) => mark.textContent?.includes("not practised"))).toBe(true);
+    expect(marks.every((mark) => mark.textContent?.includes("○"))).toBe(true);
     expect(marks.map((mark) => mark.getAttribute("aria-current"))).toEqual([null, null, null, null, null, null, "date"]);
 
     expect(card.textContent).toContain("Freezes 0 of 2");
@@ -192,6 +228,24 @@ describe("LessonList", () => {
       text.indexOf(part),
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("announces a met goal through the ring name and visible text", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 8, 12));
+    localStorage.setItem("road-to-english.dailyGoal", "5");
+    for (let index = 0; index < 5; index += 1) {
+      await progressStore.recordPractice(todayKey(new Date(2026, 0, 8)), { newCard: false });
+    }
+    const { container } = await renderApp();
+    await waitForCondition(() => todayCard(container)?.textContent?.includes("Daily goal met") ?? false);
+    const ring = goalRing(todayCard(container)!);
+    expect(ring.getAttribute("aria-label")).toBe("5 of 5 practice actions today · Daily goal met");
+    expect(ring.getAttribute("aria-valuemin")).toBe("0");
+    expect(ring.getAttribute("aria-valuenow")).toBe("5");
+    expect(ring.getAttribute("aria-valuemax")).toBe("5");
+    expect(ring.textContent).toBe("5");
+    expect(todayCard(container)!.textContent).toContain("Daily goal met");
   });
 
   it("marks practised days, counts the streak, explains freezes, and says when the goal is met", async () => {
@@ -210,10 +264,13 @@ describe("LessonList", () => {
 
     expect(card.textContent).toContain("5 of 5 practice actions today");
     expect(card.textContent).toContain("Daily goal met");
-    expect(progressBar(card).getAttribute("aria-valuenow")).toBe("5");
+    expect(goalRing(card).getAttribute("aria-label")).toBe("5 of 5 practice actions today · Daily goal met");
+    expect(goalRing(card).getAttribute("aria-valuenow")).toBe("5");
+    expect(goalRing(card).textContent).toBe("5");
     expect(dayMarks(card).every((mark) => mark.textContent?.includes("practised") && !mark.textContent.includes("not practised"))).toBe(
       true,
     );
+    expect(dayMarks(card).every((mark) => mark.textContent?.includes("✓"))).toBe(true);
     expect(card.textContent).toContain("120 XP");
 
     const freezes = Array.from(card.querySelectorAll<HTMLElement>("[tabindex='0']")).find(

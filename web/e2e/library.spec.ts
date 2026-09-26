@@ -1,5 +1,22 @@
 import { expect, test, viewLink } from "./fixtures";
 
+test("lesson badges align with the card end at desktop width", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  const card = page.getByRole("button", { name: "About Me" });
+  const badge = card.locator('[title="80 WPM"]');
+  const [cardBox, badgeBox, padding] = await Promise.all([
+    card.boundingBox(),
+    badge.boundingBox(),
+    card.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingInlineEnd)),
+  ]);
+  expect(cardBox).not.toBeNull();
+  expect(badgeBox).not.toBeNull();
+  const trailingSpace = cardBox!.x + cardBox!.width - badgeBox!.x - badgeBox!.width;
+  expect(trailingSpace, `badge trailing space ${trailingSpace}px should match card padding ${padding}px`).toBeLessThanOrEqual(padding + 1);
+  expect(trailingSpace, `badge trailing space ${trailingSpace}px should match card padding ${padding}px`).toBeGreaterThanOrEqual(padding - 1);
+});
+
 test("the library starts with the A1 lesson About Me", async ({ page }) => {
   await page.goto("/");
   const firstLesson = page.getByRole("button").filter({ hasText: /· \d+ sentences/ }).first();
@@ -10,6 +27,22 @@ test("the library starts with the A1 lesson About Me", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "About Me" })).toBeVisible();
   await expect(page.getByText("Level A1")).toBeVisible();
   await expect(page.getByText("My name is Lan.", { exact: true })).toBeVisible();
+});
+
+test("the library groups lessons by level and filters to one group", async ({ page }) => {
+  await page.goto("/");
+  const groups = page.locator("main section").filter({ has: page.locator("h3") });
+  await expect(groups.locator("h3")).toHaveText(["A1", "A2", "B1", "B2"]);
+  await expect(groups.nth(0)).toContainText("0 of 8 completed");
+  await expect(groups.nth(1)).toContainText("0 of 9 completed");
+  await expect(groups.nth(2)).toContainText("0 of 8 completed");
+  await expect(groups.nth(3)).toContainText("0 of 7 completed");
+  await expect(page.getByRole("button", { name: "About Me" })).toHaveAccessibleDescription("A1 · 9 sentences 80 WPM");
+
+  const level = page.getByRole("radiogroup", { name: "Library level" });
+  await level.getByRole("radio", { name: "B2" }).click();
+  await expect(groups.locator("h3")).toHaveText(["B2"]);
+  await expect(groups.nth(0)).toContainText("0 of 7 completed");
 });
 
 test("the level filter narrows the library rows and survives a reload", async ({ page }) => {

@@ -1,9 +1,45 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as progressStore from "../lib/progressStore";
+import * as userLessonsStore from "../lib/userLessons";
 import { click, harnessAct, hasText, renderApp, resetApp, waitForCondition } from "../test/app";
+import { userLesson } from "../test/fixtures";
 
 describe("UserLessonList", () => {
-  afterEach(resetApp);
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    await resetApp();
+  });
+
+  it("shares the lesson card name, description, completed state and Delete action", async () => {
+    await userLessonsStore.putUserLesson(userLesson);
+    await progressStore.markLessonComplete(userLesson.id);
+    const { container } = await renderApp();
+    await waitForCondition(hasText(container, userLesson.title));
+    const row = Array.from(container.querySelectorAll("main li button")).find(
+      (button) => button.getAttribute("aria-label") === userLesson.title,
+    )!;
+    const description = (row.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+    expect(description).toBe("B1 · 2 sentences 110 WPM Completed");
+    expect(row.textContent).toContain("Completed");
+    expect(container.querySelector(`[aria-label="Delete ${userLesson.title}"]`)).not.toBeNull();
+  });
+
+  it("keeps the delete failure alert", async () => {
+    await userLessonsStore.putUserLesson(userLesson);
+    vi.stubGlobal("confirm", () => true);
+    vi.spyOn(userLessonsStore, "deleteUserLesson").mockRejectedValue(new Error("storage unavailable"));
+    const { container } = await renderApp();
+    await waitForCondition(hasText(container, userLesson.title));
+    const deleteButton = container.querySelector<HTMLButtonElement>(`[aria-label="Delete ${userLesson.title}"]`)!;
+    await harnessAct(async () => deleteButton.click());
+    await waitForCondition(hasText(container, "Couldn't delete. Try again."));
+    expect(container.textContent).toContain("Couldn't delete. Try again.");
+  });
 
   it("shows an empty state whose Create a lesson button moves focus to the import Title", async () => {
     const { container } = await renderApp();

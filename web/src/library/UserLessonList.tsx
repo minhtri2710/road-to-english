@@ -6,7 +6,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 
 import type { Lesson } from "../api/lessons";
 import { Alert, ErrorMessage } from "../components/feedback";
-import { LessonRow } from "./LessonList";
+import { LessonCard } from "./LessonCard";
 
 export function UserLessonList({
   lessons,
@@ -49,7 +49,7 @@ export function UserLessonList({
       {lessons.map((lesson) => (
         <li key={lesson.id}>
           <HStack gap={1} align="center">
-            <LessonRow
+            <LessonCard
               title={lesson.title}
               level={lesson.level}
               sentenceCount={lesson.sentences.length}

@@ -65,8 +65,9 @@ describe("project theme contrast", () => {
 
   it("keeps every level color legible on the level-card surface", () => {
     for (const [level, color] of Object.entries(themePalette.levels)) {
-      expectContrast(color, themePalette.surface, 4.5, `${level} text on surface`);
-      expectContrast(color, themePalette.surface, 3, `${level} UI on surface`);
+      expectContrast(color, themePalette.surface, 4.5, `${level} badge text on surface`);
+      expectContrast(color, themePalette.surface, 3, `${level} card accent on surface`);
+      expectContrast(color, themePalette.surface, 3, `${level} badge border on surface`);
     }
   });
 

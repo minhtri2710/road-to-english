@@ -46,6 +46,9 @@ const appStyles = stylex.create({
     maxWidth: "48rem",
     marginInline: "auto",
   },
+  reviewDue: {
+    alignSelf: "start",
+  },
 });
 
 // The one Theme wraps the ErrorBoundary, so its fallback renders styled like the App.
@@ -167,7 +170,7 @@ function AppViews() {
             )}
             {view === "review" ? (
               <VStack gap={2}>
-                <Badge label={`${reviewDeck.length} due`} variant="info" />
+                <Badge label={`${reviewDeck.length} due`} variant="info" xstyle={appStyles.reviewDue} />
                 <ReviewDeck
                   due={reviewDeck}
                   hiddenNew={deck.due.length - reviewDeck.length}
