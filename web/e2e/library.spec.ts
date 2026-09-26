@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, test, viewLink } from "./fixtures";
 
 test("the library starts with the A1 lesson About Me", async ({ page }) => {
   await page.goto("/");
@@ -33,6 +33,7 @@ test("the level filter narrows the library rows and survives a reload", async ({
 
 test("Today offers Continue for the lesson opened last", async ({ page }) => {
   await page.goto("/");
+  await expect(viewLink(page, "Library")).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("Next: About Me")).toBeVisible();
   await page.getByRole("button", { name: "Daily Routine" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Daily Routine" })).toBeVisible();
@@ -44,12 +45,16 @@ test("Today offers Continue for the lesson opened last", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Daily Routine" })).toBeVisible();
 });
 
-test("the own-lessons empty state's Create a lesson moves focus to the Title field", async ({ page }) => {
+test("the own-lessons empty state's Create a lesson opens Manage and focuses the Title field", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "No lessons of your own yet" })).toBeVisible();
   await expect(page.getByText("Paste a transcript or any English text to practise it as a lesson.")).toBeVisible();
   await page.getByRole("button", { name: "Create a lesson" }).click();
+  await expect(page).toHaveURL(/#\/manage$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Manage lessons and data" })).toBeVisible();
   await expect(page.getByLabel("Title")).toBeFocused();
+  await expect(page.getByRole("heading", { level: 2, name: "Import text" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Your data" })).toBeVisible();
 });
 
 test("the Today card's goal picker survives a reload", async ({ page }) => {

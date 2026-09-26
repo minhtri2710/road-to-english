@@ -14,6 +14,8 @@ import { sharedStyles } from "../components/styles";
 import type { LevelFilter } from "../hooks/useLevelFilter";
 import { createUserLesson, USER_LEVELS, USER_WPMS } from "../lib/userLessons";
 
+export const IMPORT_TITLE = "import-title";
+
 const styles = stylex.create({
   importTextArea: {
     width: "100%",
@@ -30,9 +32,11 @@ const styles = stylex.create({
 export function ImportTextForm({
   onCreate,
   levelFilter,
+  takeReturnFocus,
 }: {
   onCreate: (lesson: Lesson) => Promise<void>;
   levelFilter: LevelFilter;
+  takeReturnFocus: (id: string) => boolean;
 }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -77,7 +81,12 @@ export function ImportTextForm({
           <Text as="span" type="supporting">Title</Text>
         </label>
         <input
-          id="import-title"
+          id={IMPORT_TITLE}
+          ref={(input) => {
+            if (input && takeReturnFocus(IMPORT_TITLE)) {
+              input.focus();
+            }
+          }}
           className={stylex.props(sharedStyles.dictationInput).className}
           value={title}
           onChange={(event) => setTitle(event.target.value)}

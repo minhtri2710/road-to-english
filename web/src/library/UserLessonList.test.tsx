@@ -13,6 +13,7 @@ describe("UserLessonList", () => {
     expect(container.textContent).toContain("Paste a transcript or any English text to practise it as a lesson.");
 
     await click(container, "Create a lesson");
+    expect(container.querySelector("h1")?.textContent).toBe("Manage lessons and data");
     expect(document.activeElement).toBe(container.querySelector("#import-title"));
     await harnessAct(async () => undefined);
   });

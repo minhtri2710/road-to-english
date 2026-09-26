@@ -20,12 +20,17 @@ const styles = stylex.create({
   },
   // The password input gives up width so Show password stays beside it.
   passwordInput: {
-    flexShrink: 1,
+    flex: "1 1 0%",
     minWidth: 0,
+  },
+  passwordRow: {
+    flexWrap: "wrap",
   },
   accountInput: {
     width: "14rem",
     maxWidth: "100%",
+    boxSizing: "border-box",
+    flexShrink: 1,
     minHeight: "var(--size-element-lg)",
     padding: "var(--spacing-2) var(--spacing-3)",
     border: "1px solid var(--color-border)",
@@ -68,7 +73,7 @@ function FieldError({ id, children }: { id: string; children: ReactNode }) {
   );
 }
 
-export function AccountArea({ auth }: { auth: AuthState }) {
+export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onDisclosureChange?: (open: boolean) => void }) {
   const { clearError } = auth;
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -77,6 +82,13 @@ export function AccountArea({ auth }: { auth: AuthState }) {
   const [localError, setLocalError] = useState<string | null>(null);
   // Signed out, the form sits behind an "Account" disclosure so the header stays short.
   const [open, setOpen] = useState(false);
+  const notifyDisclosure = useRef(onDisclosureChange);
+  useEffect(() => {
+    notifyDisclosure.current = onDisclosureChange;
+  }, [onDisclosureChange]);
+  useEffect(() => {
+    notifyDisclosure.current?.(open);
+  }, [open]);
   const disclosure = useRef<HTMLButtonElement | null>(null);
   // The countdown's seconds left for the 429 it belongs to.
   const [countdown, setCountdown] = useState<{ error: Error; left: number } | null>(null);
@@ -288,7 +300,7 @@ export function AccountArea({ auth }: { auth: AuthState }) {
                 <label htmlFor={`${ids}-password`}>
                   <Text as="span" type="supporting">Password</Text>
                 </label>
-                <HStack gap={1} align="center">
+                <HStack gap={1} align="center" xstyle={styles.passwordRow}>
                   <input
                     ref={passwordInput}
                     id={`${ids}-password`}

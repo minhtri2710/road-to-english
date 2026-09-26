@@ -1,4 +1,4 @@
-import { expect, openLibraryLesson, test } from "./fixtures";
+import { expect, openLibraryLesson, test, viewLink } from "./fixtures";
 
 test("shadow a library lesson, save a word, review it", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
@@ -14,7 +14,7 @@ test("shadow a library lesson, save a word, review it", async ({ page }) => {
   await page.getByRole("button", { name: "Save word" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("morning", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Show answer" }).click();
@@ -37,7 +37,7 @@ test("remove a saved word with the Saved toggle, then Undo puts it back in Revie
   await expect(page.getByLabel("Notifications").getByText("Removed from your review deck.")).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Removed from your review deck." })).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("0 due")).toBeVisible();
 
   const undo = page.getByRole("button", { name: "Undo" });
@@ -55,7 +55,7 @@ test("save a hyphenated compound as one word and review it", async ({ page }) =>
   await page.getByRole("button", { name: "Save word" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("T-shirt", { exact: true })).toBeVisible();
 });

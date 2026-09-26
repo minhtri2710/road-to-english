@@ -58,8 +58,8 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 34 controls (Shadow/Dictation/Fill the blank mode toggle, the storage banner's Back up, the collapsed Sign in disclosure, the Pronunciation check, One at a time and Stress toggles and a Hide text toggle per sentence) plus one button per word in the three shown transcripts (6 + 6 + 3).
-    expect(container.querySelectorAll("button")).toHaveLength(49);
+    // 32 controls: Account, Back up, Back to lessons, three lesson modes, three playback speeds, Transcript, Vietnamese, Stress, One at a time, Pronunciation check, and six sentence controls per row (Text, Listen, Loop, Record, Compare, Save to review); plus 15 word buttons in the three sentences (6 + 6 + 3). The hide-text switch is not a button. Brand and view navigation are four anchors.
+    expect(container.querySelectorAll("button")).toHaveLength(47);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -218,9 +218,18 @@ describe("App", () => {
 
     async function press(container: HTMLElement, name: string) {
       const button = buttonsNamed(container, name)[0];
-      if (!button) throw new Error(`${name} button not found`);
+      if (button) {
+        await harnessAct(async () => {
+          button.click();
+        });
+        return;
+      }
+      const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find(
+        (candidate) => candidate.textContent?.trim().startsWith(name),
+      );
+      if (!link) throw new Error(`${name} control not found`);
       await harnessAct(async () => {
-        button.click();
+        link.click();
       });
     }
 
@@ -531,6 +540,7 @@ describe("App", () => {
       await waitForCondition(hasText(container, "4 of 5 practice actions today"));
       // Another tab's practice lands in the store; the import reload picks it up with no practice here.
       await recordPractice(todayKey(new Date()), { newCard: false });
+      await click(container, "Manage");
       const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
       const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
       await harnessAct(async () => {
@@ -540,6 +550,7 @@ describe("App", () => {
         });
         file.dispatchEvent(new Event("change", { bubbles: true }));
       });
+      await click(container, "Library");
       await waitForCondition(hasText(container, "5 of 5 practice actions today"));
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
     });
@@ -561,6 +572,7 @@ describe("App", () => {
       await waitForCondition(hasText(container, "4 of 5 practice actions today"));
       // Another tab's practice lands in the store; the import reload picks it up with no practice here.
       await recordPractice(todayKey(new Date()), { newCard: false });
+      await click(container, "Manage");
       const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
       const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
       await harnessAct(async () => {
@@ -570,6 +582,7 @@ describe("App", () => {
         });
         file.dispatchEvent(new Event("change", { bubbles: true }));
       });
+      await click(container, "Library");
       await waitForCondition(hasText(container, "5 of 5 practice actions today"));
       expect(container.querySelector('header [role="status"]:not([aria-live])')!.textContent).toBe("");
     });
@@ -732,6 +745,7 @@ describe("App", () => {
 
     it("creates a lesson from pasted text, opens it without a lesson fetch, and lists it after a remount", async () => {
       const first = await renderLibrary();
+      await click(first.container, "Manage");
       expect(first.container.textContent).toContain("Your lessons stay on this device; export a backup to move them.");
       expect(buttonsNamed(first.container.querySelector("form")!, "A1")[0]?.getAttribute("aria-pressed")).toBe("false");
       expect(buttonsNamed(first.container.querySelector("form")!, "B1")[0]?.getAttribute("aria-pressed")).toBe("true");
@@ -776,6 +790,7 @@ describe("App", () => {
     it("saves a word whose back is the sentence text only, then deletes the lesson and keeps the card", async () => {
       installSpeechFakes();
       const view = await renderLibrary();
+      await click(view.container, "Manage");
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => buttonsNamed(view.container, "green").length === 1);
 
@@ -812,6 +827,7 @@ describe("App", () => {
 
     it("creates only one lesson on a synchronous double submit", async () => {
       const first = await renderLibrary();
+      await click(first.container, "Manage");
       const titleInput = first.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = first.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");
@@ -845,6 +861,7 @@ describe("App", () => {
       ["no sentences", "Tea talk", "... !!!", "Text must contain 1-200 sentences."],
     ])("shows an inline error and stores nothing for %s", async (_name, title, text, message) => {
       const view = await renderLibrary();
+      await click(view.container, "Manage");
       await createLesson(view.container, title, text);
 
       expect(view.container.textContent).toContain(message);
@@ -857,6 +874,7 @@ describe("App", () => {
       vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
       vi.stubGlobal("SpeechSynthesisUtterance", class {});
       const view = await renderLibrary();
+      await click(view.container, "Manage");
       await createLesson(view.container, "Tea talk", pasted);
       await waitForCondition(() => view.container.textContent?.includes("Back to lessons") ?? false);
 
@@ -926,7 +944,7 @@ describe("App", () => {
       const save = await click(container, "Save to review");
       await waitForCondition(hasText(container, "Couldn't save. Try again."));
       expect(save.getAttribute("aria-disabled")).not.toBe("true");
-      expect(save.disabled).toBe(false);
+      expect((save as HTMLButtonElement).disabled).toBe(false);
       await click(container, "Save to review");
       await waitForCondition(() => buttonsNamed(container, "Saved").length === 1);
       expect(container.textContent).not.toContain("Couldn't save.");
@@ -1003,6 +1021,7 @@ describe("App", () => {
     it("keeps the Create error line when saving a lesson fails", async () => {
       vi.spyOn(userLessonsStore, "putUserLesson").mockRejectedValueOnce(new Error("quota exceeded"));
       const { container } = await renderApp();
+      await click(container, "Manage");
       const title = container.querySelector<HTMLInputElement>("#import-title");
       const text = container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!title || !text) throw new Error("import form not found");
@@ -1110,17 +1129,22 @@ describe("App", () => {
         value: persistMock ? { persist: persistMock } : undefined,
       });
       const { container } = await renderApp();
+      if (!granted) {
+        await waitForCondition(() => container.textContent?.includes(banner) ?? false);
+      }
+      await click(container, "Manage");
       await waitForCondition(() => container.textContent?.includes(granted ? kept : mayClear) ?? false);
       const header = container.querySelector("header")!;
-      const section = yourData(container).parentElement!;
       if (granted) {
         expect(header.textContent).not.toContain(banner);
+        const section = yourData(container).parentElement!;
         expect(section.textContent).toContain(kept);
       } else {
         expect(header.textContent).toContain(banner);
         expect(header.textContent).not.toContain(mayClear);
-        expect(section.textContent).toContain(mayClear);
         expect(container.textContent).not.toContain(kept);
+        const section = yourData(container).parentElement!;
+        expect(section.textContent).toContain(mayClear);
         expect(header.querySelector('[role="alert"]')).toBeNull();
       }
       if (persistMock) {
@@ -1129,31 +1153,38 @@ describe("App", () => {
       expect(container.textContent).not.toContain("blocked");
     });
 
-    it("moves focus from the storage banner to Your data, from the library and from a lesson", async () => {
+    it("moves focus from the storage notice to Your data in Manage", async () => {
       Object.defineProperty(navigator, "storage", { configurable: true, value: undefined });
       const view = await openLesson();
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
       await click(container.querySelector("header")!, "Back up");
-      expect(h1Texts(container)).toEqual(["Lesson library"]);
+      expect(h1Texts(container)).toEqual(["Manage lessons and data"]);
       expect(document.activeElement).toBe(yourData(container));
 
-      buttonsNamed(container, "Review")[0]!.focus();
+      buttonsNamed(container, "Create")[0]!.focus();
+      expect(document.activeElement).toBe(buttonsNamed(container, "Create")[0]);
       await click(container.querySelector("header")!, "Back up");
+      expect(h1Texts(container)).toEqual(["Manage lessons and data"]);
       expect(document.activeElement).toBe(yourData(container));
     });
 
-    it("keeps only announcements, errors, sync and the account in the header, and backups in Your data", async () => {
+    it("keeps management content out of the library and backups in Manage", async () => {
       const { container } = await renderApp();
       await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
+      expect(container.querySelector('nav[aria-label="Views"] a[href="#/"]')?.getAttribute("aria-current")).toBe("page");
       const header = container.querySelector("header")!;
       expect(header.textContent).not.toMatch(/streak|XP|Freezes|practice actions|Practiced/);
       expect(header.querySelector('[role="group"]')).toBeNull();
       expect(buttonsNamed(header, "Export")).toHaveLength(0);
 
+      expect(container.textContent).not.toContain("Import text");
+      expect(container.textContent).not.toContain("Your data");
+      await click(container, "Manage");
+      expect(window.location.hash).toBe("#/manage");
+      expect(container.querySelector("main h1")?.textContent).toBe("Manage lessons and data");
       const headings = Array.from(container.querySelectorAll("main h2")).map((heading) => heading.textContent);
-      expect(headings.at(-1)).toBe("Your data");
-      expect(headings.indexOf("Import text")).toBe(headings.length - 2);
+      expect(headings).toEqual(["Import text", "Your data"]);
       const section = yourData(container).parentElement!;
       expect(["Export", "Export CSV", "Import"].map((name) => buttonsNamed(section, name).length)).toEqual([1, 1, 1]);
       expect(section.textContent).toContain(
@@ -1184,12 +1215,15 @@ describe("App", () => {
       expect(document.activeElement).toBe(document.body);
       expect(container.querySelectorAll("main")).toHaveLength(1);
       expect(container.querySelectorAll("header")).toHaveLength(1);
+      expect(container.querySelector('a[href="#/"]')?.textContent).toBe("Road to English");
+      expect(container.querySelector('a[href="#/"]')?.closest("h1, h2, h3")).toBeNull();
       expect(container.querySelector("header")?.contains(container.querySelector("main"))).toBe(false);
       expect(container.querySelector("nav")?.getAttribute("aria-label")).toBe("Views");
       expect(container.querySelector("main h1")).not.toBeNull();
       expectNoSkippedLevels(container);
 
       await click(container, "Review");
+      expect(container.querySelector('nav[aria-label="Views"] a[href="#/review"]')?.getAttribute("aria-current")).toBe("page");
       expect(h1Texts(container)).toEqual(["Review deck"]);
       expect(document.activeElement).toBe(container.querySelector("h1"));
       expectNoSkippedLevels(container);
@@ -1235,9 +1269,11 @@ describe("App", () => {
 
       await click(container, "Back to lessons");
       await waitForCondition(hasText(container, "1 of 10 practice actions today"));
+      await click(container, "Manage");
       expect(container.querySelector('header [role="status"]:not([aria-live])')).toBe(goal);
       expect(goal?.textContent).toBe("");
 
+      await click(container, "Manage");
       vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
       await click(container, "Export");
       await waitForCondition(() => container.textContent?.includes("Backup error: export broke") ?? false);
@@ -1429,9 +1465,10 @@ describe("App", () => {
     it("presses no view inside a lesson, and Library returns to the library", async () => {
       const { container } = await openLesson();
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      const views = container.querySelectorAll('nav[aria-label="Views"] button');
-      expect(views).toHaveLength(2);
-      expect(Array.from(views).map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false"]);
+      const views = container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a');
+      expect(views).toHaveLength(3);
+      expect(Array.from(views).map((link) => link.getAttribute("aria-current"))).toEqual([null, null, null]);
+      expect(Array.from(views).map((link) => link.getAttribute("href"))).toEqual(["#/", "#/review", "#/manage"]);
 
       await click(container, "Library");
       await waitForCondition(() => h1Texts(container)[0] === "Lesson library");

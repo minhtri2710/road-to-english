@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { expect, openLibraryLesson, test } from "./fixtures";
+import { expect, openLibraryLesson, test, viewLink } from "./fixtures";
 
 async function saveWords(page: Page, words: string[]): Promise<void> {
   await openLibraryLesson(page, "Greetings & Basics");
@@ -9,7 +9,7 @@ async function saveWords(page: Page, words: string[]): Promise<void> {
     await page.getByRole("button", { name: "Save word" }).click();
     await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
   }
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText(`${words.length} due`)).toBeVisible();
 }
 
@@ -110,7 +110,7 @@ test("Listen first hides the card front until Show answer and speaks it", async 
 test("a saved sentence card shows the sentence's Vietnamese on its back", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
   await page.getByRole("button", { name: "Save to review" }).first().click();
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
   await page.getByRole("button", { name: "Show answer" }).click();
   await expect(page.locator('[lang="vi"]')).toHaveText("Chào buổi sáng, hôm nay bạn thế nào?");

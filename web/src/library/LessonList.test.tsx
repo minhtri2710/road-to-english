@@ -61,18 +61,18 @@ describe("LessonList", () => {
     expect(described("Continue")).toBe("Continue: Greetings & Basics");
   });
 
-  it("heads the library list between Today and Your lessons, and names the two level choices apart", async () => {
+  it("keeps management sections out of the library and names the level choices apart", async () => {
     const { container } = await renderApp();
     await waitForCondition(hasText(container, "Greetings & Basics"));
     expect(Array.from(container.querySelectorAll("h2")).map((heading) => heading.textContent)).toEqual([
       "Today",
       "Library lessons",
       "Your lessons",
-      "Import text",
-      "Your data",
     ]);
+    expect(container.textContent).not.toContain("Import text");
+    expect(container.textContent).not.toContain("Your data");
     expect(container.querySelector('[role="radiogroup"][aria-label="Library level"]')).not.toBeNull();
-    expect(container.querySelector('form [role="group"][aria-label="Lesson level"]')).not.toBeNull();
+    expect(container.querySelector('form [role="group"][aria-label="Lesson level"]')).toBeNull();
     expect(container.querySelectorAll('[aria-label="Level"]')).toHaveLength(0);
   });
 

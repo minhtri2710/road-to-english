@@ -242,6 +242,9 @@ describe("LessonDetail", () => {
     }
 
     async function createLesson(container: HTMLElement, videoUrl: string, text: string) {
+      if (!container.querySelector("#import-title")) {
+        await click(container, "Manage");
+      }
       const titleInput = container.querySelector<HTMLInputElement>("#import-title");
       const videoInput = container.querySelector<HTMLInputElement>("#import-video");
       const textArea = container.querySelector<HTMLTextAreaElement>("#import-text");
@@ -274,6 +277,7 @@ describe("LessonDetail", () => {
     it("creates a video lesson from a URL and a transcript and opens it in a nocookie player", async () => {
       installYouTube();
       const view = await renderLibrary();
+      await click(view.container, "Manage");
       expect(view.container.textContent).toContain(
         "Paste the transcript from YouTube's Show transcript panel (timestamps included).",
       );
@@ -392,6 +396,7 @@ describe("LessonDetail", () => {
 
     it("creates no player and injects no script for a plain lesson", async () => {
       const view = await renderLibrary();
+      await click(view.container, "Manage");
       const titleInput = view.container.querySelector<HTMLInputElement>("#import-title");
       const textArea = view.container.querySelector<HTMLTextAreaElement>("#import-text");
       if (!titleInput || !textArea) throw new Error("import form not found");

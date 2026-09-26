@@ -1,4 +1,4 @@
-import { attemptEverySentence, expect, missOneWord, openLibraryLesson, test } from "./fixtures";
+import { attemptEverySentence, expect, missOneWord, openLibraryLesson, test, viewLink } from "./fixtures";
 
 test("attempting every sentence completes the lesson and shows the summary", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
@@ -24,7 +24,7 @@ test("a word missed in dictation is listed in the summary and saved to Review", 
   await missed.getByRole("button", { name: "Save “today” to review" }).click();
   await expect(missed.getByRole("button", { name: "Saved “today”, remove from review deck" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("today", { exact: true })).toBeVisible();
 });

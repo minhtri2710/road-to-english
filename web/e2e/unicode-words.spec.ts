@@ -1,4 +1,4 @@
-import { ACCOUNT_PASSWORD, createLesson, expect, submitAccount, test, uniqueEmail } from "./fixtures";
+import { ACCOUNT_PASSWORD, createLesson, expect, submitAccount, test, uniqueEmail, viewLink } from "./fixtures";
 
 test("save a non-ASCII word from a user lesson, sync it and see it in Review", async ({ page }) => {
   const email = uniqueEmail();
@@ -25,7 +25,7 @@ test("save a non-ASCII word from a user lesson, sync it and see it in Review", a
   expect(state.cards.map((card) => card.source.word)).toContain("café");
   await expect(page.getByText("Synced just now")).toBeVisible();
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("1 due")).toBeVisible();
   await expect(page.getByText("café", { exact: true })).toBeVisible();
 });

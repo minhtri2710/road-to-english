@@ -256,7 +256,8 @@ describe("useSync", () => {
     vi.restoreAllMocks();
     const synced = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
     await waitForCondition(() => syncLine(synced.container) !== undefined);
-    expect(syncLine(synced.container)?.className).toBe(supportingClass);
+    expect(syncLine(synced.container)?.textContent).toBe("Synced just now");
+    expect(syncLine(synced.container)?.closest("header")).not.toBeNull();
   });
 
   it("announces Synced. once after a server failure recovers", async () => {

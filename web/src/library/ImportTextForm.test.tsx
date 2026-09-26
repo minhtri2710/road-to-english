@@ -14,6 +14,9 @@ describe("ImportTextForm", () => {
 
   it("places the transcript hint above the Text area and describes the area with it", async () => {
     const { container } = await renderApp();
+    await waitForCondition(hasText(container, "Your lessons"));
+    const manage = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find((link) => link.textContent?.trim() === "Manage");
+    await harnessAct(async () => { manage?.click(); });
     await waitForCondition(hasText(container, HINT));
     const textArea = container.querySelector("#import-text")!;
     const hint = document.getElementById(textArea.getAttribute("aria-describedby") ?? "");
@@ -24,11 +27,11 @@ describe("ImportTextForm", () => {
   it("defaults the level to the level filter unless it is All, and still lets the learner change it", async () => {
     const { container } = await renderApp();
     await waitForCondition(hasText(container, "Daily Routine"));
+    const manage = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find((link) => link.textContent?.trim() === "Manage");
+    await harnessAct(async () => { manage?.click(); });
     expect(levelButton(container, "B1")?.getAttribute("aria-pressed")).toBe("true");
 
-    const a2 = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"] [role="radio"]')).find(
-      (item) => item.textContent === "A2",
-    )!;
+    const a2 = levelButton(container, "A2")!;
     await harnessAct(async () => {
       a2.click();
     });

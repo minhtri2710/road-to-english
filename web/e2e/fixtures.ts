@@ -139,12 +139,13 @@ export async function missOneWord(page: Page): Promise<void> {
 
 export const TRANSCRIPT = "0:00\nHello there, my friend.\n0:07\nThis is the second line.";
 
-// Fills the library's create form and submits it; callers assert what the new lesson shows.
+// Fills the Manage view's create form and submits it; callers assert what the new lesson shows.
 export async function createLesson(
   page: Page,
   { title, text, videoUrl }: { title: string; text: string; videoUrl?: string },
 ): Promise<void> {
-  await page.goto("/");
+  await page.goto("/#/manage");
+  await page.getByRole("heading", { level: 1, name: "Manage lessons and data" }).waitFor();
   await page.getByLabel("Title").fill(title);
   if (videoUrl) {
     await page.getByLabel("YouTube URL").fill(videoUrl);
@@ -159,6 +160,9 @@ export const ACCOUNT_PASSWORD = "correct horse battery";
 export function uniqueEmail(): string {
   return `learner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
 }
+
+export const viewLink = (page: Page, name: "Library" | "Review" | "Manage") =>
+  page.getByRole("navigation", { name: "Views" }).getByRole("link", { name: new RegExp(`^${name}(?:, \\d+ due)?$`) });
 
 export const accountDisclosure = (page: Page) => page.getByRole("button", { name: "Account", exact: true });
 

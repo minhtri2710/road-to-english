@@ -10,11 +10,17 @@ describe("routes", () => {
   it.each<Route>([
     { view: "library" },
     { view: "review" },
+    { view: "manage" },
     { view: "lesson", id: "greetings-basics" },
     { view: "my", id: "user-00000000-0000-4000-8000-000000000001" },
     { view: "lesson", id: "a/b c#?%" },
   ])("round-trips %j through its hash", (route) => {
     expect(parseRoute(routeHash(route))).toEqual(route);
+  });
+
+  it("parses the Manage hash route", () => {
+    expect(parseRoute("#/manage")).toEqual({ view: "manage" });
+    expect(routeHash({ view: "manage" })).toBe("#/manage");
   });
 
   it("encodes a lesson id into one path segment", () => {

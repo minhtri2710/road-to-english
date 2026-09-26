@@ -16,6 +16,7 @@ import {
   test,
   TRANSCRIPT,
   uniqueEmail,
+  viewLink,
 } from "./fixtures";
 
 const LIBRARY_LESSON = "Greetings & Basics";
@@ -57,13 +58,13 @@ async function openReviewWithDueCard(page: Page): Promise<void> {
   await selectWord(page);
   await page.getByRole("button", { name: "Save word" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("1 due")).toBeVisible();
 }
 
 async function showImportError(page: Page): Promise<void> {
-  await page.goto("/");
-  await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
+  await page.goto("/#/manage");
+  await expect(page.getByRole("heading", { level: 1, name: "Manage lessons and data" })).toBeVisible();
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByText(/^Title must be/)).toBeVisible();
 }
@@ -182,12 +183,12 @@ async function showStorageBanner(page: Page): Promise<void> {
   await grantPersistence(page, false);
   await page.goto("/");
   await expect(page.locator("header").getByText(STORAGE_BANNER)).toBeVisible();
-  await expect(page.getByRole("region", { name: "Your data" }).getByText(STORAGE_MAY_CLEAR)).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Your data" }).getByText(STORAGE_MAY_CLEAR)).toHaveCount(0);
 }
 
 async function showYourData(page: Page): Promise<void> {
   await grantPersistence(page, true);
-  await page.goto("/");
+  await page.goto("/#/manage");
   const yourData = page.getByRole("region", { name: "Your data" });
   await expect(yourData.getByText("Storage: kept on this device.")).toBeVisible();
   await yourData.scrollIntoViewIfNeeded();
@@ -276,11 +277,11 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await openFreezeTooltip(page);
     await inspect();
   }],
-  ["storage banner", async (page, inspect) => {
+  ["library with storage notice", async (page, inspect) => {
     await showStorageBanner(page);
     await inspect();
   }],
-  ["Your data with storage kept", async (page, inspect) => {
+  ["Manage with storage kept", async (page, inspect) => {
     await showYourData(page);
     await inspect();
   }],
@@ -340,7 +341,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Enable" }).click();
     await page.getByRole("button", { name: "morning", exact: true }).click();
     await page.getByRole("button", { name: "Save word" }).click();
-    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await viewLink(page, "Review").click();
     await page.evaluate(() => {
       (window as unknown as { __speechTranscript: string }).__speechTranscript = "evening";
     });
@@ -351,7 +352,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   ["review with a sentence card's Vietnamese back", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
     await page.getByRole("button", { name: "Save to review" }).first().click();
-    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await viewLink(page, "Review").click();
     await page.getByRole("button", { name: "Show answer" }).click();
     await expect(page.locator('[lang="vi"]')).toBeVisible();
     await inspect();
@@ -365,7 +366,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["review with nothing to review", async (page, inspect) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await viewLink(page, "Review").click();
     await expect(page.getByText(/^Nothing to review yet/)).toBeVisible();
     await inspect();
   }],
@@ -547,7 +548,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText("0 due")).toBeVisible();
     await inspect();
   }],
-  ["import form with a validation error", async (page, inspect) => {
+  ["Manage with an import form validation error", async (page, inspect) => {
     await showImportError(page);
     await inspect();
   }],
@@ -638,13 +639,17 @@ test.describe("axe", () => {
       test.describe("at 320px", () => {
         test.use({ viewport: { width: 320, height: 740 } });
 
-        test("library, a lesson and review", async ({ page }) => {
+        test("library, Manage, a lesson and review", async ({ page }) => {
           await page.goto("/");
           await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
           expect(await axeViolations(page), "library").toEqual([]);
+          await expect(page.getByRole("heading", { level: 3, name: "No lessons of your own yet" })).toBeVisible();
+          await page.goto("/#/manage");
+          await expect(page.getByRole("heading", { level: 1, name: "Manage lessons and data" })).toBeVisible();
+          expect(await axeViolations(page), "Manage").toEqual([]);
           await openReviewWithDueCard(page);
           expect(await axeViolations(page), "review").toEqual([]);
-          await page.getByRole("button", { name: "Library", exact: true }).click();
+          await viewLink(page, "Library").click();
           await page.getByRole("button", { name: LIBRARY_LESSON }).click();
           await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
           expect(await axeViolations(page), "lesson").toEqual([]);
@@ -697,6 +702,13 @@ async function tabTo(page: Page, target: ReturnType<Page["getByRole"]>, key = "T
   throw new Error("target never received focus");
 }
 
+test("the not-kept storage guidance stays in Your data on Manage", async ({ page }) => {
+  await grantPersistence(page, false);
+  await page.goto("/#/manage");
+  await expect(page.locator("header").getByText(STORAGE_BANNER)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your data" }).getByText(STORAGE_MAY_CLEAR)).toBeVisible();
+});
+
 test.describe("keyboard", () => {
   test("open a lesson, listen, save a word, review and rate", async ({ page }) => {
     await page.goto("/");
@@ -724,8 +736,8 @@ test.describe("keyboard", () => {
       .poll(() => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken))
       .toContain("Good morning, how are you today?");
 
-    const reviewToggle = page.getByRole("button", { name: "Review", exact: true });
-    await tabTo(page, reviewToggle, "Shift+Tab");
+    const reviewLink = viewLink(page, "Review");
+    await tabTo(page, reviewLink, "Shift+Tab");
     await page.keyboard.press("Enter");
     await expect(page.getByText("1 due")).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Review deck" })).toBeFocused();
@@ -748,10 +760,11 @@ test.describe("keyboard", () => {
     await expect(page.getByRole("tooltip")).toHaveText(FREEZE_HELP);
   });
 
-  test("the storage banner moves focus to Your data", async ({ page }) => {
+  test("the storage notice moves focus to Your data in Manage", async ({ page }) => {
     await showStorageBanner(page);
     await tabTo(page, page.getByRole("button", { name: "Back up" }));
     await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Manage lessons and data" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Your data" })).toBeFocused();
   });
 
@@ -832,7 +845,7 @@ const MOBILE_STATES: [string, (page: Page) => Promise<void>][] = [
     await openReviewWithDueCard(page);
     await page.getByRole("button", { name: "Show answer" }).click();
   }],
-  ["import form", showImportError],
+  ["Manage", showImportError],
 ];
 
 test.describe("mobile 375x667", () => {
@@ -904,7 +917,7 @@ const LIBRARY_STATES: [string, (page: Page) => Promise<void>][] = [
   ["top-streak", practiseOnce],
   ["tooltip", openFreezeTooltip],
   ["banner", showStorageBanner],
-  ["your-data", showYourData],
+  ["Manage", showYourData],
 ];
 
 for (const width of [320, 360]) {
@@ -969,10 +982,17 @@ async function motion(page: Page): Promise<string[]> {
     probe.className = "astryx-link";
     probe.style.transition = "color 0.125s";
     probe.style.animation = "probe 1s infinite";
-    document.body.append(probe);
+    const toggleProbe = document.createElement("button");
+    toggleProbe.className = "astryx-toggle-button";
+    toggleProbe.style.transition = "color 0.125s";
+    const segmentProbe = document.createElement("button");
+    segmentProbe.className = "astryx-segmented-control-item";
+    segmentProbe.style.transition = "color 0.125s";
+    document.body.append(probe, toggleProbe, segmentProbe);
     for (const [selector, required] of [
       [".astryx-button", true],
       [".astryx-toggle-button", true],
+      [".astryx-segmented-control-item", false],
       [".astryx-link", true],
     ] as const) {
       const elements = document.querySelectorAll<HTMLElement>(selector);
@@ -990,6 +1010,8 @@ async function motion(page: Page): Promise<string[]> {
       }
     }
     probe.remove();
+    toggleProbe.remove();
+    segmentProbe.remove();
     found.push(...document
       .getAnimations()
       .filter((animation) => animation.playState === "running")

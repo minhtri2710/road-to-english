@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
-import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
@@ -11,8 +10,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Lesson } from "./api/lessons";
 import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary, ViewHeading } from "./components/feedback";
-import { sharedStyles } from "./components/styles";
-import { YOUR_DATA, YourData } from "./components/YourData";
+import { YourData } from "./components/YourData";
 import { useAuth } from "./hooks/auth";
 import { useUserLessons } from "./hooks/lessons";
 import { useProgress } from "./hooks/progress";
@@ -27,7 +25,7 @@ import { todayKey } from "./lib/progress";
 import { capNewCards } from "./lib/vocab";
 import { projectTheme } from "./theme";
 import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
-import { ImportTextForm } from "./library/ImportTextForm";
+import { IMPORT_TITLE, ImportTextForm } from "./library/ImportTextForm";
 import { LessonList } from "./library/LessonList";
 import { UserLessonList } from "./library/UserLessonList";
 import { ReviewDeck } from "./review/ReviewDeck";
@@ -118,6 +116,7 @@ function AppViews() {
   };
 
   const lastLesson = useLastLesson(route.view === "lesson" || (route.view === "my" && userLesson) ? route : null);
+  const appView = view === "lesson" || view === "my" ? null : view;
 
   const detailProps = {
     onBack: () => navigate({ view: "library" }, lessonId(route)),
@@ -141,7 +140,7 @@ function AppViews() {
   return (
     <div className={stylex.props(appStyles.page).className}>
       <div className={stylex.props(appStyles.content).className}>
-        <VStack gap={4}>
+        <VStack gap={1}>
           <AppHeader
             goalAnnounced={goalAnnounced}
             storageKept={storageKept}
@@ -149,33 +148,20 @@ function AppViews() {
             backupError={backupError}
             syncLine={syncLine}
             auth={auth}
-            onBackUp={() => navigate({ view: "library" }, YOUR_DATA)}
+            view={appView}
+            due={due}
+            onNavigate={navigate}
           />
-          <nav aria-label="Views" className={stylex.props(sharedStyles.viewToggle).className}>
-            <ToggleButtonGroup
-              label="App view"
-              // Inside a lesson no view is pressed, so Library and Review both navigate.
-              value={view === "review" || view === "library" ? view : null}
-              onChange={(nextView) => {
-                if (nextView) {
-                  navigate({ view: nextView as "library" | "review" });
-                }
-              }}
-            >
-              <ToggleButton value="library" label="Library" />
-              <ToggleButton value="review" label="Review" />
-            </ToggleButtonGroup>
-          </nav>
-          <VStack as="main" gap={4}>
-            {(view === "review" || view === "library") && (
+          <VStack as="main" gap={2}>
+            {(view === "review" || view === "library" || view === "manage") && (
               <VStack gap={1}>
                 <ViewHeading takeFocus={takeHeadingFocus}>
-                  {view === "library" ? "Lesson library" : "Review deck"}
+                  {view === "library" ? "Lesson library" : view === "review" ? "Review deck" : "Manage lessons and data"}
                 </ViewHeading>
                 <Text type="large">
                   {view === "library"
                     ? "Choose a lesson to practise reading and speaking."
-                    : "Review saved sentences with spaced repetition."}
+                    : view === "review" ? "Review saved sentences with spaced repetition." : "Create lessons, import text, and manage your data."}
                 </Text>
               </VStack>
             )}
@@ -229,10 +215,17 @@ function AppViews() {
                     deleteFailedId={deleteFailedId}
                     completedLessons={progress.completedLessons}
                     takeFocus={takeReturnFocus}
-                    onCreateLesson={() => document.getElementById("import-title")?.focus()}
+                    onCreateLesson={() => navigate({ view: "manage" }, IMPORT_TITLE)}
                   />
                 </VStack>
-                <ImportTextForm onCreate={createLesson} levelFilter={levelFilter} />
+              </VStack>
+            ) : view === "manage" ? (
+              <VStack gap={4}>
+                <ImportTextForm
+                  onCreate={createLesson}
+                  levelFilter={levelFilter}
+                  takeReturnFocus={takeReturnFocus}
+                />
                 <YourData
                   storageKept={storageKept}
                   signedIn={auth.user !== null}

@@ -25,6 +25,8 @@ describe("BackupControls", () => {
     const confirm = vi.fn<(message?: string) => boolean>(() => false);
     vi.stubGlobal("confirm", confirm);
     const { container, unmount } = await renderApp({ route: (path) => (path === "/me" && signedIn ? userResponse() : undefined) });
+    await click(container, "Manage");
+    await waitForCondition(() => container.querySelector("#import-title") !== null);
     if (signedIn) {
       await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
     }
@@ -63,6 +65,9 @@ describe("BackupControls", () => {
       downloads.push(this.download);
     });
     const { container } = await renderApp();
+    await click(container, "Manage");
+    expect(window.location.hash).toBe("#/manage");
+    await waitForCondition(() => container.querySelector("#import-title") !== null);
 
     await click(container, "Export CSV");
     await waitForCondition(() => downloads.length > 0);
@@ -104,6 +109,8 @@ describe("BackupControls", () => {
     );
     vi.stubGlobal("confirm", () => true);
     const { container } = await renderApp();
+    await click(container, "Manage");
+    await waitForCondition(() => container.querySelector("#import-title") !== null);
     const input = container.querySelector<HTMLInputElement>(
       'input[type="file"]',
     );
@@ -116,6 +123,7 @@ describe("BackupControls", () => {
       });
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
+    await clickButtonWith(container, "Library");
     await waitForCondition(() => container.textContent?.includes("1-day streak") ?? false);
 
     expect(container.textContent).toContain("1-day streak");
@@ -132,6 +140,8 @@ describe("BackupControls", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     vi.spyOn(backupStore, "exportBackupData").mockRejectedValueOnce(new Error("export broke"));
     const { container } = await renderApp();
+    await click(container, "Manage");
+    await waitForCondition(() => container.querySelector("#import-title") !== null);
     await click(container, "Export");
     await waitForCondition(hasText(container, "Backup error: export broke"));
     await click(container, "Export");

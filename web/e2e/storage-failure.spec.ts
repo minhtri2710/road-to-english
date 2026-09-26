@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, test, viewLink } from "./fixtures";
 
 test("a failing IndexedDB shows the storage line and leaves the library usable", async ({ page }) => {
   await page.addInitScript(() => {
@@ -11,7 +11,7 @@ test("a failing IndexedDB shows the storage line and leaves the library usable",
   await expect(page.getByText(/^Your saved data couldn't be read or saved on this device: .+ Reload to try again\.$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Greetings & Basics" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Review", exact: true }).click();
+  await viewLink(page, "Review").click();
   await expect(page.getByText("Your review deck couldn't be loaded.")).toBeVisible();
   await expect(page.getByText(/Nothing to review yet/)).toHaveCount(0);
   await expect(page.getByText("Loading review deck...")).toHaveCount(0);

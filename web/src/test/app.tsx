@@ -148,14 +148,26 @@ function buttonWith(container: HTMLElement, text: string): HTMLButtonElement | u
 
 // Clicks the first button whose text includes this text; a missing button fails the test.
 export async function clickButtonWith(container: HTMLElement, text: string): Promise<void> {
-  await clickElement(buttonWith(container, text), `${text} button`);
+  const button = buttonWith(container, text);
+  if (button) {
+    await clickElement(button, `${text} button`);
+    return;
+  }
+  const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find(
+    (candidate) => candidate.textContent?.trim().startsWith(text),
+  );
+  await clickElement(link, `${text} link`);
 }
 
 // Clicks this element; a missing one fails the test.
 export async function clickElement(element: HTMLElement | null | undefined, what: string): Promise<void> {
   if (!element) throw new Error(`${what} not found`);
   await harnessAct(() => {
-    element.click();
+    if (element instanceof HTMLAnchorElement) {
+      element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    } else {
+      element.click();
+    }
   });
 }
 
@@ -171,13 +183,15 @@ export function buttonsNamed(container: HTMLElement, name: string): HTMLButtonEl
 }
 
 // Clicks the index-th button with exactly this visible name; a missing button fails the test.
-export async function click(container: HTMLElement, name: string, index = 0): Promise<HTMLButtonElement> {
+export async function click(container: HTMLElement, name: string, index = 0): Promise<HTMLElement> {
+  const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find(
+    (candidate) => candidate.getAttribute("aria-label") === name || candidate.getAttribute("aria-label")?.startsWith(`${name}, `) || candidate.textContent?.trim().startsWith(name),
+  );
   const button = buttonsNamed(container, name)[index];
-  if (!button) throw new Error(`${name} button not found`);
-  await harnessAct(() => {
-    button.click();
-  });
-  return button;
+  const target = link ?? button;
+  if (!target) throw new Error(`${name} control not found`);
+  await clickElement(target, `${name} control`);
+  return target;
 }
 
 // The input a visible <label> with exactly this text names; a missing one fails the test.

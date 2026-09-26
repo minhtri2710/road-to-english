@@ -3,6 +3,7 @@
 export type Route =
   | { view: "library" }
   | { view: "review" }
+  | { view: "manage" }
   | { view: "lesson"; id: string }
   | { view: "my"; id: string };
 
@@ -12,6 +13,8 @@ export function routeHash(route: Route): string {
       return "#/";
     case "review":
       return "#/review";
+    case "manage":
+      return "#/manage";
     default:
       return `#/${route.view}/${encodeURIComponent(route.id)}`;
   }
@@ -23,6 +26,9 @@ export function parseRoute(hash: string): Route | null {
   }
   if (hash === "#/review") {
     return { view: "review" };
+  }
+  if (hash === "#/manage") {
+    return { view: "manage" };
   }
   const match = /^#\/(lesson|my)\/([^/]+)$/.exec(hash);
   if (!match) {
