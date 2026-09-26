@@ -27,7 +27,7 @@ const styles = stylex.create({
     textAlign: "start",
     // The row grows to its two-line content; badges wrap below the title when space runs out.
     height: "auto",
-    paddingBlock: "0.5rem",
+    paddingBlock: "var(--spacing-2)",
     whiteSpace: "normal",
   },
   lessonRowContent: {

@@ -26,8 +26,8 @@ const styles = stylex.create({
   accountInput: {
     width: "14rem",
     maxWidth: "100%",
-    minHeight: "2.25rem",
-    padding: "0.5rem 0.75rem",
+    minHeight: "var(--size-element-lg)",
+    padding: "var(--spacing-2) var(--spacing-3)",
     border: "1px solid var(--color-border)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",

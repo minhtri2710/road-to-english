@@ -13,7 +13,7 @@ import { sharedStyles } from "./styles";
 
 const appStyles = stylex.create({
   header: {
-    marginBottom: { default: "2rem", "@media (max-width: 480px)": 0 },
+    marginBottom: { default: "var(--spacing-8)", "@media (max-width: 480px)": 0 },
   },
 });
 

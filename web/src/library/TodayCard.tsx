@@ -18,12 +18,12 @@ import { MAX_FREEZES } from "../lib/progress";
 
 const styles = stylex.create({
   todayCard: {
-    padding: "0.75rem",
+    padding: "var(--spacing-3)",
   },
   // One line down to 320px: the longest streak text and the freezes fit at this size.
   // Larger text wraps rather than overflowing the card.
   streakRow: {
-    fontSize: "0.8125rem",
+    fontSize: "var(--font-size-sm)",
     flexWrap: "wrap",
   },
   tooltipTarget: {
@@ -35,7 +35,7 @@ const styles = stylex.create({
   week: {
     display: "grid",
     gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-    gap: "0.25rem",
+    gap: "var(--spacing-1)",
     margin: 0,
     padding: 0,
     listStyle: "none",
@@ -43,13 +43,13 @@ const styles = stylex.create({
   day: {
     textAlign: "center",
     whiteSpace: "nowrap",
-    fontSize: "0.8125rem",
-    border: "1px solid transparent",
+    fontSize: "var(--font-size-sm)",
+    border: "var(--border-width) solid transparent",
     borderRadius: "var(--radius-element)",
   },
   today: {
     borderColor: "var(--color-border)",
-    fontWeight: 600,
+    fontWeight: "var(--font-weight-semibold)",
   },
 });
 

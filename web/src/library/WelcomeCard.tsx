@@ -16,7 +16,7 @@ import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 
 const styles = stylex.create({
   todayCard: {
-    padding: "0.75rem",
+    padding: "var(--spacing-3)",
   },
 });
 

@@ -18,7 +18,7 @@ const styles = stylex.create({
   importTextArea: {
     width: "100%",
     minHeight: "8rem",
-    padding: "0.5rem 0.75rem",
+    padding: "var(--spacing-2) var(--spacing-3)",
     border: "1px solid var(--color-border)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",

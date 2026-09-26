@@ -33,13 +33,13 @@ import { addRating, EMPTY_RECAP, GRADE_NAMES, recapLine, type Recap } from "./re
 
 const styles = stylex.create({
   reviewCard: {
-    padding: "1.5rem",
+    padding: "var(--spacing-6)",
     border: "1px solid var(--color-border)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",
   },
   answer: {
-    padding: "1rem",
+    padding: "var(--spacing-4)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-body)",
   },
@@ -53,7 +53,7 @@ const styles = stylex.create({
       default: "repeat(2, minmax(0, 1fr))",
       "@container (min-width: 19.5rem)": "repeat(4, minmax(0, 1fr))",
     },
-    gap: "0.5rem",
+    gap: "var(--spacing-2)",
   },
   // The interval sits under the grade word.
   rating: {

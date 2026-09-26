@@ -6,7 +6,6 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "./api/lessons";
@@ -26,6 +25,7 @@ import { useSync } from "./hooks/useSync";
 import { useVocabDeck } from "./hooks/vocab";
 import { todayKey } from "./lib/progress";
 import { capNewCards } from "./lib/vocab";
+import { projectTheme } from "./theme";
 import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
 import { ImportTextForm } from "./library/ImportTextForm";
 import { LessonList } from "./library/LessonList";
@@ -34,13 +34,12 @@ import { ReviewDeck } from "./review/ReviewDeck";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
-import "@astryxdesign/theme-neutral/theme.css";
 
 const appStyles = stylex.create({
   page: {
     minHeight: "100vh",
     // Narrow screens give the spacing back to the first screen of lessons.
-    padding: { default: "2rem", "@media (max-width: 480px)": "1rem" },
+    padding: { default: "var(--spacing-8)", "@media (max-width: 480px)": "var(--spacing-4)" },
     backgroundColor: "var(--color-background-body)",
     color: "var(--color-text-primary)",
   },
@@ -54,7 +53,7 @@ const appStyles = stylex.create({
 // The one Theme wraps the ErrorBoundary, so its fallback renders styled like the App.
 export function App() {
   return (
-    <Theme theme={neutralTheme}>
+    <Theme theme={projectTheme}>
       <ErrorBoundary>
         <AppViews />
       </ErrorBoundary>

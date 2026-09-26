@@ -22,6 +22,15 @@ const LIBRARY_LESSON = "Greetings & Basics";
 const USER_LESSON = "My pasted text";
 
 async function axeViolations(page: Page): Promise<string[]> {
+  await page.evaluate(async () => {
+    while (true) {
+      const running = document.getAnimations().filter(
+        (animation) => animation.playState === "running" && animation.effect?.getComputedTiming().iterations !== Infinity,
+      );
+      if (running.length === 0) return;
+      await Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
+    }
+  });
   const { violations } = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -603,45 +612,51 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
 ];
 
 test.describe("axe", () => {
-  for (const [name, reach] of STATES) {
-    test(name, async ({ page }) => {
-      await reach(page, async () => {
-        expect(await axeViolations(page)).toEqual([]);
+  for (const colorScheme of ["light", "dark"] as const) {
+    test.describe(colorScheme, () => {
+      test.use({ colorScheme });
+
+      for (const [name, reach] of STATES) {
+        test(name, async ({ page }) => {
+          await reach(page, async () => {
+            expect(await axeViolations(page)).toEqual([]);
+          });
+        });
+      }
+
+      test("summary with missed words, before and after saving one", async ({ page }) => {
+        await openLibraryLesson(page, LIBRARY_LESSON);
+        await missOneWord(page);
+        const missed = page.getByRole("list", { name: "Missed words" });
+        await expect(missed.getByRole("button", { name: "Save “today” to review" })).toBeVisible();
+        expect(await axeViolations(page), "before saving").toEqual([]);
+        await missed.getByRole("button", { name: "Save “today” to review" }).click();
+        await expect(missed.getByRole("button", { name: "Saved “today”, remove from review deck" })).toBeVisible();
+        expect(await axeViolations(page), "after saving").toEqual([]);
+      });
+
+      test.describe("at 320px", () => {
+        test.use({ viewport: { width: 320, height: 740 } });
+
+        test("library, a lesson and review", async ({ page }) => {
+          await page.goto("/");
+          await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
+          expect(await axeViolations(page), "library").toEqual([]);
+          await openReviewWithDueCard(page);
+          expect(await axeViolations(page), "review").toEqual([]);
+          await page.getByRole("button", { name: "Library", exact: true }).click();
+          await page.getByRole("button", { name: LIBRARY_LESSON }).click();
+          await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
+          expect(await axeViolations(page), "lesson").toEqual([]);
+        });
+
+        test("guided shadowing", async ({ page }) => {
+          await openGuided(page);
+          expect(await axeViolations(page)).toEqual([]);
+        });
       });
     });
   }
-});
-
-test("axe on the summary with missed words, before and after saving one", async ({ page }) => {
-  await openLibraryLesson(page, LIBRARY_LESSON);
-  await missOneWord(page);
-  const missed = page.getByRole("list", { name: "Missed words" });
-  await expect(missed.getByRole("button", { name: "Save “today” to review" })).toBeVisible();
-  expect(await axeViolations(page), "before saving").toEqual([]);
-  await missed.getByRole("button", { name: "Save “today” to review" }).click();
-  await expect(missed.getByRole("button", { name: "Saved “today”, remove from review deck" })).toBeVisible();
-  expect(await axeViolations(page), "after saving").toEqual([]);
-});
-
-test.describe("axe at 320px", () => {
-  test.use({ viewport: { width: 320, height: 740 } });
-
-  test("library, a lesson and review", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
-    expect(await axeViolations(page), "library").toEqual([]);
-    await openReviewWithDueCard(page);
-    expect(await axeViolations(page), "review").toEqual([]);
-    await page.getByRole("button", { name: "Library", exact: true }).click();
-    await page.getByRole("button", { name: LIBRARY_LESSON }).click();
-    await expect(page.getByRole("heading", { level: 1, name: LIBRARY_LESSON })).toBeVisible();
-    expect(await axeViolations(page), "lesson").toEqual([]);
-  });
-
-  test("guided shadowing", async ({ page }) => {
-    await openGuided(page);
-    expect(await axeViolations(page)).toEqual([]);
-  });
 });
 
 async function focusIndicator(page: Page): Promise<{ label: string; visible: boolean }> {

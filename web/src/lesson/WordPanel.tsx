@@ -19,17 +19,17 @@ import { cardWord, isCardWord, splitWords } from "../lib/words";
 
 const styles = stylex.create({
   sentenceWord: {
-    paddingInline: "0.125rem",
+    paddingInline: "var(--spacing-0-5)",
   },
   spokenWord: {
     backgroundColor: "var(--color-warning-muted)",
   },
   stressedWord: {
-    fontWeight: 700,
+    fontWeight: "var(--font-weight-bold)",
   },
   stressDots: {
     fontSize: "0.75em",
-    paddingInlineEnd: "0.25rem",
+    paddingInlineEnd: "var(--spacing-1)",
   },
   tapTarget: {
     display: "inline-flex",
