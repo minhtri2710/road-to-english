@@ -31,6 +31,11 @@ import {
 } from "../lib/vocab";
 import { addRating, EMPTY_RECAP, GRADE_NAMES, recapLine, type Recap } from "./recap";
 
+const cardFlip = stylex.keyframes({
+  from: { transform: "perspective(1000px) rotateY(-90deg)" },
+  to: { transform: "perspective(1000px) rotateY(0deg)" },
+});
+
 const styles = stylex.create({
   reviewCard: {
     padding: "var(--spacing-6)",
@@ -38,6 +43,41 @@ const styles = stylex.create({
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",
   },
+  cardFlip: {
+    animationName: cardFlip,
+    animationDuration: "var(--duration-slow)",
+    animationTimingFunction: "var(--rte-ease-emphasized)",
+    animationIterationCount: 1,
+  },
+  summaryCard: {
+    padding: "var(--spacing-3)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-surface)",
+  },
+  breakdown: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "var(--spacing-1)",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  breakdownItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "var(--spacing-1)",
+    minWidth: 0,
+    padding: "var(--spacing-1) var(--spacing-2)",
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-background-body)",
+    fontWeight: "var(--font-weight-semibold)",
+  },
+  breakdownAgain: { color: "var(--color-error)" },
+  breakdownHard: { color: "var(--color-warning)" },
+  breakdownGood: { color: "var(--color-success)" },
+  breakdownEasy: { color: "var(--color-accent)" },
+  breakdownMuted: { color: "var(--color-text-secondary)" },
   answer: {
     padding: "var(--spacing-4)",
     borderRadius: "var(--radius-element)",
@@ -61,7 +101,50 @@ const styles = stylex.create({
     gap: 0,
     height: "auto",
   },
+  ratingAgain: {
+    "--color-text-primary": "var(--color-error)",
+    backgroundColor: "var(--color-error-muted)",
+    boxShadow: "inset 0 0 0 1px var(--color-error)",
+  },
+  ratingHard: {
+    "--color-text-primary": "var(--color-warning)",
+    backgroundColor: "var(--color-warning-muted)",
+    boxShadow: "inset 0 0 0 1px var(--color-warning)",
+  },
+  ratingGood: {
+    "--color-on-accent": "var(--color-on-success)",
+    backgroundColor: "var(--color-success)",
+  },
+  ratingEasy: {
+    "--color-text-primary": "var(--color-accent)",
+    backgroundColor: "var(--color-accent-muted)",
+    boxShadow: "inset 0 0 0 1px var(--color-accent)",
+  },
+  ratingDisabled: {
+    "--color-text-primary": "var(--color-text-secondary)",
+    "--color-on-accent": "var(--color-text-secondary)",
+    backgroundColor: "var(--color-background-muted)",
+    boxShadow: "inset 0 0 0 1px var(--color-border-emphasized)",
+    filter: "saturate(0.2)",
+  },
 });
+
+type RatingStyle = typeof styles.ratingAgain | typeof styles.ratingHard | typeof styles.ratingGood | typeof styles.ratingEasy;
+type BreakdownStyle = typeof styles.breakdownAgain | typeof styles.breakdownHard | typeof styles.breakdownGood | typeof styles.breakdownEasy;
+
+const gradeRatingStyles = {
+  [Rating.Again]: styles.ratingAgain,
+  [Rating.Hard]: styles.ratingHard,
+  [Rating.Good]: styles.ratingGood,
+  [Rating.Easy]: styles.ratingEasy,
+} satisfies Record<Grade, RatingStyle>;
+
+const gradeBreakdownStyles = {
+  [Rating.Again]: styles.breakdownAgain,
+  [Rating.Hard]: styles.breakdownHard,
+  [Rating.Good]: styles.breakdownGood,
+  [Rating.Easy]: styles.breakdownEasy,
+} satisfies Record<Grade, BreakdownStyle>;
 
 // No lesson WPM exists for a card; 110 sits mid-way in the seed lessons' 80-150 WPM range.
 const LISTEN_WPM = 110;
@@ -193,19 +276,45 @@ export function ReviewDeck({
   const rateErrorLine = rateError !== null && <Alert>{rateError}</Alert>;
 
   if (!card) {
+    const recapTotal = GRADES.reduce((sum, grade) => sum + recap.counts[grade], 0);
+    const endMessage = !hasCards
+      ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
+      : hiddenNew > 0
+        ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
+        : nextDueInMinutes !== null
+          ? `All caught up. Next card in ${nextDueInMinutes} min.`
+          : "All caught up. Come back later for your next review.";
     return (
       <VStack gap={2}>
         {rateErrorLine}
-        <Text as="p" ref={promptRef} tabIndex={-1}>
-          {recapLine(recap)}
-          {!hasCards
-            ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
-            : hiddenNew > 0
-              ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
-              : nextDueInMinutes !== null
-                ? `All caught up. Next card in ${nextDueInMinutes} min.`
-                : "All caught up. Come back later for your next review."}
-        </Text>
+        {recapTotal === 0 ? (
+          <Text as="p" ref={promptRef} tabIndex={-1}>
+            {endMessage}
+          </Text>
+        ) : (
+          <Card padding={3} xstyle={styles.summaryCard}>
+            <VStack gap={2}>
+              <Text as="p" ref={promptRef} tabIndex={-1}>
+                {recapLine(recap)}
+                {endMessage}
+              </Text>
+              <ul aria-label="Session rating breakdown" {...stylex.props(styles.breakdown)}>
+                {GRADES.map((grade) => (
+                  <li
+                    key={grade}
+                    {...stylex.props(
+                      styles.breakdownItem,
+                      recap.counts[grade] === 0 ? styles.breakdownMuted : gradeBreakdownStyles[grade],
+                    )}
+                  >
+                    <span>{GRADE_NAMES[grade]}</span>{" "}
+                    <span>{recap.counts[grade]}</span>
+                  </li>
+                ))}
+              </ul>
+            </VStack>
+          </Card>
+        )}
         {recap.again.length > 0 && (
           <List header={<Heading level={2}>Rated Again</Heading>}>
             {recap.again.map(({ id, front }) => (
@@ -305,7 +414,12 @@ export function ReviewDeck({
           </Text>
         )}
       </VStack>
-      <Card padding={3} xstyle={styles.reviewCard} onKeyDown={onKeyDown}>
+      <Card
+        padding={3}
+        xstyle={[styles.reviewCard, showAnswer && styles.cardFlip]}
+        data-review-card
+        onKeyDown={onKeyDown}
+      >
         <VStack gap={2}>
           <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>
             {listenFirst && !showAnswer ? "Listen and recall the card." : card.front}
@@ -336,6 +450,7 @@ export function ReviewDeck({
                     text={card.front}
                     answer={sayItState.transcript}
                     verb="said"
+                    checkId={sayItState.checkId}
                     targetWpm={LISTEN_WPM}
                     speed={1}
                     stopMedia={stopListening}
@@ -365,7 +480,7 @@ export function ReviewDeck({
                     <Button
                       label={GRADE_NAMES[grade]}
                       variant={grade === Rating.Good ? "primary" : "secondary"}
-                      xstyle={styles.rating}
+                      xstyle={[styles.rating, gradeRatingStyles[grade], isRating && styles.ratingDisabled]}
                       width="100%"
                       isDisabled={isRating}
                       aria-describedby={`${intervalIds}-${grade}`}

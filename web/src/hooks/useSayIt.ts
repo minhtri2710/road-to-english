@@ -6,7 +6,7 @@ import { recognizeOnce } from "../lib/recognition";
 export type SayIt =
   | { status: "idle" }
   | { status: "listening" }
-  | { status: "heard"; transcript: string }
+  | { status: "heard"; transcript: string; checkId: number }
   | { status: "failed"; message: string };
 
 export function useSayIt(cardTurn: string | null, showAnswer: boolean, stopListening: () => void) {
@@ -14,6 +14,7 @@ export function useSayIt(cardTurn: string | null, showAnswer: boolean, stopListe
   const [sayIt, setSayIt] = useState<{ turn: string | null; state: SayIt }>({ turn: null, state: { status: "idle" } });
   const sayItState: SayIt = sayIt.turn === cardTurn && !showAnswer ? sayIt.state : { status: "idle" };
   const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
+  const checkIdRef = useRef(0);
   const sayItRef = useRef<HTMLButtonElement>(null);
 
   useEffect(
@@ -27,6 +28,7 @@ export function useSayIt(cardTurn: string | null, showAnswer: boolean, stopListe
   const startSayIt = () => {
     stopListening();
     const turn = cardTurn;
+    const checkId = ++checkIdRef.current;
     setSayIt({ turn, state: { status: "listening" } });
     const recognition = recognizeOnce();
     recognitionRef.current = recognition;
@@ -34,7 +36,7 @@ export function useSayIt(cardTurn: string | null, showAnswer: boolean, stopListe
     recognition.result.then(
       (transcript) => {
         recognitionRef.current = null;
-        setSayIt({ turn, state: { status: "heard", transcript } });
+        setSayIt({ turn, state: { status: "heard", transcript, checkId } });
       },
       (error: Error) => {
         recognitionRef.current = null;

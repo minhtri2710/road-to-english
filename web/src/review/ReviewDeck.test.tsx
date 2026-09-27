@@ -272,8 +272,15 @@ describe("ReviewDeck", () => {
     const line = prompt(container);
     expect(document.activeElement).toBe(line);
     expect(line.textContent).toBe("Reviewed 3 cards: 1 Again, 1 Good, 1 Easy. All caught up. Next card in 1 min.");
+    const breakdown = container.querySelector('ul[aria-label="Session rating breakdown"]');
+    expect(Array.from(breakdown?.querySelectorAll("li") ?? []).map((item) => item.textContent)).toEqual([
+      "Again 1", "Hard 0", "Good 1", "Easy 1",
+    ]);
+    expect(breakdown?.closest('[role="status"]')).toBeNull();
 
-    const list = container.querySelector("ul");
+    const list = Array.from(container.querySelectorAll("ul")).find((item) =>
+      document.getElementById(item.getAttribute("aria-labelledby") ?? "")?.textContent === "Rated Again",
+    );
     expect(document.getElementById(list?.getAttribute("aria-labelledby") ?? "")?.textContent).toBe("Rated Again");
     expect(Array.from(list?.querySelectorAll("li") ?? []).map((item) => item.textContent)).toEqual(["twoListen"]);
 
@@ -297,7 +304,10 @@ describe("ReviewDeck", () => {
     await rate(container, "Again");
 
     await waitForCondition(hasText(container, "Reviewed 2 cards: 2 Again."));
-    expect(Array.from(container.querySelectorAll("li")).map((item) => item.textContent)).toEqual(["one"]);
+    const againList = Array.from(container.querySelectorAll("ul")).find((item) =>
+      document.getElementById(item.getAttribute("aria-labelledby") ?? "")?.textContent === "Rated Again",
+    );
+    expect(Array.from(againList?.querySelectorAll("li") ?? []).map((item) => item.textContent)).toEqual(["one"]);
     expect(buttonsNamed(container, "Listen")).toHaveLength(0);
   });
 
@@ -306,6 +316,7 @@ describe("ReviewDeck", () => {
     await click(container, "Show answer");
     await rate(container, "Good");
     await waitForCondition(hasText(container, "Reviewed 1 card: 1 Good. All caught up."));
+    expect(container.querySelector('ul[aria-label="Session rating breakdown"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Rated Again");
 
     await click(container, "Library");
@@ -503,6 +514,7 @@ describe("ReviewDeck", () => {
 
       await hear("good evening");
       expect(container.textContent).toContain("What the browser heard: good evening");
+      expect(container.querySelector('[data-motion="answer-nudge"]')).not.toBeNull();
       expect(container.textContent).toContain("The browser matched 1 of 2 words");
       expect(container.textContent).toContain('morning (you said "evening")');
       expect(container.textContent).not.toContain("good morning back");
@@ -512,6 +524,21 @@ describe("ReviewDeck", () => {
       expect(document.activeElement).toBe(buttonsNamed(container, "Say it")[0]);
       await click(container, "Say it");
       expect(FakeRecognition.instances).toHaveLength(2);
+    });
+
+    it("shows check feedback once per matched and unmatched Say it attempt", async () => {
+      consent();
+      const { container } = await openReview("good morning");
+      await click(container, "Say it");
+      await hear("good morning");
+      expect(container.querySelector('[data-motion="answer-correct"] [data-motion="answer-correct"]')).not.toBeNull();
+      expect(container.querySelectorAll('[data-motion="answer-correct"]')).toHaveLength(2);
+
+      await click(container, "Try again");
+      await click(container, "Say it");
+      await hear("good evening");
+      expect(container.querySelector('[data-motion="answer-nudge"]')).not.toBeNull();
+      expect(container.textContent).toContain("The browser matched 1 of 2 words");
     });
 
     it("shows a recognition failure and Try again clears it", async () => {

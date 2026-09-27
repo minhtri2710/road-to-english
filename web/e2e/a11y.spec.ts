@@ -63,6 +63,17 @@ async function openReviewWithDueCard(page: Page): Promise<void> {
   await expect(page.getByText("1 due")).toBeVisible();
 }
 
+async function openReviewWithTwoDueCards(page: Page): Promise<void> {
+  await openLibraryLesson(page, LIBRARY_LESSON);
+  for (const word of ["morning", "today"]) {
+    await page.getByRole("button", { name: word, exact: true }).click();
+    await page.getByRole("button", { name: "Save word" }).click();
+    await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
+  }
+  await viewLink(page, "Review").click();
+  await expect(page.getByText("2 due")).toBeVisible();
+}
+
 async function showImportError(page: Page): Promise<void> {
   await page.goto("/#/manage");
   await expect(page.getByRole("heading", { level: 1, name: "Manage lessons and data" })).toBeVisible();
@@ -338,6 +349,40 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await inspect();
     await page.getByRole("button", { name: "Show answer" }).click();
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
+    await inspect();
+  }],
+  ["review session summary", async (page, inspect) => {
+    await openReviewWithTwoDueCards(page);
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await page.getByRole("button", { name: "Good" }).click();
+    await expect(page.getByText("1 due")).toBeVisible();
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await page.getByRole("button", { name: "Hard" }).click();
+    await expect(page.getByRole("list", { name: "Session rating breakdown" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Session rating breakdown" }).getByRole("listitem")).toHaveCount(4);
+    await inspect();
+  }],
+  ["review answer revealed at 320 px", async (page, inspect) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await openReviewWithDueCard(page);
+    await page.getByRole("button", { name: "Show answer" }).click();
+    await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
+    const card = page.locator("[data-review-card]");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(card).toHaveCSS("animation-name", "none");
+    } else {
+      const animation = await card.evaluate((element) => {
+        const current = element.getAnimations()[0];
+        return {
+          iterations: current?.effect?.getComputedTiming().iterations,
+          duration: current?.effect?.getComputedTiming().duration,
+          computedDuration: getComputedStyle(element).animationDuration,
+        };
+      });
+      expect(animation.iterations).toBe(1);
+      expect(animation.duration).toBeLessThanOrEqual(320);
+      expect(animation.computedDuration).toBe("0.32s");
+    }
     await inspect();
   }],
   ["review with Listen first, before and after Show answer", async (page, inspect) => {
@@ -970,6 +1015,9 @@ const MOBILE_STATES: [string, (page: Page) => Promise<void>][] = [
   ["review", async (page) => {
     await openReviewWithDueCard(page);
     await page.getByRole("button", { name: "Show answer" }).click();
+    await page.locator("[data-review-card]").evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)),
+    );
   }],
   ["Manage", showImportError],
 ];
