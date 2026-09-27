@@ -11,6 +11,7 @@ import {
   limitLogin,
   missOneWord,
   openAccountForm,
+  openDisplayMenu,
   openLibraryLesson,
   submitAccount,
   test,
@@ -71,7 +72,7 @@ async function showImportError(page: Page): Promise<void> {
 
 async function checkDictationWithHint(page: Page): Promise<void> {
   await openLibraryLesson(page, LIBRARY_LESSON);
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
   await page.getByRole("button", { name: "Show hint" }).first().click();
   await page.getByLabel("What did you hear?").first().fill("Good, how are you tomorrow?");
   await page.getByRole("button", { name: "Check" }).first().click();
@@ -80,13 +81,14 @@ async function checkDictationWithHint(page: Page): Promise<void> {
 
 async function openA1WordBank(page: Page): Promise<void> {
   await openLibraryLesson(page, "About Me");
-  await page.getByRole("button", { name: "Fill the blank" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
   await expect(page.getByRole("group", { name: "Choose a word" }).first()).toBeVisible();
 }
 
 async function hideFirstSentenceText(page: Page): Promise<void> {
   await openLibraryLesson(page, LIBRARY_LESSON);
   const text = page.getByRole("button", { name: "Text", exact: true }).first();
+  await expect(text).toHaveAttribute("aria-pressed", "true");
   await text.click();
   await expect(text).toHaveAttribute("aria-pressed", "false");
 }
@@ -146,7 +148,7 @@ function todayCard(page: Page) {
 
 async function practiseOnce(page: Page): Promise<void> {
   await openLibraryLesson(page, LIBRARY_LESSON);
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
   await page.getByLabel("What did you hear?").first().fill("Good morning");
   await page.getByRole("button", { name: "Check" }).first().click();
   await expect(page.getByText(/^Reference:/).first()).toBeVisible();
@@ -248,7 +250,9 @@ async function openRecordingReady(page: Page): Promise<void> {
 
 async function openGuided(page: Page): Promise<void> {
   await openLibraryLesson(page, LIBRARY_LESSON);
-  await page.getByRole("button", { name: "One at a time" }).click();
+  await page.getByRole("button", { name: "Display" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "One at a time" }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
 }
 
@@ -291,13 +295,13 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["dictation mode", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("button", { name: "Dictation" }).click();
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
     await expect(page.getByLabel("What did you hear?").first()).toBeVisible();
     await inspect();
   }],
   ["blank mode", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("button", { name: "Fill the blank" }).click();
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
     await expect(page.getByLabel("Which word fills the blank?").first()).toBeVisible();
     await inspect();
   }],
@@ -315,7 +319,8 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["pronunciation disclosure open", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("button", { name: "Pronunciation check" }).click();
+    await page.getByRole("button", { name: "Display" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "Pronunciation check" }).click();
     await expect(page.getByRole("button", { name: "Enable" })).toBeVisible();
     await inspect();
   }],
@@ -337,7 +342,8 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["review Say it result", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("button", { name: "Pronunciation check" }).click();
+    await page.getByRole("button", { name: "Display" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "Pronunciation check" }).click();
     await page.getByRole("button", { name: "Enable" }).click();
     await page.getByRole("button", { name: "morning", exact: true }).click();
     await page.getByRole("button", { name: "Save word" }).click();
@@ -411,16 +417,18 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["lesson with Vietnamese shown", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    const vietnamese = page.getByRole("button", { name: "Vietnamese" });
+    await page.getByRole("button", { name: "Display" }).click();
+    const vietnamese = page.getByRole("menuitemcheckbox", { name: "Vietnamese" });
     await vietnamese.click();
-    await expect(vietnamese).toHaveAttribute("aria-pressed", "true");
+    await expect(vietnamese).toHaveAttribute("aria-checked", "true");
     await inspect();
   }],
   ["lesson with stress marks on", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    const stress = page.getByRole("button", { name: "Stress", exact: true });
+    await page.getByRole("button", { name: "Display" }).click();
+    const stress = page.getByRole("menuitemcheckbox", { name: "Stress", exact: true });
     await stress.click();
-    await expect(stress).toHaveAttribute("aria-pressed", "true");
+    await expect(stress).toHaveAttribute("aria-checked", "true");
     await expect(page.getByText("Stress and intonation marks are auto-generated", { exact: false })).toBeVisible();
     await expect(page.getByRole("img", { name: "falling intonation" }).first()).toBeVisible();
     await inspect();
@@ -436,6 +444,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   ["guided shadowing with text hidden", async (page, inspect) => {
     await openGuided(page);
     const text = page.getByRole("button", { name: "Text", exact: true });
+    await expect(text).toHaveAttribute("aria-pressed", "true");
     await text.click();
     await expect(text).toHaveAttribute("aria-pressed", "false");
     await inspect();
@@ -467,7 +476,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["blank result Not quite", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("button", { name: "Fill the blank" }).click();
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
     await page.getByLabel("Which word fills the blank?").first().fill("evening");
     await page.getByRole("button", { name: "Check" }).first().click();
     await expect(page.getByText("Not quite — the word was morning")).toBeVisible();
@@ -660,6 +669,7 @@ test.describe("axe", () => {
           await openGuided(page);
           expect(await axeViolations(page)).toEqual([]);
         });
+
       });
     });
   }
@@ -893,6 +903,10 @@ const PRACTICE_STATES: [string, (page: Page) => Promise<void>][] = [
   ["dictation result with the hint", checkDictationWithHint],
   ["A1 blank with the word bank", openA1WordBank],
   ["shadow mode with one sentence's text hidden", hideFirstSentenceText],
+  ["Display menu open", async (page) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await openDisplayMenu(page);
+  }],
 ];
 
 for (const width of [320, 360]) {
@@ -902,6 +916,15 @@ for (const width of [320, 360]) {
     for (const [name, reach] of PRACTICE_STATES) {
       test(name, async ({ page }, testInfo) => {
         await reach(page);
+        if (name === "Display menu open") {
+          console.log(`Display surface at ${width}px: ${JSON.stringify(await page.getByRole("menu", { name: "Display" }).evaluate((menu) => {
+            const style = getComputedStyle(menu);
+            const rect = menu.getBoundingClientRect();
+            return { opacity: style.opacity, background: style.backgroundColor, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+          }))}`);
+          const background = await page.getByRole("menu", { name: "Display" }).evaluate((menu) => getComputedStyle(menu).backgroundColor);
+          expect(background).not.toBe("rgba(0, 0, 0, 0)");
+        }
         await page.screenshot({ path: testInfo.outputPath(`${width}.png`), fullPage: true });
         expect(await layoutProblems(page)).toEqual([]);
       });

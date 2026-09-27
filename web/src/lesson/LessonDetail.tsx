@@ -2,9 +2,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
-import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuDivider,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@astryxdesign/core/DropdownMenu";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Card } from "@astryxdesign/core/Card";
-import { Switch } from "@astryxdesign/core/Switch";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -33,8 +39,17 @@ const styles = stylex.create({
     width: "100%",
     aspectRatio: "16 / 9",
   },
-  modeToggle: {
-    alignSelf: "start",
+  toolbar: {
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  displayMenu: {
+    backgroundColor: "var(--color-background-popover)",
+  },
+  autoHideLabel: {
+    whiteSpace: "normal",
+    overflow: "visible",
+    textOverflow: "clip",
   },
 });
 
@@ -120,6 +135,8 @@ export function LessonDetail({
   // The sentence shown one at a time, or null for the full list; per visit.
   const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const displayButtonRef = useRef<HTMLButtonElement>(null);
   const pronunciationSupported = recognitionSupported();
   const [selectedWord, setSelectedWord] = useState<{
     sentenceId: string;
@@ -137,13 +154,19 @@ export function LessonDetail({
     setSpokenWord(null);
   });
   // Opening and closing the disclosure disables or removes the focused control, so focus moves across.
-  const disclosureFocus = useRef<"enable" | "toggle" | null>(null);
-  const takeDisclosureFocus = (target: "enable" | "toggle") => (element: HTMLElement | null) => {
+  const disclosureFocus = useRef<"enable" | "display" | null>(null);
+  const takeDisclosureFocus = (target: "enable") => (element: HTMLElement | null) => {
     if (element && disclosureFocus.current === target && !element.hasAttribute("disabled")) {
       disclosureFocus.current = null;
       element.focus();
     }
   };
+  useEffect(() => {
+    if (!disclosureOpen && disclosureFocus.current === "display") {
+      disclosureFocus.current = null;
+      displayButtonRef.current?.focus();
+    }
+  }, [disclosureOpen]);
   const { hasPracticed, allAttempted, practice, missed, miss, saveFailed, saveCompletion } = useLessonProgress(
     data,
     completed,
@@ -228,87 +251,98 @@ export function LessonDetail({
           </Text>
         </VStack>
       )}
-      <ToggleButtonGroup
-        label="Lesson mode"
-        value={mode}
-        onChange={(nextMode) => {
-          if (nextMode) {
+      <HStack gap={1} xstyle={styles.toolbar}>
+        <SegmentedControl
+          label="Lesson mode"
+          value={mode}
+          onChange={(nextMode) => {
             setMode(nextMode as LessonMode);
             setGuidedIndex(null);
             stopMedia({ keepVideo: true });
-          }
-        }}
-        xstyle={styles.modeToggle}
-      >
-        <ToggleButton value="shadow" label="Shadow" />
-        <ToggleButton value="dictation" label="Dictation" />
-        <ToggleButton value="blank" label="Fill the blank" />
-      </ToggleButtonGroup>
-      <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-        <ToggleButtonGroup
-          label="Playback speed"
-          value={speed}
-          onChange={(nextSpeed) => {
-            if (nextSpeed) {
-              setSpeed(nextSpeed as (typeof SPEEDS)[number]);
-            }
           }}
         >
-          {SPEEDS.map((value) => (
-            <ToggleButton key={value} value={value} label={`${value}x`} />
-          ))}
-        </ToggleButtonGroup>
-        {mode === "shadow" && (
-          <>
-            <ToggleButton label="Transcript" isPressed={showTranscript} onPressedChange={setShowTranscript} />
-            <ToggleButton label="Vietnamese" isPressed={showVietnamese} onPressedChange={setShowVietnamese} />
-            <ToggleButton
-              label="Stress"
-              isPressed={showStress}
-              onPressedChange={(pressed) => {
-                setShowStress(pressed);
-                if (pressed && (stressDict === null || stressDict === "failed")) {
-                  setStressDict("loading");
-                  loadStressDict().then(setStressDict, () => setStressDict("failed"));
-                }
-              }}
-            />
-            <ToggleButton
-              label="One at a time"
-              isPressed={guidedIndex !== null}
-              onPressedChange={(pressed) => {
-                stopMedia({ keepVideo: true });
-                setGuidedIndex(pressed ? 0 : null);
-              }}
-            />
-            <ToggleButton
-              ref={takeDisclosureFocus("toggle")}
-              label="Pronunciation check"
-              isPressed={pronunciationSupported && pronunciationCheck}
-              isDisabled={!pronunciationSupported || disclosureOpen}
-              onPressedChange={(pressed) => {
-                if (pressed) {
-                  disclosureFocus.current = "enable";
-                  setDisclosureOpen(true);
-                } else {
-                  writePref(PRONUNCIATION_CHECK_KEY, null);
-                  setPronunciationCheck(false);
-                }
-              }}
-            />
-          </>
-        )}
+          <SegmentedControlItem value="shadow" label="Shadow" />
+          <SegmentedControlItem value="dictation" label="Dictation" />
+          <SegmentedControlItem value="blank" label="Fill the blank" />
+        </SegmentedControl>
+        <DropdownMenu
+          button={{ label: "Display", variant: "secondary", ref: (element) => {
+            displayButtonRef.current = element;
+          } }}
+          isMenuOpen={displayOpen}
+          onOpenChange={setDisplayOpen}
+          menuWidth={360}
+          xstyle={styles.displayMenu}
+        >
+          <DropdownMenuRadioGroup
+            label="Playback speed"
+            value={speed}
+            onChange={(nextSpeed) => setSpeed(nextSpeed as (typeof SPEEDS)[number])}
+          >
+            {SPEEDS.map((value) => (
+              <DropdownMenuRadioItem key={value} value={value} label={`${value}x`} />
+            ))}
+          </DropdownMenuRadioGroup>
+          {mode === "shadow" && (
+            <>
+              <DropdownMenuDivider />
+              <DropdownMenuCheckboxItem
+                label="Transcript"
+                value={showTranscript}
+                onChange={setShowTranscript}
+              />
+              <DropdownMenuCheckboxItem
+                label="Vietnamese"
+                value={showVietnamese}
+                onChange={setShowVietnamese}
+              />
+              <DropdownMenuCheckboxItem
+                label="Stress"
+                value={showStress}
+                onChange={(pressed) => {
+                  setShowStress(pressed);
+                  if (pressed && (stressDict === null || stressDict === "failed")) {
+                    setStressDict("loading");
+                    loadStressDict().then(setStressDict, () => setStressDict("failed"));
+                  }
+                }}
+              />
+              <DropdownMenuCheckboxItem
+                label="One at a time"
+                value={guidedIndex !== null}
+                onChange={(pressed) => {
+                  stopMedia({ keepVideo: true });
+                  setGuidedIndex(pressed ? 0 : null);
+                }}
+              />
+              <DropdownMenuCheckboxItem
+                label="Pronunciation check"
+                value={pronunciationSupported && pronunciationCheck}
+                isDisabled={!pronunciationSupported}
+                hasCloseOnSelect
+                onChange={(pressed) => {
+                  if (pressed) {
+                    setDisplayOpen(false);
+                    disclosureFocus.current = "enable";
+                    setDisclosureOpen(true);
+                  } else {
+                    writePref(PRONUNCIATION_CHECK_KEY, null);
+                    setPronunciationCheck(false);
+                  }
+                }}
+              />
+              <DropdownMenuCheckboxItem
+                label={<span {...stylex.props(styles.autoHideLabel)}>Hide each sentence after I practise it</span>}
+                value={autoHideText}
+                onChange={(checked) => {
+                  writePref(AUTO_HIDE_TEXT_KEY, checked ? "on" : null);
+                  setAutoHideText(checked);
+                }}
+              />
+            </>
+          )}
+        </DropdownMenu>
       </HStack>
-      {mode === "shadow" && (
-        <Switch
-          label="Hide each sentence after I practise it"
-          value={autoHideText}
-          onChange={(checked) => {
-            writePref(AUTO_HIDE_TEXT_KEY, checked ? "on" : null);
-            setAutoHideText(checked);
-          }}
-        />
-      )}
       {mode === "shadow" && (
         <Status>
           {showStress && stressDict === "failed" && (
@@ -345,7 +379,7 @@ export function LessonDetail({
                 onClick={() => {
                   writePref(PRONUNCIATION_CHECK_KEY, "on");
                   setPronunciationCheck(true);
-                  disclosureFocus.current = "toggle";
+                  disclosureFocus.current = "display";
                   setDisclosureOpen(false);
                 }}
               />
@@ -353,7 +387,7 @@ export function LessonDetail({
                 label="Cancel"
                 variant="ghost"
                 onClick={() => {
-                  disclosureFocus.current = "toggle";
+                  disclosureFocus.current = "display";
                   setDisclosureOpen(false);
                 }}
               />

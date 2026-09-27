@@ -165,7 +165,7 @@ export function SentenceShadowing({
       <HStack gap={1} xstyle={sharedStyles.shadowingControls}>
         <Button
           label="Listen"
-          variant="secondary"
+          variant="primary"
           isDisabled={!canSpeak || listening}
           onClick={() => {
             stopMedia();
@@ -179,11 +179,13 @@ export function SentenceShadowing({
           label="Loop"
           isPressed={looping}
           isDisabled={!canSpeak || listening}
-          onPressedChange={(pressed) => {
+          onClick={() => {
             stopMedia();
-            if (pressed) {
+            if (!looping) {
               setSpeechFailed(false);
               setLooping(true);
+            } else {
+              setLooping(false);
             }
           }}
         />
@@ -205,7 +207,7 @@ export function SentenceShadowing({
         />
         <Button
           label="Compare"
-          variant="secondary"
+          variant="ghost"
           isDisabled={!canSpeak || listening || !recorder.url}
           onClick={() => {
             stopMedia();
@@ -224,7 +226,7 @@ export function SentenceShadowing({
           <Button
             ref={checkButtonRef}
             label={listening ? "Listening…" : "Check pronunciation"}
-            variant="secondary"
+            variant="ghost"
             isDisabled={listening}
             tooltip={listening ? "Say the sentence" : undefined}
             onClick={checkPronunciation}

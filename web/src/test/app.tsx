@@ -182,13 +182,35 @@ export function buttonsNamed(container: HTMLElement, name: string): HTMLButtonEl
   });
 }
 
+export function menuItemsNamed(container: HTMLElement, name: string): HTMLElement[] {
+  return Array.from(container.ownerDocument.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"], [role="menuitemradio"]')).filter(
+    (item) => item.textContent?.trim() === name,
+  );
+}
+
 // Clicks the index-th button with exactly this visible name; a missing button fails the test.
 export async function click(container: HTMLElement, name: string, index = 0): Promise<HTMLElement> {
+  const displayButton = buttonsNamed(container, "Display")[0];
+  const menuOpen = displayButton?.getAttribute("aria-expanded") === "true";
+  if (menuOpen && name !== "Display" && menuItemsNamed(container, name).length === 0) {
+    const display = buttonsNamed(container, "Display")[0];
+    if (display) await clickElement(display, "Close Display menu");
+  }
   const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find(
     (candidate) => candidate.getAttribute("aria-label") === name || candidate.getAttribute("aria-label")?.startsWith(`${name}, `) || candidate.textContent?.trim().startsWith(name),
   );
   const button = buttonsNamed(container, name)[index];
-  const target = link ?? button;
+  let target: HTMLElement | undefined = link ?? button ?? menuItemsNamed(container, name)[index];
+  if (!target && container.querySelector('[role="radiogroup"][aria-label="Lesson mode"]')) {
+    target = Array.from(container.querySelectorAll<HTMLElement>('[role="radiogroup"][aria-label="Lesson mode"] [role="radio"]')).find(
+      (radio) => radio.getAttribute("aria-label") === name || radio.textContent?.trim() === name,
+    );
+  }
+  if (!target && menuItemsNamed(container, name).length === 0) {
+    const display = buttonsNamed(container, "Display")[0];
+    if (display) await clickElement(display, "Display menu");
+  }
+  if (!target) target = menuItemsNamed(container, name)[index];
   if (!target) throw new Error(`${name} control not found`);
   await clickElement(target, `${name} control`);
   return target;

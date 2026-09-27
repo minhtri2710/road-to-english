@@ -16,6 +16,7 @@ import {
   harnessAct,
   harnessActSync,
   hasText,
+  menuItemsNamed,
   openLesson,
   renderApp,
   resetApp,
@@ -33,6 +34,29 @@ import { greetingsLesson } from "../test/fixtures";
 
 describe("LessonDetail", () => {
   afterEach(resetApp);
+
+  it("exposes the mode radios and Display menu options with checked state", async () => {
+    const { container } = await openLesson();
+    const modes = container.querySelector('[role="radiogroup"][aria-label="Lesson mode"]');
+    expect(Array.from(modes?.querySelectorAll('[role="radio"]') ?? []).map((radio) => radio.textContent?.trim())).toEqual([
+      "Shadow",
+      "Dictation",
+      "Fill the blank",
+    ]);
+    const display = buttonsNamed(container, "Display")[0]!;
+    expect(display.getAttribute("aria-haspopup")).toBe("menu");
+    expect(display.getAttribute("aria-expanded")).toBe("false");
+
+    await click(container, "Display");
+    expect(display.getAttribute("aria-expanded")).toBe("true");
+    expect(menuItemsNamed(container, "Playback speed")).toHaveLength(0);
+    expect(menuItemsNamed(container, "0.5x")[0]?.getAttribute("aria-checked")).toBe("false");
+    expect(menuItemsNamed(container, "1x")[0]?.getAttribute("aria-checked")).toBe("true");
+    for (const name of ["Transcript", "Vietnamese", "Stress", "One at a time", "Pronunciation check", "Hide each sentence after I practise it"]) {
+      expect(menuItemsNamed(container, name)).toHaveLength(1);
+      expect(menuItemsNamed(container, name)[0]?.hasAttribute("aria-checked")).toBe(true);
+    }
+  });
 
   it("records dictation practice and shows the streak witness", async () => {
     vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
@@ -106,13 +130,14 @@ describe("LessonDetail", () => {
     installSpeechFakes();
     const { container } = await openLesson();
 
-    const transcript = buttonsNamed(container, "Transcript")[0]!;
-    expect(transcript.getAttribute("aria-pressed")).toBe("true");
+    await click(container, "Display");
+    const transcript = menuItemsNamed(container, "Transcript")[0]!;
+    expect(transcript.getAttribute("aria-checked")).toBe("true");
     await harnessAct(async () => {
       transcript.click();
     });
-    expect(buttonsNamed(container, "Transcript")[0]).toBe(transcript);
-    expect(transcript.getAttribute("aria-pressed")).toBe("false");
+    expect(menuItemsNamed(container, "Transcript")[0]).toBe(transcript);
+    expect(transcript.getAttribute("aria-checked")).toBe("false");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.text);
     }
@@ -121,7 +146,7 @@ describe("LessonDetail", () => {
     await harnessAct(async () => {
       transcript.click();
     });
-    expect(transcript.getAttribute("aria-pressed")).toBe("true");
+    expect(transcript.getAttribute("aria-checked")).toBe("true");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.text);
     }
@@ -135,13 +160,14 @@ describe("LessonDetail", () => {
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.vi);
     }
-    const vietnamese = buttonsNamed(container, "Vietnamese")[0]!;
-    expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
+    await click(container, "Display");
+    const vietnamese = menuItemsNamed(container, "Vietnamese")[0]!;
+    expect(vietnamese.getAttribute("aria-checked")).toBe("false");
 
     await harnessAct(async () => {
       vietnamese.click();
     });
-    expect(vietnamese.getAttribute("aria-pressed")).toBe("true");
+    expect(vietnamese.getAttribute("aria-checked")).toBe("true");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).toContain(sentence.vi);
     }
@@ -155,7 +181,7 @@ describe("LessonDetail", () => {
     await harnessAct(async () => {
       vietnamese.click();
     });
-    expect(vietnamese.getAttribute("aria-pressed")).toBe("false");
+    expect(vietnamese.getAttribute("aria-checked")).toBe("false");
     for (const sentence of greetingsLesson.sentences) {
       expect(container.textContent).not.toContain(sentence.vi);
     }
@@ -167,18 +193,30 @@ describe("LessonDetail", () => {
     }
   });
 
+  it("returns focus to Display after enabling pronunciation check", async () => {
+    vi.stubGlobal("webkitSpeechRecognition", class {});
+    const { container } = await openLesson();
+    await click(container, "Display");
+    await click(container, "Pronunciation check");
+    expect(document.activeElement).toBe(buttonsNamed(container, "Enable")[0]);
+    await click(container, "Enable");
+    expect(document.activeElement).toBe(buttonsNamed(container, "Display")[0]);
+    expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBe("on");
+  });
+
   it("moves focus through the pronunciation disclosure", async () => {
     vi.stubGlobal("webkitSpeechRecognition", class {});
     const view = await openLesson();
     const { container } = view;
     await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
 
-    const toggle = buttonsNamed(container, "Pronunciation check")[0]!;
+    await click(container, "Display");
+    const toggle = menuItemsNamed(container, "Pronunciation check")[0]!;
     toggle.focus();
     await click(container, "Pronunciation check");
     expect(document.activeElement).toBe(buttonsNamed(container, "Enable")[0]);
     await click(container, "Cancel");
-    expect(document.activeElement).toBe(buttonsNamed(container, "Pronunciation check")[0]);
+    expect(document.activeElement).toBe(buttonsNamed(container, "Display")[0]);
   });
 
   describe("video lessons", () => {
@@ -337,6 +375,7 @@ describe("LessonDetail", () => {
     it("plays a clip at the chosen speed and pauses when the time passes the cue end", async () => {
       const { view, player } = await openVideoLesson();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      await click(view.container, "Display");
       await click(view.container, "0.75x");
       await click(view.container, "Play clip", 1);
       expect(player.calls).toEqual([["setPlaybackRate", 0.75], ["seekTo", 2, true], ["playVideo"]]);
@@ -608,7 +647,7 @@ describe("LessonDetail", () => {
 
     it("is off by default with no Check buttons", async () => {
       const view = await openShadow();
-      expect(buttonsNamed(view.container, "Pronunciation check")).toHaveLength(1);
+      expect(menuItemsNamed(view.container, "Pronunciation check")).toHaveLength(1);
       expect(buttonsNamed(view.container, "Check pronunciation")).toHaveLength(0);
       expect(localStorage.getItem("road-to-english.pronunciationCheck")).toBeNull();
     });
@@ -701,7 +740,7 @@ describe("LessonDetail", () => {
       localStorage.setItem("road-to-english.pronunciationCheck", "on");
       installSpeechFakes();
       const view = await openLesson();
-      expect(buttonsNamed(view.container, "Pronunciation check")[0]?.disabled).toBe(true);
+      expect(menuItemsNamed(view.container, "Pronunciation check")[0]?.getAttribute("aria-disabled")).toBe("true");
       expect(view.container.textContent).toContain(
         "Pronunciation check disabled: speech recognition is not supported in this browser.",
       );
@@ -779,11 +818,12 @@ describe("LessonDetail", () => {
       expect(await actionsToday()).toBe(0);
       await enable(view.container);
       const recognition = await checkFirstSentence(view.container);
-      // The recognition settles before the toggle, but its handler runs only after
-      // the toggle's cleanup has dropped this recognition.
+      await click(view.container, "Display");
+      // The recognition settles before the menu item is activated, but its handler runs only after
+      // the setting cleanup has dropped this recognition.
       settle(recognition);
-      const toggle = buttonsNamed(view.container, "Pronunciation check")[0];
-      if (!toggle) throw new Error("Pronunciation check button not found");
+      const toggle = menuItemsNamed(view.container, "Pronunciation check")[0];
+      if (!toggle) throw new Error("Pronunciation check menu item not found");
       harnessActSync(() => {
         toggle.click();
       });
@@ -1224,6 +1264,7 @@ describe("LessonDetail", () => {
     it("plays dictation and blank sentences at the selected speed", async () => {
       const view = await openPractice();
       const { container, speech } = view;
+      await click(container, "Display");
       await click(container, "0.5x");
       for (const mode of ["Dictation", "Fill the blank"]) {
         await click(container, mode);
@@ -1234,26 +1275,22 @@ describe("LessonDetail", () => {
     });
   });
 
-  it("keeps the hide-text switch for the visit when storage is blocked", async () => {
+  it("keeps the hide-text setting for the visit when storage is blocked", async () => {
     blockStorage();
     installSpeechFakes();
     const view = await openLesson();
-    const autoHide = () => view.container.querySelector<HTMLInputElement>('input[role="switch"]')!;
-    expect(autoHide().checked).toBe(false);
-    await harnessAct(async () => {
-      autoHide().click();
-    });
-    expect(autoHide().checked).toBe(true);
-    await harnessAct(async () => {
-      autoHide().click();
-    });
-    expect(autoHide().checked).toBe(false);
+    await click(view.container, "Display");
+    const autoHide = () => menuItemsNamed(view.container, "Hide each sentence after I practise it")[0]!;
+    expect(autoHide().getAttribute("aria-checked")).toBe("false");
+    await harnessAct(async () => autoHide().click());
+    expect(autoHide().getAttribute("aria-checked")).toBe("true");
+    await harnessAct(async () => autoHide().click());
+    expect(autoHide().getAttribute("aria-checked")).toBe("false");
   });
 
   describe("hide text", () => {
     const AUTO_HIDE_KEY = "road-to-english.autoHideText";
-    const autoHideSwitch = (container: HTMLElement) =>
-      container.querySelector<HTMLInputElement>('input[role="switch"]');
+    const autoHideItem = (container: HTMLElement) => menuItemsNamed(container, "Hide each sentence after I practise it")[0];
     const card = (container: HTMLElement, index: number) =>
       container.querySelectorAll<HTMLElement>("ol > li")[index];
 
@@ -1322,9 +1359,10 @@ describe("LessonDetail", () => {
       );
       localStorage.setItem("road-to-english.pronunciationCheck", "on");
       const view = await openLesson();
-      const input = autoHideSwitch(view.container);
-      expect(input?.checked).toBe(false);
-      await clickElement(input, "auto-hide switch");
+      await click(view.container, "Display");
+      const input = autoHideItem(view.container);
+      expect(input?.getAttribute("aria-checked")).toBe("false");
+      await clickElement(input, "auto-hide menu item");
       expect(localStorage.getItem(AUTO_HIDE_KEY)).toBe("on");
 
       await click(view.container, "Check pronunciation");
@@ -1348,9 +1386,10 @@ describe("LessonDetail", () => {
 
       // The URL still routes to the lesson, so the remount opens it directly.
       const again = await renderApp();
-      expect(autoHideSwitch(again.container)?.checked).toBe(true);
+      await click(again.container, "Display");
+      expect(autoHideItem(again.container)?.getAttribute("aria-checked")).toBe("true");
       expect(buttonsNamed(again.container, "Text").map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
-      await clickElement(autoHideSwitch(again.container), "auto-hide switch");
+      await clickElement(autoHideItem(again.container), "auto-hide menu item");
       expect(localStorage.getItem(AUTO_HIDE_KEY)).toBeNull();
     });
   });
@@ -1368,7 +1407,7 @@ describe("LessonDetail", () => {
           throw new Error("chunk failed to load");
         }
         return {
-          default: JSON.stringify({ good: "1", morning: "10", how: "1", today: "01", nice: "1", meet: "1", see: "1", tomorrow: "010" }),
+          default: JSON.stringify({ good: "1", morning: "10", how: "1", today: "01", nice: "1", meet: "1", see: "1", tomorrow: "010", album: "10", record: "01" }),
         };
       });
     });
@@ -1383,7 +1422,7 @@ describe("LessonDetail", () => {
     const LEGEND =
       "Stress and intonation marks are auto-generated from a pronunciation dictionary and simple rules. They may be wrong.";
     const arrows = (container: HTMLElement) =>
-      Array.from(container.querySelectorAll('[role="img"]')).map((arrow) => arrow.getAttribute("aria-label"));
+      Array.from(container.querySelectorAll('[role="img"][aria-label$="intonation"]')).map((arrow) => arrow.getAttribute("aria-label"));
     const summaries = (container: HTMLElement) =>
       Array.from(container.querySelectorAll("p[aria-describedby]")).map(
         (paragraph) => document.getElementById(paragraph.getAttribute("aria-describedby") ?? "")?.textContent,
@@ -1401,11 +1440,17 @@ describe("LessonDetail", () => {
     it("loads the dictionary on the first Stress press and marks stress and intonation, keeping the word buttons", async () => {
       installSpeechFakes();
       const { container } = await openLesson();
-      const wordNames = () => Array.from(container.querySelectorAll("p button")).map((button) => button.textContent);
+      await click(container, "Display");
+      const wordNames = () => Array.from(container.querySelectorAll<HTMLButtonElement>("p button")).map((button) => {
+        const visible = button.cloneNode(true) as HTMLElement;
+        visible.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
+        return button.getAttribute("aria-label") ?? visible.textContent?.trim();
+      });
       const namesBefore = wordNames();
 
-      const stress = buttonsNamed(container, "Stress")[0]!;
-      expect(stress.getAttribute("aria-pressed")).toBe("false");
+      await click(container, "Display");
+      const stress = menuItemsNamed(container, "Stress")[0]!;
+      expect(stress.getAttribute("aria-checked")).toBe("false");
       expect(stressChunk.loads).toBe(0);
       expect(container.textContent).not.toContain(LEGEND);
       expect(arrows(container)).toEqual([]);
@@ -1414,7 +1459,7 @@ describe("LessonDetail", () => {
         stress.click();
       });
       await waitForStressText(container, LEGEND);
-      expect(stress.getAttribute("aria-pressed")).toBe("true");
+      expect(stress.getAttribute("aria-checked")).toBe("true");
       expect(stressChunk.loads).toBe(1);
       // The first sentence is a question that starts with neither a wh-word nor an auxiliary.
       expect(arrows(container)).toEqual(["falling intonation", "falling intonation"]);
@@ -1425,17 +1470,16 @@ describe("LessonDetail", () => {
       ]);
       expect(dots(container)).toEqual(["●", "● •", "●", "• ●", "●", "●", "●", "• ● •"]);
       expect(wordNames()).toEqual(namesBefore);
-      for (const name of ["morning", "is", "you"]) {
-        expect(buttonsNamed(container, name)[0]!.hasAttribute("aria-label")).toBe(false);
-      }
 
       // Hidden text shows no marks.
+      await click(container, "Display");
       await click(container, "Transcript");
       expect(arrows(container)).toEqual([]);
       expect(summaries(container)).toEqual([]);
       await click(container, "Transcript");
       expect(arrows(container)).toHaveLength(2);
 
+      await click(container, "Display");
       await click(container, "Stress");
       expect(container.textContent).not.toContain(LEGEND);
       expect(arrows(container)).toEqual([]);
@@ -1450,6 +1494,7 @@ describe("LessonDetail", () => {
       installSpeechFakes();
       stressChunk.fail = true;
       const { container } = await openLesson();
+      await click(container, "Display");
 
       await click(container, "Stress");
       await waitForStressText(container, "Stress marks could not be loaded.");

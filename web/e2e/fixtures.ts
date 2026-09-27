@@ -112,7 +112,7 @@ export async function openLibraryLesson(page: Page, title: string): Promise<void
 
 // Answers every sentence's dictation, one form at a time by its input id.
 export async function attemptEverySentence(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
   const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
   expect(ids.length).toBeGreaterThan(0);
   for (const id of ids) {
@@ -127,7 +127,7 @@ export async function attemptEverySentence(page: Page): Promise<void> {
 export async function missOneWord(page: Page): Promise<void> {
   const texts = await page.locator("ol > li").evaluateAll((items) => items.map((item) => item.querySelector("p")?.textContent ?? ""));
   expect(texts[0]).toBe("Good morning, how are you today?");
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
   const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
   expect(ids).toHaveLength(texts.length);
   for (const [index, id] of ids.entries()) {
@@ -163,6 +163,18 @@ export function uniqueEmail(): string {
 
 export const viewLink = (page: Page, name: "Library" | "Review" | "Manage") =>
   page.getByRole("navigation", { name: "Views" }).getByRole("link", { name: new RegExp(`^${name}(?:, \\d+ due)?$`) });
+
+export async function menuItem(page: Page, name: string) {
+  const item = page.getByRole("menuitemcheckbox", { name, exact: true });
+  if (await item.count()) return item;
+  await page.getByRole("button", { name: "Display" }).click();
+  return page.getByRole("menuitemcheckbox", { name, exact: true });
+}
+
+export async function openDisplayMenu(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Display" }).click();
+  await expect(page.getByRole("menu", { name: "Display" })).toBeVisible();
+}
 
 export const accountDisclosure = (page: Page) => page.getByRole("button", { name: "Account", exact: true });
 

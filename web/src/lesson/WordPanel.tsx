@@ -1,4 +1,4 @@
-import { Fragment, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { Link } from "@astryxdesign/core/Link";
@@ -18,18 +18,33 @@ import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord, isCardWord, splitWords } from "../lib/words";
 
 const styles = stylex.create({
-  sentenceWord: {
-    paddingInline: "var(--spacing-0-5)",
+  reading: {
+    fontSize: "var(--rte-text-reading-size)",
+    lineHeight: "var(--rte-text-reading-leading)",
+    fontWeight: 400,
   },
-  spokenWord: {
-    backgroundColor: "var(--color-warning-muted)",
+  sentenceWord: {
+    fontSize: "var(--rte-text-reading-size)",
+    lineHeight: "var(--rte-text-reading-leading)",
+  },
+  unstressedWord: {
+    fontWeight: 400,
   },
   stressedWord: {
     fontWeight: "var(--font-weight-bold)",
   },
+  wordAndPunctuation: {
+    whiteSpace: "nowrap",
+  },
+  compactSave: {
+    alignSelf: "start",
+  },
+  spokenWord: {
+    backgroundColor: "var(--color-warning-muted)",
+  },
   stressDots: {
     fontSize: "0.75em",
-    paddingInlineEnd: "var(--spacing-1)",
+    marginInlineStart: "var(--spacing-0-5)",
   },
   tapTarget: {
     display: "inline-flex",
@@ -54,9 +69,11 @@ export function SaveToReview({
   addCard,
   removeCard,
   undoRemove,
+  compact = false,
 }: {
   card: NewCard;
   label: string;
+  compact?: boolean;
   // Names the word in the accessible name, for a list of word save buttons.
   word?: string;
   saved: boolean;
@@ -127,6 +144,7 @@ export function SaveToReview({
         label={saved ? "Saved" : label}
         aria-label={saveLabel(saved, word)}
         variant="ghost"
+        xstyle={compact ? styles.compactSave : undefined}
         isDisabled={isSaving}
         // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
         tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
@@ -177,44 +195,57 @@ export function SentenceWords({
     .filter(Boolean)
     .join(" ");
   let start = 0;
+  const offsets = parts.map((part) => {
+    const offset = start;
+    start += part.length;
+    return offset;
+  });
+  const punctuationAfter = parts.map((part, index) =>
+    isCardWord(cardWord(part)) ? parts[index + 1]?.match(/^[^\s\p{L}\p{N}'’]+/u)?.[0] ?? "" : "",
+  );
   return (
     <>
-      <Text as="p" aria-describedby={summary ? summaryId : undefined}>
+      <p aria-describedby={summary ? summaryId : undefined} {...stylex.props(styles.reading)}>
         {parts.map((part, index) => {
-          const partStart = start;
-          start += part.length;
           if (!isCardWord(cardWord(part))) {
-            return part;
+            const precedingPunctuation = punctuationAfter[index - 1] ?? "";
+            return precedingPunctuation && part.startsWith(precedingPunctuation)
+              ? part.slice(precedingPunctuation.length)
+              : part;
           }
+          const partStart = offsets[index];
           const stress = stresses[index];
           const spoken =
-            spokenChar !== null && spokenChar >= partStart && spokenChar < start;
+            spokenChar !== null && spokenChar >= partStart && spokenChar < partStart + part.length;
           const expanded = part === selected;
           const button = (
             <Button
-              key={index}
               label={part}
               size="sm"
               variant={expanded ? "secondary" : "ghost"}
               aria-expanded={expanded}
               aria-controls={expanded ? panelId : undefined}
               aria-current={spoken ? "true" : undefined}
-              xstyle={[styles.sentenceWord, spoken && styles.spokenWord, stress && styles.stressedWord]}
+              style={{ paddingInline: 0 }}
+              xstyle={[styles.sentenceWord, spoken && styles.spokenWord]}
               onClick={() => onSelect(part)}
-            />
+            >
+              <span {...stylex.props(stress ? styles.stressedWord : styles.unstressedWord)}>{part}</span>
+            </Button>
           );
-          if (!stress) {
-            return button;
-          }
+          const punctuation = punctuationAfter[index];
           return (
-            <Fragment key={index}>
+            <span key={index} {...stylex.props(styles.wordAndPunctuation)}>
               {button}
-              <span aria-hidden="true" {...stylex.props(styles.stressDots)}>
-                {Array.from({ length: stress.syllables }, (_, syllable) =>
-                  syllable === stress.primary ? "●" : "•",
-                ).join(" ")}
-              </span>
-            </Fragment>
+              {stress && (
+                <span aria-hidden="true" {...stylex.props(styles.stressDots)}>
+                  {Array.from({ length: stress.syllables }, (_, syllable) =>
+                    syllable === stress.primary ? "●" : "•",
+                  ).join(" ")}
+                </span>
+              )}
+              {punctuation}
+            </span>
           );
         })}
         {tone && (
@@ -222,7 +253,7 @@ export function SentenceWords({
             {tone === "falling" ? " ↘" : " ↗"}
           </span>
         )}
-      </Text>
+      </p>
       {summary && <VisuallyHidden id={summaryId}>{summary}</VisuallyHidden>}
     </>
   );

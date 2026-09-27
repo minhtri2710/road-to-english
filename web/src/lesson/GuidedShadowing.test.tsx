@@ -4,6 +4,7 @@ import {
   actionsToday,
   buttonsNamed,
   click,
+  menuItemsNamed,
   harnessAct,
   openLesson,
   resetApp,
@@ -36,11 +37,14 @@ async function openGuided() {
   installObjectUrlFakes();
   vi.stubGlobal("MediaRecorder", Recorder);
   const view = await openLesson();
+  await click(view.container, "Display");
   await click(view.container, "One at a time");
+  await click(view.container, "Display");
   return { ...view, speech };
 }
 
 const heading = (container: HTMLElement) => container.querySelector("h2");
+const openDisplay = (container: HTMLElement) => click(container, "Display");
 const cards = (container: HTMLElement) => buttonsNamed(container, "Text").length;
 const announced = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('[role="status"]')).map((region) => region.textContent);
@@ -63,24 +67,26 @@ describe("guided shadowing", () => {
   it("offers One at a time only in Shadow mode, and leaving Shadow mode ends it", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
-    const toggle = buttonsNamed(container, "One at a time")[0];
-    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    await openDisplay(container);
+    const toggle = menuItemsNamed(container, "One at a time")[0];
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
 
     await click(container, "Dictation");
-    expect(buttonsNamed(container, "One at a time")).toHaveLength(0);
+    expect(menuItemsNamed(container, "One at a time")).toHaveLength(0);
     await click(container, "Shadow");
     await click(container, "One at a time");
     expect(heading(container)?.textContent).toBe("Sentence 1 of 3");
     await click(container, "Dictation");
     await click(container, "Shadow");
-    expect(buttonsNamed(container, "One at a time")[0]?.getAttribute("aria-pressed")).toBe("false");
+    await click(container, "Display");
+    expect(menuItemsNamed(container, "One at a time")[0]?.getAttribute("aria-checked")).toBe("false");
     expect(heading(container)).toBeNull();
     expect(cards(container)).toBe(3);
   });
 
   it("shows one sentence with its heading and step guide, and turning it off restores the list", async () => {
     const { container } = await openGuided();
-    expect(buttonsNamed(container, "One at a time")[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(menuItemsNamed(container, "One at a time")[0]?.getAttribute("aria-checked")).toBe("true");
     expect(heading(container)?.textContent).toBe("Sentence 1 of 3");
     expect(cards(container)).toBe(1);
     expect(container.textContent).toContain(first.text);
@@ -89,6 +95,7 @@ describe("guided shadowing", () => {
     expect(container.textContent).toContain("Go to the next sentence.");
 
     await click(container, "One at a time");
+    await click(container, "Display");
     expect(heading(container)).toBeNull();
     expect(cards(container)).toBe(3);
     expect(buttonsNamed(container, "Next")).toHaveLength(0);
@@ -129,12 +136,16 @@ describe("guided shadowing", () => {
   it("stops a loop when One at a time is turned on or off", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
+    await click(container, "Display");
     await click(container, "Loop");
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
     await click(container, "One at a time");
+    await click(container, "Display");
     expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("false");
     await click(container, "Loop");
+    await click(container, "Display");
     await click(container, "One at a time");
+    await click(container, "Display");
     expect(buttonsNamed(container, "Loop").map((loop) => loop.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
   });
 
@@ -168,6 +179,7 @@ describe("guided shadowing", () => {
 
   it("shares hidden text and the Transcript and Vietnamese settings with the list", async () => {
     const { container } = await openGuided();
+    await openDisplay(container);
     await click(container, "Vietnamese");
     expect(container.textContent).toContain(first.vi);
     await click(container, "Text");
@@ -175,16 +187,20 @@ describe("guided shadowing", () => {
     expect(container.textContent).not.toContain(first.vi);
 
     await click(container, "One at a time");
+    await click(container, "Display");
     expect(buttonsNamed(container, "Text").map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["false", "true", "true"]);
     expect(container.textContent).toContain(second.vi);
+    await openDisplay(container);
     await click(container, "Transcript");
+    await click(container, "Display");
     await click(container, "Text", 1);
 
     await click(container, "One at a time");
     await click(container, "Next");
     expect(buttonsNamed(container, "Text")[0]?.getAttribute("aria-pressed")).toBe("false");
     await click(container, "Next");
-    expect(buttonsNamed(container, "Transcript")[0]?.getAttribute("aria-pressed")).toBe("false");
+    await openDisplay(container);
+    expect(menuItemsNamed(container, "Transcript")[0]?.getAttribute("aria-checked")).toBe("false");
     expect(container.textContent).not.toContain(third.text);
     expect(container.textContent).toContain(third.vi);
   });
@@ -202,6 +218,7 @@ describe("guided shadowing", () => {
     await record(container);
 
     await click(container, "One at a time");
+    await click(container, "Display");
     await record(container);
     await harnessAct(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));

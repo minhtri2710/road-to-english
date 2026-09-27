@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buttonsNamed,
   click,
+  menuItemsNamed,
   clickElement,
   harnessAct,
   openLesson,
@@ -144,7 +145,10 @@ describe("SentenceShadowing", () => {
   it("scales the clamped shadowing rate by the chosen speed", async () => {
     const speech = installSpeechFakes();
     const rateAt = async (container: HTMLElement, speed: string) => {
-      await click(container, speed);
+      await click(container, "Display");
+      const speedItem = menuItemsNamed(container, speed)[0]!;
+      await harnessAct(async () => speedItem.click());
+      expect(speedItem.getAttribute("aria-checked")).toBe("true");
       await click(container, "Listen");
       return speech.spoken.at(-1)?.rate;
     };
@@ -231,8 +235,11 @@ describe("SentenceShadowing", () => {
     const { container, root } = await openLesson();
     const first = greetingsLesson.sentences[0].text;
 
+    const loop = buttonsNamed(container, "Loop")[0]!;
+    const restingClasses = loop.className;
     await click(container, "Loop");
-    expect(buttonsNamed(container, "Loop")[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(loop.getAttribute("aria-pressed")).toBe("true");
+    expect(loop.className).not.toBe(restingClasses);
     expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first]);
     await harnessAct(async () => {
       speech.finish();

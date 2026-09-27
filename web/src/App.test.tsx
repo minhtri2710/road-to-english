@@ -19,6 +19,7 @@ import {
   clickButtonWith,
   clickElement,
   close,
+  menuItemsNamed,
   fetchMock,
   h1Texts,
   harnessAct,
@@ -58,8 +59,13 @@ describe("App", () => {
     expect(container.textContent).toContain("casual sign-off");
     expect(container.textContent).toContain("Shadow");
     expect(container.textContent).toContain("Dictation");
-    // 32 controls: Account, Back up, Back to lessons, three lesson modes, three playback speeds, Transcript, Vietnamese, Stress, One at a time, Pronunciation check, and six sentence controls per row (Text, Listen, Loop, Record, Compare, Save to review); plus 15 word buttons in the three sentences (6 + 6 + 3). The hide-text switch is not a button. Brand and view navigation are four anchors.
-    expect(container.querySelectorAll("button")).toHaveLength(47);
+    expect(container.querySelector('[role="radiogroup"][aria-label="Lesson mode"]')).not.toBeNull();
+    expect(buttonsNamed(container, "Display")[0]?.getAttribute("aria-haspopup")).toBe("menu");
+    await click(container, "Display");
+    expect(menuItemsNamed(container, "1x")[0]?.getAttribute("aria-checked")).toBe("true");
+    expect(menuItemsNamed(container, "Transcript")[0]?.getAttribute("aria-checked")).toBe("true");
+    // 25 controls: Account, Back up, Back to lessons, three lesson modes, Display, and six sentence controls per row (Text, Listen, Loop, Record, Compare, Save to review); plus 15 word buttons (6 + 6 + 3). The Display menu adds 3 playback radios and 6 shadow-mode checkboxes; they are menu items, not buttons. Brand and view navigation are four anchors.
+    expect(container.querySelectorAll("button")).toHaveLength(40);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {

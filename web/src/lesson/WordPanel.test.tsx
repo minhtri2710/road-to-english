@@ -22,6 +22,20 @@ import { greetingsLesson } from "../test/fixtures";
 describe("WordPanel", () => {
   afterEach(resetApp);
 
+  it("keeps trailing punctuation within the word's no-wrap inline wrapper", async () => {
+    installSpeechFakes();
+    const { container } = await openLesson({
+      ...greetingsLesson,
+      title: "Stress Pairs: Nouns and Verbs",
+      sentences: [{ id: "stress-pairs-nouns-verbs-1", text: "The band will record a new record for its next album.", vi: "" }],
+    });
+    const album = buttonsNamed(container, "album")[0]!;
+    expect(buttonsNamed(container, "album")).toHaveLength(1);
+    expect(album.textContent).toBe("album");
+    expect(album.parentElement?.textContent).toBe("album.");
+    expect(album.parentElement?.className).not.toBe("");
+  });
+
   it("expands the selected word's button and points it at the word panel", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
@@ -451,6 +465,7 @@ describe("WordPanel", () => {
   it("removes word buttons and the word panel when the transcript is hidden", async () => {
     installSpeechFakes();
     const { container } = await openLesson();
+    await click(container, "Display");
 
     await click(container, "morning");
     expect(buttonsNamed(container, "Hear word")).toHaveLength(1);

@@ -7,7 +7,7 @@ const spoken = (page: Page) =>
 
 test("dictation: hint, check, then hear a missed word", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
 
   await page.getByRole("button", { name: "Show hint" }).first().click();
   await expect(page.getByText("G___ m______, h__ a__ y__ t____?")).toBeVisible();
@@ -26,7 +26,7 @@ test("dictation: hint, check, then hear a missed word", async ({ page }) => {
 
 test("A1 fill the blank: choose a word from the bank, then check", async ({ page }) => {
   await openLibraryLesson(page, "About Me");
-  await page.getByRole("button", { name: "Fill the blank" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
 
   const bank = page.getByRole("group", { name: "Choose a word" }).first();
   await expect(bank.getByRole("button")).toHaveCount(4);

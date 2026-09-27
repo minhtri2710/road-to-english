@@ -1,4 +1,4 @@
-import { expect, openLibraryLesson, test, viewLink } from "./fixtures";
+import { expect, menuItem, openLibraryLesson, test, viewLink } from "./fixtures";
 
 test("shadow a library lesson, save a word, review it", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
@@ -60,11 +60,96 @@ test("save a hyphenated compound as one word and review it", async ({ page }) =>
   await expect(page.getByText("T-shirt", { exact: true })).toBeVisible();
 });
 
+test("Display menu opens by keyboard, navigates options, and Escape restores focus", async ({ page }) => {
+  await openLibraryLesson(page, "Greetings & Basics");
+  const display = page.getByRole("button", { name: "Display" });
+  for (const key of ["Enter", "Space", "ArrowDown"]) {
+    await display.focus();
+    await page.keyboard.press(key);
+    await expect(page.getByRole("menu", { name: "Display" })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "0.5x" })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitemradio", { name: "0.75x" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu", { name: "Display" })).toHaveCount(0);
+    await expect(display).toBeFocused();
+  }
+});
+
+test("sentence reading uses 20px/30px with joined punctuation and a real bold stress face", async ({ page }) => {
+  await openLibraryLesson(page, "Stress Pairs: Nouns and Verbs");
+  const album = page.getByRole("button", { name: "album", exact: true }).first();
+  const reading = album.locator("xpath=ancestor::p");
+  await expect.poll(() => reading.evaluate((node) => [getComputedStyle(node).fontSize, getComputedStyle(node).lineHeight])).toEqual(["20px", "30px"]);
+  const metrics = await album.evaluate((button) => {
+    const textRange = (element: Element, text: string) => {
+      if (!element) throw new Error(`element not found for text: ${text}`);
+      const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && !node.textContent?.includes(text)) node = walker.nextNode();
+      if (!node) throw new Error(`text not found: ${text}`);
+      const offset = node.textContent!.indexOf(text);
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + text.length);
+      return range.getBoundingClientRect();
+    };
+    const wrapper = button.parentElement!;
+    const punctuation = wrapper.lastChild as Text;
+    const albumGlyph = textRange(button, "album");
+    const punctuationGlyph = textRange(wrapper, ".");
+    const namedButton = (name: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((candidate) => {
+      const visible = candidate.cloneNode(true) as HTMLElement;
+      visible.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
+      return visible.textContent?.trim() === name;
+    })!;
+    const band = namedButton("band");
+    const will = namedButton("will");
+    const bandGlyph = textRange(band, "band");
+    const willGlyph = textRange(will, "will");
+    return {
+      wordFontSize: getComputedStyle(button).fontSize,
+      wordLineHeight: getComputedStyle(button).lineHeight,
+      gap: punctuationGlyph.left - albumGlyph.right,
+      wordGap: willGlyph.left - bandGlyph.right,
+      punctuation: punctuation.textContent,
+    };
+  });
+  console.log(`sentence reading metrics: ${JSON.stringify(metrics)}`);
+  expect(metrics.wordFontSize).toBe("20px");
+  expect(metrics.wordLineHeight).toBe("30px");
+  expect(metrics.gap).toBeLessThanOrEqual(2);
+  expect(metrics.wordGap).toBeLessThanOrEqual(10);
+
+  await page.getByRole("button", { name: "Display" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Stress" }).click();
+  await expect(page.getByText("Stress and intonation marks are auto-generated", { exact: false })).toBeVisible();
+  const marks = await album.evaluate((button) => {
+    const group = button.parentElement!;
+    return {
+      nowrap: getComputedStyle(group).whiteSpace,
+      order: Array.from(group.childNodes).map((node) => node.textContent),
+    };
+  });
+  expect(marks.nowrap).toBe("nowrap");
+  expect(marks.order[0]).toContain("album");
+  expect(marks.order[1]).toMatch(/^[●•]( [●•])*$/);
+  expect(marks.order[2]).toBe(".");
+  await page.evaluate(async () => {
+    await document.fonts.load('700 20px "Be Vietnam Pro"', "album");
+  });
+  const stressedWeight = await page.getByRole("button", { name: "album", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
+  const unstressedWeight = await page.getByRole("button", { name: "will", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
+  const loaded = await page.evaluate(() => document.fonts.check('700 20px "Be Vietnam Pro"', "album"));
+  console.log(`stress font metrics: ${JSON.stringify({ stressed: stressedWeight, unstressed: unstressedWeight, loaded })}`);
+  expect({ stressed: stressedWeight, unstressed: unstressedWeight, loaded }).toEqual({ stressed: "700", unstressed: "400", loaded: true });
+});
+
 test("shadow one sentence at a time through to the last sentence and back", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
-  const guided = page.getByRole("button", { name: "One at a time" });
+  const guided = await menuItem(page, "One at a time");
   await guided.click();
-  await expect(guided).toHaveAttribute("aria-pressed", "true");
+  await expect(guided).toHaveAttribute("aria-checked", "true");
 
   const position = page.getByRole("heading", { level: 2 });
   await expect(position).toHaveText("Sentence 1 of 9");
@@ -95,7 +180,7 @@ test("shadow one sentence at a time through to the last sentence and back", asyn
   await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
   await expect(previous).toHaveAttribute("aria-disabled", "true");
 
-  await guided.click();
+  await (await menuItem(page, "One at a time")).click();
   await expect(position).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(9);
 });

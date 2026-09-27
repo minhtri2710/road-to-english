@@ -1,9 +1,8 @@
 import { Button } from "@astryxdesign/core/Button";
-import { ToggleButton } from "@astryxdesign/core/ToggleButton";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
 import { sharedStyles } from "../components/styles";
@@ -17,12 +16,6 @@ import { cardWord } from "../lib/words";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation } from "./SentenceQuiz";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
-
-const styles = stylex.create({
-  modeToggle: {
-    alignSelf: "start",
-  },
-});
 
 const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
 
@@ -107,12 +100,14 @@ export function SentenceCard({
       )}
       {mode === "shadow" ? (
         <VStack gap={1}>
-          <ToggleButton
-            label="Text"
-            isPressed={!textHidden}
-            xstyle={styles.modeToggle}
-            onPressedChange={(pressed) => setTextHidden(sentence.id, !pressed)}
-          />
+          <HStack>
+            <Button
+              label="Text"
+              variant="ghost"
+              aria-pressed={!textHidden}
+              onClick={() => setTextHidden(sentence.id, !textHidden)}
+            />
+          </HStack>
           {showText && (
             <SentenceWords
               text={sentence.text}
@@ -180,6 +175,7 @@ export function SentenceCard({
             addCard={addCard}
             removeCard={removeCard}
             undoRemove={undoRemove}
+            compact
           />
         </VStack>
       ) : (
@@ -214,6 +210,7 @@ export function SentenceCard({
             addCard={addCard}
             removeCard={removeCard}
             undoRemove={undoRemove}
+            compact
           />
         </VStack>
       )}

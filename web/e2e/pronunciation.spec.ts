@@ -1,13 +1,15 @@
-import { expect, openLibraryLesson, test } from "./fixtures";
+import { expect, menuItem, openLibraryLesson, test } from "./fixtures";
 
 test("pronunciation check: disclosure, enable, wrong word, persists on reload", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
 
-  const toggle = page.getByRole("button", { name: "Pronunciation check" });
+  const toggle = await menuItem(page, "Pronunciation check");
   await toggle.click();
+  await expect(page.getByRole("button", { name: "Enable" })).toBeFocused();
   await expect(page.getByText(/uses your browser's speech recognition/)).toBeVisible();
   await page.getByRole("button", { name: "Enable" }).click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Display" })).toBeFocused();
+  await expect(await menuItem(page, "Pronunciation check")).toHaveAttribute("aria-checked", "true");
 
   await page.evaluate(() => {
     (window as unknown as { __speechTranscript: string }).__speechTranscript =
@@ -20,6 +22,6 @@ test("pronunciation check: disclosure, enable, wrong word, persists on reload", 
 
   await page.reload();
   await openLibraryLesson(page, "Greetings & Basics");
-  await expect(page.getByRole("button", { name: "Pronunciation check" })).toHaveAttribute("aria-pressed", "true");
+  await expect(await menuItem(page, "Pronunciation check")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("button", { name: "Check pronunciation" }).first()).toBeVisible();
 });

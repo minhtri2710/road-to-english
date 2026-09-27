@@ -110,7 +110,7 @@ test("the week view marks today as practised after a practice action", async ({ 
   await expect(todayMark).toContainText("not practised");
 
   await page.getByRole("button", { name: "Greetings & Basics" }).click();
-  await page.getByRole("button", { name: "Dictation" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
   await page.getByLabel("What did you hear?").first().fill("Good morning");
   await page.getByRole("button", { name: "Check" }).first().click();
   await expect(page.getByText(/^Reference:/).first()).toBeVisible();
