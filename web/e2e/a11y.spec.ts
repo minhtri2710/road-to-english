@@ -293,6 +293,15 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await selectWord(page);
     await inspect();
   }],
+  ["Display menu open", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await openDisplayMenu(page);
+    const menu = page.getByRole("menu", { name: "Display" });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+    await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(6);
+    await inspect();
+  }],
   ["dictation mode", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
     await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
