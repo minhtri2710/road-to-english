@@ -8,6 +8,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 
 import type { Lesson } from "../api/lessons";
 import { Alert } from "../components/feedback";
+import { MilestoneMark } from "../components/MilestoneMark";
 import { useLessons } from "../hooks/lessons";
 import { filterByLevel, type LevelFilter } from "../hooks/useLevelFilter";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
@@ -57,6 +58,7 @@ export function LessonSummary({
   return (
     <VStack as="section" gap={2} aria-labelledby="lesson-summary">
       <Heading id="lesson-summary" level={2} ref={heading} tabIndex={-1}>
+        <MilestoneMark />
         Lesson complete
       </Heading>
       <Text as="p">You practised all {sentenceCount} sentences.</Text>

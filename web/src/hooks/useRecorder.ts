@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 type RecorderState = "idle" | "requesting" | "recording" | "ready" | "error";
 
@@ -8,6 +8,8 @@ interface RecorderControls {
   // Milliseconds from start to stop of the latest clip; null before the first one.
   durationMs: number | null;
   error: string | null;
+  meterAvailable: boolean;
+  meterRef: RefObject<HTMLSpanElement | null>;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
 }
@@ -38,12 +40,77 @@ export function useRecorder(): RecorderControls {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
+  const [meterAvailable, setMeterAvailable] = useState(false);
   const mountedRef = useRef(true);
   const stateRef = useRef<RecorderState>("idle");
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const urlRef = useRef<string | null>(null);
+  const meterRef = useRef<HTMLSpanElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterFrameRef = useRef<number | null>(null);
+
+  const stopMeter = () => {
+    if (meterFrameRef.current !== null) {
+      cancelAnimationFrame(meterFrameRef.current);
+      meterFrameRef.current = null;
+    }
+    meterRef.current?.style.setProperty("--input-level", "0");
+    analyserRef.current = null;
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    if (context && context.state !== "closed") {
+      void context.close().catch(() => undefined);
+    }
+    if (mountedRef.current) {
+      setMeterAvailable(false);
+    }
+  };
+
+  const startMeter = (stream: MediaStream) => {
+    if (
+      typeof AudioContext === "undefined" ||
+      (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ) return;
+    try {
+      const context = new AudioContext();
+      audioContextRef.current = context;
+      try {
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        context.createMediaStreamSource(stream).connect(analyser);
+        analyserRef.current = analyser;
+        setMeterAvailable(true);
+      } catch {
+        stopMeter();
+      }
+    } catch {
+      stopMeter();
+    }
+  };
+
+  useEffect(() => {
+    if (state !== "recording" || !meterAvailable || !analyserRef.current) return;
+    const analyser = analyserRef.current;
+    const samples = new Uint8Array(analyser.fftSize);
+    const draw = () => {
+      analyser.getByteTimeDomainData(samples);
+      let peak = 0;
+      for (const sample of samples) peak = Math.max(peak, Math.abs(sample - 128));
+      const level = Math.min(1, peak / 64);
+      meterRef.current?.style.setProperty("--input-level", String(level));
+      meterFrameRef.current = requestAnimationFrame(draw);
+    };
+    meterFrameRef.current = requestAnimationFrame(draw);
+    return () => {
+      if (meterFrameRef.current !== null) {
+        cancelAnimationFrame(meterFrameRef.current);
+        meterFrameRef.current = null;
+      }
+    };
+  }, [meterAvailable, state]);
 
   const updateState = (nextState: RecorderState) => {
     stateRef.current = nextState;
@@ -84,6 +151,7 @@ export function useRecorder(): RecorderControls {
     let recorder: MediaRecorder | null = null;
     const stop = () => {
       cancelled = true;
+      stopMeter();
       if (recorder && recorder.state !== "inactive") {
         recorder.stop();
       }
@@ -109,6 +177,7 @@ export function useRecorder(): RecorderControls {
       streamRef.current = stream;
       recorderRef.current = recorder;
       chunksRef.current = [];
+      startMeter(stream);
       let startedAt = 0;
 
       recorder.ondataavailable = (event) => {
@@ -117,6 +186,7 @@ export function useRecorder(): RecorderControls {
         }
       };
       recorder.onstop = () => {
+        stopMeter();
         release();
         if (streamRef.current === stream) {
           streamRef.current = null;
@@ -148,6 +218,7 @@ export function useRecorder(): RecorderControls {
       startedAt = Date.now();
       updateState("recording");
     } catch {
+      stopMeter();
       release();
       stopStream(stream ?? streamRef.current);
       streamRef.current = null;
@@ -171,6 +242,7 @@ export function useRecorder(): RecorderControls {
       mountedRef.current = false;
       const recorder = recorderRef.current;
       const stream = streamRef.current;
+      stopMeter();
       streamRef.current = null;
       if (recorder && recorder.state !== "inactive") {
         try {
@@ -188,5 +260,5 @@ export function useRecorder(): RecorderControls {
     };
   }, []);
 
-  return { state, url, durationMs, error, startRecording, stopRecording };
+  return { state, url, durationMs, error, meterAvailable, meterRef, startRecording, stopRecording };
 }

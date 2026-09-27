@@ -64,6 +64,38 @@ test("the level filter narrows the library rows and survives a reload", async ({
   await expect(rows).toHaveCount(7);
 });
 
+test("library completion progress transitions to its new value", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("radiogroup", { name: "Library level" }).getByRole("radio", { name: "B2" }).click();
+  const progress = page.getByRole("progressbar", { name: "B2: 0 of 7 completed" });
+  const fill = progress.locator("div");
+  await expect(fill).toHaveCSS("width", "0px");
+  await expect(fill).toHaveCSS("transition-property", "width");
+  await expect(fill).toHaveCSS("transition-duration", "0.2s");
+  const goalRing = page.getByRole("progressbar", { name: "0 of 10 practice actions today" });
+  const goalRingFill = goalRing.locator("svg circle").last();
+  await expect(goalRingFill).toHaveCSS("transition-property", "stroke-dashoffset");
+  await expect(goalRingFill).toHaveCSS("transition-duration", "0.2s");
+  await expect(goalRing).toHaveAttribute("aria-valuenow", "0");
+
+  await page.getByRole("button", { name: "Careful Decisions" }).click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
+  const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
+  for (const id of ids) {
+    const form = page.locator("form", { has: page.locator(`#${id}`) });
+    await form.getByLabel("What did you hear?").fill("anything");
+    await form.getByRole("button", { name: "Check" }).click();
+  }
+  await page.getByRole("region", { name: "Lesson complete" }).getByRole("button", { name: "Back to lessons" }).click();
+  await expect(page.getByRole("button", { name: "Careful Decisions" })).toContainText("Completed");
+  const changedProgress = page.getByRole("progressbar", { name: "B2: 1 of 7 completed" });
+  const changedFill = changedProgress.locator("div");
+  await expect(changedProgress).toHaveAttribute("aria-valuenow", "1");
+  await expect.poll(() => changedFill.evaluate((element) => Number.parseFloat(getComputedStyle(element).width))).toBeGreaterThan(0);
+  await expect(changedFill).toHaveCSS("transition-property", "width");
+  await expect(changedFill).toHaveCSS("transition-duration", "0.2s");
+});
+
 test("Today offers Continue for the lesson opened last", async ({ page }) => {
   await page.goto("/");
   await expect(viewLink(page, "Library")).toHaveAttribute("aria-current", "page");

@@ -211,7 +211,7 @@ async function answerWithStatus(page: Page, path: string, status: number): Promi
 }
 
 // Runs the app's own store modules in the page, served by the dev server, then reloads so the app reads the result.
-async function seedStore(page: Page, seed: "dueCards" | "newCardLimit" | "goalMet"): Promise<void> {
+async function seedStore(page: Page, seed: "dueCards" | "newCardLimit" | "goalMet" | "goalAlmostMet"): Promise<void> {
   await page.goto("/");
   await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
   await page.evaluate(async (which) => {
@@ -225,8 +225,8 @@ async function seedStore(page: Page, seed: "dueCards" | "newCardLimit" | "goalMe
       await putCard(createCard({ front: word, back: `The ${word} one.`, source: { lessonId: "greetings-basics", sentenceId: `seed-${index}`, word } }, new Date()));
     }
     // 20 new cards introduced today reach the daily limit; 5 actions meet a goal of 5.
-    const actions = which === "newCardLimit" ? 20 : which === "goalMet" ? 5 : 0;
-    if (which === "goalMet") localStorage.setItem("road-to-english.dailyGoal", "5");
+    const actions = which === "newCardLimit" ? 20 : which === "goalMet" ? 5 : which === "goalAlmostMet" ? 4 : 0;
+    if (which === "goalMet" || which === "goalAlmostMet") localStorage.setItem("road-to-english.dailyGoal", "5");
     for (let index = 0; index < actions; index += 1) {
       await recordPractice(todayKey(new Date()), { newCard: which === "newCardLimit" });
     }
@@ -417,6 +417,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await seedStore(page, "goalMet");
     await expect(todayCard(page).getByRole("progressbar", { name: "5 of 5 practice actions today · Daily goal met" })).toBeVisible();
     await expect(todayCard(page).getByText("Daily goal met", { exact: true })).toBeVisible();
+    await expect(page.locator('[role="status"] [data-motion="milestone"]')).toHaveCount(0);
     await inspect();
   }],
   ["lesson unavailable", async (page, inspect) => {
@@ -628,6 +629,111 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await signUpWithSync(page, 500);
     await expect(page.getByText("Saved on this device. The sync server had a problem, so sync will try again soon.")).toBeVisible();
     await inspect();
+  }],
+  ["recording in progress", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("button", { name: "Record" }).first().click();
+    const stop = page.getByRole("button", { name: "Stop" }).first();
+    await expect(stop).toBeVisible();
+    const meter = page.getByTestId("recording-level-fill");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(meter).toHaveCount(0);
+      await expect.poll(() => stop.evaluate((button) => button.getAnimations().some((animation) => animation.playState === "running"))).toBe(false);
+    } else {
+      await expect(meter).toBeVisible();
+      await expect.poll(() => meter.evaluate((element) => Number(element.style.getPropertyValue("--input-level")))).toBeGreaterThan(0);
+      await expect.poll(() => stop.evaluate((button) => button.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
+      await page.waitForTimeout(1000);
+    }
+    await inspect();
+    await stop.click();
+  }],
+  ["dictation answered correctly", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
+    await page.getByLabel("What did you hear?").first().fill("Good morning, how are you today?");
+    await page.getByRole("button", { name: "Check" }).first().click();
+    const result = page.locator('[role="status"] p').filter({ hasText: "Correct: 6 of 6 words" });
+    await expect(result).toHaveAttribute("data-motion", "answer-correct");
+    const mark = result.locator('[data-motion="answer-correct"]');
+    await expect(mark).toHaveCount(1);
+    await expect(mark).toHaveCSS("animation-iteration-count", "1");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(mark).toHaveCSS("animation-name", "none");
+    } else {
+      expect(await mark.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
+    }
+    await expect(page.locator('[data-feedback="correct-word"]').first()).toBeVisible();
+    await inspect();
+  }],
+  ["dictation not quite", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
+    await page.getByLabel("What did you hear?").first().fill("Good morning");
+    await page.getByRole("button", { name: "Check" }).first().click();
+    const result = page.locator('[role="status"] p').filter({ hasText: "Not quite: 2 of 6 words matched" });
+    await expect(result).toHaveAttribute("data-motion", "answer-nudge");
+    await expect(result).toHaveCSS("animation-iteration-count", "1");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(result).toHaveCSS("animation-name", "none");
+    } else {
+      expect(await result.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
+    }
+    await inspect();
+  }],
+  ["blank answered correctly", async (page, inspect) => {
+    await openLibraryLesson(page, "About Me");
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
+    await page.getByLabel("Which word fills the blank?").first().fill("name");
+    await page.getByRole("button", { name: "Check" }).first().click();
+    const result = page.locator('[role="status"] p').filter({ hasText: "Correct" }).first();
+    await expect(result).toHaveAttribute("data-motion", "answer-correct");
+    const mark = result.locator('[data-motion="answer-correct"]');
+    await expect(mark).toHaveCSS("animation-iteration-count", "1");
+    await expect(mark.locator("svg")).toBeVisible();
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(mark).toHaveCSS("animation-name", "none");
+    }
+    await inspect();
+  }],
+  ["lesson complete", async (page, inspect) => {
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await attemptEverySentence(page);
+    const mark = page.getByRole("region", { name: "Lesson complete" }).getByRole("heading", { name: "Lesson complete" }).locator('[data-motion="milestone"]');
+    await expect(mark).toHaveCount(1);
+    await expect(mark).toHaveCSS("animation-iteration-count", "1");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(mark).toHaveCSS("animation-name", "none");
+    } else {
+      const duration = await mark.evaluate((element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration);
+      expect(duration).toBeLessThanOrEqual(800);
+    }
+    await inspect();
+  }],
+  ["daily goal met", async (page, inspect) => {
+    await seedStore(page, "goalAlmostMet");
+    await openLibraryLesson(page, LIBRARY_LESSON);
+    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
+    const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
+    for (const id of ids.slice(0, 1)) {
+      const form = page.locator("form", { has: page.locator(`#${id}`) });
+      await page.locator(`#${id}`).fill("anything");
+      await form.getByRole("button", { name: "Check" }).click();
+    }
+    await expect(page.getByText("Daily goal met.", { exact: true })).toBeVisible();
+    const mark = page.locator('[role="status"]').filter({ hasText: "Daily goal met." }).locator('[data-motion="milestone"]');
+    await expect(mark).toHaveCount(1);
+    await expect(mark).toHaveCSS("animation-iteration-count", "1");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(mark).toHaveCSS("animation-name", "none");
+    } else {
+      const duration = await mark.evaluate((element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration);
+      expect(duration).toBeLessThanOrEqual(800);
+    }
+    await inspect();
+    await page.reload();
+    await expect(page.getByText("Daily goal met.", { exact: true })).toHaveCount(0);
+    await expect(page.locator('[role="status"] [data-motion="milestone"]')).toHaveCount(0);
   }],
 ];
 

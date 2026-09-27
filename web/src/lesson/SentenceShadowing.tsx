@@ -7,6 +7,8 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 
+import * as stylex from "@stylexjs/stylex";
+
 import { Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { registerRecordingAudio, type StopMedia } from "../hooks/usePracticeMedia";
@@ -43,6 +45,54 @@ function playReference(
 // A clip shorter than this (a Record cut off by another medium) earns no recording XP.
 const MIN_RECORDING_MS = 1000;
 
+const recordingAnimation = stylex.keyframes({
+  "0%, 100%": { boxShadow: "0 0 0 0 color-mix(in srgb, var(--color-error) 42%, transparent)" },
+  "50%": { boxShadow: "0 0 0 5px transparent" },
+});
+
+const styles = stylex.create({
+  recordingControl: {
+    position: "relative",
+    display: "inline-block",
+  },
+  recordingLabel: {
+    display: "inline-grid",
+  },
+  recordingLabelText: {
+    gridArea: "1 / 1",
+  },
+  recordingLabelHidden: {
+    visibility: "hidden",
+  },
+  recordingButton: {
+    outline: "2px solid var(--color-error)",
+    outlineOffset: 2,
+    animationName: recordingAnimation,
+    animationDuration: "var(--duration-slow)",
+    animationTimingFunction: "var(--ease-standard)",
+    animationIterationCount: "infinite",
+  },
+  meterTrack: {
+    position: "absolute",
+    insetInline: "var(--spacing-1)",
+    bottom: "2px",
+    zIndex: 1,
+    height: "3px",
+    overflow: "hidden",
+    borderRadius: "var(--radius-full)",
+    backgroundColor: "var(--color-background-muted)",
+  },
+  meterFill: {
+    display: "block",
+    width: "100%",
+    height: "100%",
+    borderRadius: "inherit",
+    backgroundColor: "var(--color-success)",
+    transform: "scaleX(var(--input-level, 0))",
+    transformOrigin: "left center",
+  },
+});
+
 export function SentenceShadowing({
   text,
   targetWpm,
@@ -72,6 +122,7 @@ export function SentenceShadowing({
   const [speechFailed, setSpeechFailed] = useState(false);
   const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
   const checkButtonRef = useRef<HTMLButtonElement>(null);
+  const [checkId, setCheckId] = useState(0);
   const [check, setCheck] = useState<
     | { status: "idle" }
     | { status: "listening" }
@@ -129,6 +180,7 @@ export function SentenceShadowing({
   }, [pronunciationCheck]);
 
   const checkPronunciation = () => {
+    setCheckId((current) => current + 1);
     stopMedia();
     setCheck({ status: "listening" });
     const recognition = recognizeOnce();
@@ -189,22 +241,36 @@ export function SentenceShadowing({
             }
           }}
         />
-        <Button
-          label={recorder.state === "recording" ? "Stop" : "Record"}
-          variant="secondary"
-          isDisabled={!canRecord || recorder.state === "requesting"}
-          isLoading={recorder.state === "requesting"}
-          // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-          tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
-          onClick={() => {
-            if (recorder.state === "recording") {
-              recorder.stopRecording();
-            } else {
-              stopMedia();
-              void recorder.startRecording();
-            }
-          }}
-        />
+        <div data-testid="recording-control" className={stylex.props(styles.recordingControl).className}>
+            <Button
+              label={recorder.state === "recording" ? "Stop" : "Record"}
+              xstyle={recorder.state === "recording" ? styles.recordingButton : undefined}
+              variant="secondary"
+              children={(
+                <span className={stylex.props(styles.recordingLabel).className}>
+                  <span className={stylex.props(styles.recordingLabelText).className}>{recorder.state === "recording" ? "Stop" : "Record"}</span>
+                  <span aria-hidden="true" className={stylex.props(styles.recordingLabelText, styles.recordingLabelHidden).className}>Record</span>
+                </span>
+              )}
+              isDisabled={!canRecord || recorder.state === "requesting"}
+              isLoading={recorder.state === "requesting"}
+              // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+              tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
+              onClick={() => {
+                if (recorder.state === "recording") {
+                  recorder.stopRecording();
+                } else {
+                  stopMedia();
+                  void recorder.startRecording();
+                }
+              }}
+            />
+            {recorder.state === "recording" && recorder.meterAvailable && (
+              <span aria-hidden="true" data-testid="recording-level-meter" className={stylex.props(styles.meterTrack).className}>
+                <span data-testid="recording-level-fill" ref={recorder.meterRef} className={stylex.props(styles.meterFill).className} />
+              </span>
+            )}
+        </div>
         <Button
           label="Compare"
           variant="ghost"
@@ -280,6 +346,7 @@ export function SentenceShadowing({
             text={text}
             answer={check.transcript}
             verb="said"
+            checkId={checkId}
             targetWpm={targetWpm}
             speed={speed}
             stopMedia={stopMedia}

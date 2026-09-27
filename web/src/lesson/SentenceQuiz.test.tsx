@@ -1,6 +1,8 @@
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
+import { WordDiffResult } from "./SentenceQuiz";
 import {
   actionsToday,
   buttonsNamed,
@@ -63,6 +65,53 @@ describe("SentenceQuiz", () => {
     expect(input?.value).toBe("");
   });
 
+  it("animates one success mark and tints correct words after a correct check", async () => {
+    installSpeechFakes();
+    const { container } = await openLesson();
+    await click(container, "Dictation");
+    const sentence = greetingsLesson.sentences[0];
+    await submitDictation(container, sentence.id, sentence.text);
+    const result = container.querySelector('[role="status"] p');
+    const mark = result?.querySelector('[aria-hidden="true"]');
+    expect(result?.textContent).toBe(`Correct: 6 of 6 words`);
+    expect(mark?.querySelector("svg path")).not.toBeNull();
+    expect(mark?.getAttribute("data-motion")).toBe("answer-correct");
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    const correctWord = Array.from(container.querySelectorAll("[role=status] span")).find((node) => node.textContent === "Good");
+    expect(correctWord?.className).not.toBe("");
+    expect(correctWord?.getAttribute("style")).toBeNull();
+    expect(result?.getAttribute("data-motion")).toBe("answer-correct");
+    expect(mark?.getAttribute("class")).not.toBe("");
+    expect(correctWord?.getAttribute("data-feedback")).toBe("correct-word");
+  });
+
+  it("keeps correct words success-colored when WordDiffResult has no feedback check id", async () => {
+    installSpeechFakes();
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await harnessAct(() => {
+      root.render(
+        <WordDiffResult
+          text="Good morning, how are you today?"
+          answer="Good morning, how are you today?"
+          verb="typed"
+          targetWpm={90}
+          speed={1}
+          stopMedia={() => undefined}
+        />,
+      );
+    });
+
+    const word = Array.from(container.querySelectorAll<HTMLElement>("span")).find((node) => node.textContent === "Good");
+    expect(word).not.toBeUndefined();
+    expect(word?.className).not.toBe("");
+    expect(word?.getAttribute("data-feedback")).toBeNull();
+    expect(word?.getAttribute("style")).toBeNull();
+    expect(word?.className.split(" ")).toContain("xtjic6");
+    await harnessAct(() => root.unmount());
+    container.remove();
+  });
+
   it("marks missed and wrong words after checking dictation", async () => {
     vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
     vi.stubGlobal("SpeechSynthesisUtterance", class {});
@@ -81,6 +130,8 @@ describe("SentenceQuiz", () => {
     );
     expect(container.textContent).not.toContain("(extra)");
     expect(container.textContent).toContain("Not quite");
+    const result = container.querySelector('[role="status"] p');
+    expect(result?.getAttribute("data-motion")).toBe("answer-nudge");
   });
 
   it("plays dictation and shows positive and negative results", async () => {

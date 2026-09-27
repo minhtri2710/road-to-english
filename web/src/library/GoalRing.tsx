@@ -3,6 +3,11 @@ import * as stylex from "@stylexjs/stylex";
 const CIRCUMFERENCE = 2 * Math.PI * 20;
 
 const styles = stylex.create({
+  progress: {
+    transitionProperty: "stroke-dashoffset",
+    transitionDuration: "var(--duration-medium)",
+    transitionTimingFunction: "var(--ease-standard)",
+  },
   ring: {
     position: "relative",
     display: "grid",
@@ -56,6 +61,7 @@ export function GoalRing({
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
+          className={stylex.props(styles.progress).className}
         />
       </svg>
       <span aria-hidden="true" className={stylex.props(styles.count).className}>{value}</span>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -13,6 +13,7 @@ import { routeHash, type Route } from "../lib/route";
 import { YOUR_DATA } from "./YourData";
 import { AccountArea } from "./AccountArea";
 import { Alert, Status } from "./feedback";
+import { MilestoneMark } from "./MilestoneMark";
 import { sharedStyles } from "./styles";
 
 const styles = stylex.create({
@@ -119,6 +120,15 @@ export function AppHeader({
   onNavigate: (route: Route, returnTo?: string) => void;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
+  const goalWasAnnounced = useRef(goalAnnounced);
+  const [goalEvent, setGoalEvent] = useState(0);
+
+  useEffect(() => {
+    if (goalAnnounced && !goalWasAnnounced.current) {
+      setGoalEvent((event) => event + 1);
+    }
+    goalWasAnnounced.current = goalAnnounced;
+  }, [goalAnnounced]);
   const navLinks: { label: string; route: Route; selected: boolean }[] = [
     { label: "Library", route: { view: "library" }, selected: view === "library" },
     { label: "Review", route: { view: "review" }, selected: view === "review" },
@@ -180,7 +190,12 @@ export function AppHeader({
         )}
       </div>
       <Status>
-        {goalAnnounced && <Text type="supporting">Daily goal met.</Text>}
+        {goalAnnounced && (
+          <Text type="supporting">
+            {goalEvent > 0 && <MilestoneMark key={goalEvent} />}
+            Daily goal met.
+          </Text>
+        )}
       </Status>
       {storageError && (
         <Alert>

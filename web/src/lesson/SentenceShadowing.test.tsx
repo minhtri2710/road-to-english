@@ -67,6 +67,25 @@ describe("SentenceShadowing", () => {
     const stream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream;
     installMediaDevices(async () => stream);
     const { revokeObjectURL } = installObjectUrlFakes();
+    const getByteTimeDomainData = vi.fn((samples: Uint8Array) => samples.fill(190));
+    const close = vi.fn().mockResolvedValue(undefined);
+    class FakeAudioContext {
+      state = "running";
+      createAnalyser() {
+        return { fftSize: 256, getByteTimeDomainData, connect: vi.fn() };
+      }
+      createMediaStreamSource() {
+        return { connect: vi.fn() };
+      }
+      close = close;
+    }
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
     class FakeMediaRecorder {
       static instances: FakeMediaRecorder[] = [];
       state = "inactive";
@@ -96,8 +115,19 @@ describe("SentenceShadowing", () => {
     const announced = () =>
       Array.from(container.querySelectorAll('[role="status"]:not([aria-live])')).map((region) => region.textContent);
     expect(announced()).toContain("Recording.");
+    const meter = container.querySelector<HTMLElement>('[data-testid="recording-level-fill"]');
+    await harnessAct(async () => {
+      frames.shift()?.(0);
+      frames.shift()?.(16);
+    });
+    expect(meter).not.toBeNull();
+    expect(meter?.style.getPropertyValue("--input-level")).toBe("0.96875");
+    expect(getByteTimeDomainData).toHaveBeenCalled();
 
     await click(container, "Stop");
+    expect(container.querySelector('[data-testid="recording-level-meter"]')).toBeNull();
+    expect(close).toHaveBeenCalledTimes(1);
+    await close.mock.results[0]?.value;
     expect(announced()).toContain("Recording stopped.");
     expect(announced()).not.toContain("Recording.");
     expect(container.querySelector("audio")?.getAttribute("src")).toMatch(/^blob:/);
@@ -109,6 +139,38 @@ describe("SentenceShadowing", () => {
     });
     expect(cancel).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:recording-1");
+    container.remove();
+  });
+
+  it("closes the analyser AudioContext when a recording component unmounts", async () => {
+    vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
+    vi.stubGlobal("SpeechSynthesisUtterance", class {});
+    installMediaDevices(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream);
+    const close = vi.fn().mockResolvedValue(undefined);
+    class FakeAudioContext {
+      state = "running";
+      createAnalyser() { return { fftSize: 256, getByteTimeDomainData: vi.fn(), connect: vi.fn() }; }
+      createMediaStreamSource() { return { connect: vi.fn() }; }
+      close = close;
+    }
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    class FakeMediaRecorder {
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = "recording"; }
+      stop() { this.state = "inactive"; this.onstop?.(); }
+    }
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const { container, root } = await openLesson();
+    await click(container, "Record");
+    expect(container.querySelector('[data-testid="recording-level-meter"]')).not.toBeNull();
+    await harnessAct(async () => root.unmount());
+    expect(close).toHaveBeenCalledTimes(1);
+    await close.mock.results[0]?.value;
     container.remove();
   });
 

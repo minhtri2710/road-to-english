@@ -47,6 +47,9 @@ const styles = stylex.create({
   progressFill: {
     height: "100%",
     backgroundColor: "var(--color-accent)",
+    transitionProperty: "width",
+    transitionDuration: "var(--duration-medium)",
+    transitionTimingFunction: "var(--ease-standard)",
   },
 });
 
