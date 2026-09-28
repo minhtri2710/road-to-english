@@ -54,6 +54,10 @@ describe("project theme contrast", () => {
     }
   });
 
+  it("keeps spoken-word text legible on its muted warning surface", () => {
+    expectContrast(themePalette.text, themePalette.warningMuted, 4.5, "spoken-word text on warning muted");
+  });
+
   it("keeps the accent legible on body and surface backgrounds", () => {
     for (const [name, background] of Object.entries(backgrounds)) {
       expectContrast(themePalette.accent, background, 4.5, `accent text on ${name}`);

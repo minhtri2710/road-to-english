@@ -18,6 +18,7 @@ import { WordDiffResult } from "../lesson/SentenceQuiz";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
+import { splitWords, wordIndexAtChar } from "../lib/words";
 import {
   formatInterval,
   GRADES,
@@ -78,6 +79,9 @@ const styles = stylex.create({
   breakdownGood: { color: "var(--color-success)" },
   breakdownEasy: { color: "var(--color-accent)" },
   breakdownMuted: { color: "var(--color-text-secondary)" },
+  spokenWord: {
+    backgroundColor: "var(--color-warning-muted)",
+  },
   answer: {
     padding: "var(--spacing-4)",
     borderRadius: "var(--radius-element)",
@@ -151,8 +155,24 @@ const LISTEN_WPM = 110;
 
 const LISTEN_FIRST_KEY = "road-to-english.listenFirst";
 
-function listen(text: string) {
-  speak(text, LISTEN_WPM, 1);
+function listen(text: string, onWord?: (charIndex: number) => void, onFinish?: () => void) {
+  speak(text, LISTEN_WPM, 1, { onWord, onEnd: onFinish, onError: onFinish });
+}
+
+function SpokenText({ text, charIndex }: { text: string; charIndex: number | null }) {
+  const spokenIndex = wordIndexAtChar(text, charIndex);
+  return (
+    <>
+      {splitWords(text).map((part, index) => {
+        const spoken = spokenIndex === index;
+        return (
+          <span key={index} aria-current={spoken ? "true" : undefined} {...stylex.props(spoken && styles.spokenWord)}>
+            {part}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 // Speech from a card stops when the card is rated, replaced or unmounted.
@@ -214,6 +234,7 @@ export function ReviewDeck({
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
   const [isRating, setIsRating] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
+  const [spokenWord, setSpokenWord] = useState<{ surface: string; charIndex: number; cardTurn: string | null } | null>(null);
   const [recap, setRecap] = useState<Recap>(EMPTY_RECAP);
   const intervalIds = useId();
   const isRatingRef = useRef(false);
@@ -228,6 +249,10 @@ export function ReviewDeck({
   const [listenFirstPref, setListenFirstPref] = useState(() => readPref(LISTEN_FIRST_KEY) === "on");
   const listenFirst = canSpeak && listenFirstPref;
   const canSayIt = readPref(PRONUNCIATION_CHECK_KEY) === "on" && recognitionSupported();
+  const stopReviewSpeech = () => {
+    setSpokenWord(null);
+    stopListening();
+  };
 
   useEffect(() => {
     if (focusTarget === null) {
@@ -239,14 +264,24 @@ export function ReviewDeck({
 
   useEffect(() => stopListening, [cardTurn]);
 
+  const startListening = (text: string, surface: string) => {
+    setSpokenWord(null);
+    listen(
+      text,
+      (charIndex) => setSpokenWord({ surface, charIndex, cardTurn }),
+      () => setSpokenWord(null),
+    );
+  };
+
   // Listen first speaks each card as it is first shown, or as the switch turns on.
   useEffect(() => {
     if (card && listenFirst && !showAnswer) {
+      stopReviewSpeech();
       listen(card.front);
     }
   }, [cardTurn, listenFirst, showAnswer]);
 
-  const { sayItState, sayItRef, startSayIt, sayItAgain } = useSayIt(cardTurn, showAnswer, stopListening);
+  const { sayItState, sayItRef, startSayIt, sayItAgain } = useSayIt(cardTurn, showAnswer, stopReviewSpeech);
 
   // The interval labels count from now, so they re-render once a minute while the answer is shown.
   const [, refreshIntervals] = useReducer((ticks: number) => ticks + 1, 0);
@@ -317,15 +352,19 @@ export function ReviewDeck({
         )}
         {recap.again.length > 0 && (
           <List header={<Heading level={2}>Rated Again</Heading>}>
-            {recap.again.map(({ id, front }) => (
-              <ListItem
-                key={id}
-                label={<Text>{front}</Text>}
-                endContent={
-                  canSpeak && <Button label={`Listen to ${front}`} variant="secondary" onClick={() => listen(front)}>Listen</Button>
-                }
-              />
-            ))}
+            {recap.again.map(({ id, front }) => {
+              const surface = `recap:${id}`;
+              const charIndex = spokenWord?.surface === surface ? spokenWord.charIndex : null;
+              return (
+                <ListItem
+                  key={id}
+                  label={<Text><SpokenText text={front} charIndex={charIndex} /></Text>}
+                  endContent={
+                    canSpeak && <Button label={`Listen to ${front}`} variant="secondary" onClick={() => startListening(front, surface)}>Listen</Button>
+                  }
+                />
+              );
+            })}
           </List>
         )}
         <Button label="Go to library" variant="secondary" xstyle={sharedStyles.viewToggle} onClick={onGoToLibrary} />
@@ -340,7 +379,7 @@ export function ReviewDeck({
 
     isRatingRef.current = true;
     setIsRating(true);
-    stopListening();
+    stopReviewSpeech();
     // Read before rating: the review moves the card out of New.
     const newCard = card.fsrs.state === State.New;
     setRateError(null);
@@ -388,7 +427,7 @@ export function ReviewDeck({
     } else if (showAnswer && /^[1-4]$/.test(event.key)) {
       void rate(GRADES[Number(event.key) - 1]!);
     } else if (canSpeak && event.key.toLowerCase() === "r") {
-      listen(card.front);
+      startListening(card.front, "card");
     } else {
       return;
     }
@@ -422,11 +461,11 @@ export function ReviewDeck({
       >
         <VStack gap={2}>
           <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>
-            {listenFirst && !showAnswer ? "Listen and recall the card." : card.front}
+            {listenFirst && !showAnswer ? "Listen and recall the card." : <SpokenText text={card.front} charIndex={spokenWord?.surface === "card" && spokenWord.cardTurn === cardTurn ? spokenWord.charIndex : null} />}
           </Text>
           {canSpeak && (
             <HStack gap={1} vAlign="center">
-              <Button label="Listen" variant="secondary" aria-keyshortcuts="R" onClick={() => listen(card.front)} />
+              <Button label="Listen" variant="secondary" aria-keyshortcuts="R" onClick={() => startListening(card.front, "card")} />
               {hint("r")}
             </HStack>
           )}
@@ -453,7 +492,7 @@ export function ReviewDeck({
                     checkId={sayItState.checkId}
                     targetWpm={LISTEN_WPM}
                     speed={1}
-                    stopMedia={stopListening}
+                    stopMedia={stopReviewSpeech}
                   />
                 )}
                 {sayItState.status === "failed" && (

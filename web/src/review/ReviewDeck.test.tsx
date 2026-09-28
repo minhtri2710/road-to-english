@@ -36,6 +36,12 @@ async function openReview(...fronts: string[]) {
 
 const prompt = (container: HTMLElement) => container.querySelector<HTMLElement>("p[tabindex='-1']")!;
 
+async function wordBoundary(speech: ReturnType<typeof installSpeechFakes>, utterance: number, charIndex: number) {
+  await harnessAct(async () => {
+    speech.spoken[utterance]?.onboundary?.({ name: "word", charIndex });
+  });
+}
+
 // Dispatches a keydown on the focused element, as a key press inside the card would.
 async function press(key: string, init: KeyboardEventInit = {}, target: Element | null = document.activeElement) {
   await harnessAct(async () => {
@@ -325,6 +331,191 @@ describe("ReviewDeck", () => {
     expect(container.textContent).not.toContain("Reviewed");
   });
 
+  it("highlights exactly the word at each boundary and ignores spaces and punctuation", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("hello, world!");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 1);
+    expect(Array.from(container.querySelectorAll('[aria-current="true"]')).map((word) => word.textContent)).toEqual(["hello"]);
+    await wordBoundary(speech, 0, 7);
+    expect(Array.from(container.querySelectorAll('[aria-current="true"]')).map((word) => word.textContent)).toEqual(["world"]);
+    await wordBoundary(speech, 0, 5);
+    await wordBoundary(speech, 0, 6);
+    await wordBoundary(speech, 0, 12);
+    expect(container.querySelectorAll('[aria-current="true"]')).toHaveLength(0);
+    expect(prompt(container).textContent).toBe("hello, world!");
+  });
+
+  it("clears spoken words on end and error, and ignores a superseded utterance", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+    await harnessAct(async () => speech.finish());
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 1, 0);
+    await harnessAct(async () => speech.spoken[1]?.onerror?.({ error: "failed" }));
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 2, 0);
+    await click(container, "Listen");
+    await wordBoundary(speech, 2, 0);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    await wordBoundary(speech, 3, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+  });
+
+  it("clears the spoken word on rating, next card and unmount", async () => {
+    const speech = installSpeechFakes();
+    const { container, unmount } = await openReview("alpha", "bravo", "charlie");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 0);
+    await click(container, "Show answer");
+    await wordBoundary(speech, 0, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+    await click(container, "Good");
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    await waitForCondition(settledOn(container, "bravo"));
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 1, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("bravo");
+    await unmount();
+  });
+
+  it("keeps Listen and R boundaries hidden until Show answer, then highlights the same utterance", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha", "bravo");
+
+    await click(container, "Listen first");
+    expect(prompt(container).textContent).toBe("Listen and recall the card.");
+    await click(container, "Listen");
+    await wordBoundary(speech, 1, 0);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    expect(prompt(container).textContent).toBe("Listen and recall the card.");
+    expect(container.textContent).not.toContain("alpha");
+    await click(container, "Show answer");
+    await wordBoundary(speech, 1, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+
+    await rate(container, "Good");
+    await waitForCondition(settledOn(container, "Listen and recall the card."));
+    await focusPrompt(container);
+    await press("r");
+    await wordBoundary(speech, 3, 0);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    expect(prompt(container).textContent).toBe("Listen and recall the card.");
+    await click(container, "Show answer");
+    await wordBoundary(speech, 3, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("bravo");
+  });
+
+  it("does not carry a spoken mark to a replacement card turn without a rating", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("original");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("original");
+
+    const [stored] = await getAllCards();
+    await putCard({ ...stored!, front: "replacement", updatedAt: new Date(Date.now() + 1_000).toISOString() });
+    await harnessAct(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitForCondition(hasText(container, "replacement"));
+    expect(prompt(container).textContent).toBe("replacement");
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    expect(prompt(container).textContent).toBe("replacement");
+  });
+
+  it("keeps the spoken mark cleared after a rating save fails", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha");
+    vi.spyOn(vocabStore, "saveReview").mockRejectedValueOnce(new Error("quota"));
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+    await click(container, "Show answer");
+    await wordBoundary(speech, 0, 0);
+    await click(container, "Again");
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    await waitForCondition(settledOn(container, "Couldn't save. Try again."));
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+  });
+
+  it("maps UTF-16 charIndex after non-ASCII text to the correct word", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("café 😀 later");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 6);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    await wordBoundary(speech, 0, 7);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+    await wordBoundary(speech, 0, 8);
+    expect(Array.from(container.querySelectorAll('[aria-current="true"]')).map((word) => word.textContent)).toEqual(["later"]);
+    expect(prompt(container).textContent).toBe("café 😀 later");
+  });
+
+  it("clears the mark when Listen first auto-speech supersedes a marked Listen", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha");
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 0, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+
+    await click(container, "Listen first");
+    expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha", "alpha"]);
+    await click(container, "Listen first");
+    expect(prompt(container).textContent).toBe("alpha");
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+  });
+
+  it("handles engines without boundaries and highlights when boundaries resume", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha");
+
+    await click(container, "Listen");
+    expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha"]);
+    expect(container.querySelector('[aria-current="true"]')).toBeNull();
+
+    await click(container, "Listen");
+    await wordBoundary(speech, 1, 0);
+    expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+  });
+
+  it("highlights a Rated Again recap item's own spoken word", async () => {
+    const speech = installSpeechFakes();
+    const { container } = await openReview("alpha", "bravo");
+
+    await click(container, "Show answer");
+    await rate(container, "Again");
+    await waitForCondition(settledOn(container, "bravo"));
+    await click(container, "Show answer");
+    await rate(container, "Again");
+    await waitForCondition(hasText(container, "Rated Again"));
+
+    const list = Array.from(container.querySelectorAll("ul")).find((item) =>
+      document.getElementById(item.getAttribute("aria-labelledby") ?? "")?.textContent === "Rated Again",
+    )!;
+    const items = Array.from(list.querySelectorAll("li"));
+    await click(items[0]!, "Listen");
+    await wordBoundary(speech, 0, 1);
+    expect(items[0]?.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
+    expect(items[1]?.querySelector('[aria-current="true"]')).toBeNull();
+  });
+
   it("speaks the card front on Listen or R, and stops on rating, on the next card and on unmount", async () => {
     const speech = installSpeechFakes();
     const { container, unmount } = await openReview("one", "two");
@@ -583,17 +774,35 @@ describe("ReviewDeck", () => {
       expect(onLeave.abort).toHaveBeenCalledOnce();
     });
 
-    it("stops the card's speech before listening", async () => {
+    it("stops speech and clears its mark when Say it starts", async () => {
       consent();
       const speech = installSpeechFakes();
       const { container } = await openReview("alpha");
       await click(container, "Listen");
-      expect(speech.spoken.map((utterance) => utterance.text)).toEqual(["alpha"]);
-      speech.cancel.mockClear();
+      await wordBoundary(speech, 0, 0);
+      expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("alpha");
 
+      speech.cancel.mockClear();
       await click(container, "Say it");
       expect(speech.cancel).toHaveBeenCalledOnce();
+      expect(container.querySelector('[aria-current="true"]')).toBeNull();
       expect(FakeRecognition.instances).toHaveLength(1);
+    });
+
+    it("stops speech and clears its mark when a Say it result plays a Hear-word", async () => {
+      consent();
+      const speech = installSpeechFakes();
+      const { container } = await openReview("good morning");
+      await click(container, "Say it");
+      await hear("good evening");
+      await waitForCondition(hasText(container, 'morning (you said "evening")'));
+
+      await click(container, "Listen");
+      await wordBoundary(speech, 0, 0);
+      expect(container.querySelector('[aria-current="true"]')?.textContent).toBe("good");
+      await click(container, "morning");
+      expect(speech.spoken.at(-1)?.text).toBe("morning");
+      expect(container.querySelector('[aria-current="true"]')).toBeNull();
     });
 
     // PINNED: Say it informs only.

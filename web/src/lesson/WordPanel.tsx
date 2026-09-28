@@ -15,7 +15,7 @@ import { lookupWord, type Definition } from "../lib/dictionary";
 import { speechSupported } from "../lib/speech";
 import { intonation, wordStress, type StressDict } from "../lib/stress";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
-import { cardWord, isCardWord, splitWords } from "../lib/words";
+import { cardWord, isCardWord, splitWords, wordIndexAtChar } from "../lib/words";
 
 const styles = stylex.create({
   reading: {
@@ -194,12 +194,7 @@ export function SentenceWords({
   ]
     .filter(Boolean)
     .join(" ");
-  let start = 0;
-  const offsets = parts.map((part) => {
-    const offset = start;
-    start += part.length;
-    return offset;
-  });
+  const spokenIndex = wordIndexAtChar(text, spokenChar);
   const punctuationAfter = parts.map((part, index) =>
     isCardWord(cardWord(part)) ? parts[index + 1]?.match(/^[^\s\p{L}\p{N}'’]+/u)?.[0] ?? "" : "",
   );
@@ -213,10 +208,8 @@ export function SentenceWords({
               ? part.slice(precedingPunctuation.length)
               : part;
           }
-          const partStart = offsets[index];
           const stress = stresses[index];
-          const spoken =
-            spokenChar !== null && spokenChar >= partStart && spokenChar < partStart + part.length;
+          const spoken = spokenIndex === index;
           const expanded = part === selected;
           const button = (
             <Button

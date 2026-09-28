@@ -23,6 +23,23 @@ export function splitWords(text: string): string[] {
   return text.split(new RegExp(`(${TEXT_WORD})`, "u"));
 }
 
+// The splitWords part containing a speech boundary's UTF-16 character index, if it is a card word.
+export function wordIndexAtChar(text: string, charIndex: number | null): number | null {
+  if (charIndex === null) {
+    return null;
+  }
+  const parts = splitWords(text);
+  let offset = 0;
+  for (const [index, part] of parts.entries()) {
+    const start = offset;
+    offset += part.length;
+    if (charIndex >= start && charIndex < offset) {
+      return isCardWord(cardWord(part)) ? index : null;
+    }
+  }
+  return null;
+}
+
 // The text with each word replaced by `replace(word)`.
 export function replaceWords(text: string, replace: (word: string) => string): string {
   return text.replace(new RegExp(TEXT_WORD, "gu"), replace);
