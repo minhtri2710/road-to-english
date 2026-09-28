@@ -141,7 +141,7 @@ func TestSuccessfulLoginClearsAccountFailures(t *testing.T) {
 func TestAuthLimiterPerAccountHoldsUnderConcurrentFailures(t *testing.T) {
 	api := newTestAPI(t)
 	signupForSync(t, api, "burst@example.com")
-	const attempts = 2 * loginFailureLimit
+	const attempts = ipAttemptLimit - 1
 	codes := make([]int, attempts)
 	var wg sync.WaitGroup
 	for i := 0; i < attempts; i++ {
@@ -163,11 +163,10 @@ func TestAuthLimiterPerAccountHoldsUnderConcurrentFailures(t *testing.T) {
 			t.Fatalf("attempt %d status = %d, want 401 or 429", i, code)
 		}
 	}
+	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"correct password"}`, "198.51.100.7:2000", nil), 900)
 	if unauthorized != loginFailureLimit || limited != attempts-loginFailureLimit {
 		t.Fatalf("401s = %d, 429s = %d; want %d and %d", unauthorized, limited, loginFailureLimit, attempts-loginFailureLimit)
 	}
-
-	assertTooManyAttempts(t, doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"correct password"}`, "198.51.100.7:2000", nil), 900)
 	if code := doAuthFrom(api.handler, "/login", `{"email":"burst@example.com","password":"wrong password"}`, "198.51.100.8:1000", nil).Code; code != http.StatusUnauthorized {
 		t.Fatalf("other IP key wrong password status = %d, want 401", code)
 	}
@@ -227,39 +226,65 @@ func TestAuthLimiterSuccessReturnsOnlyItsAccountSlot(t *testing.T) {
 	}
 }
 
-func TestAuthLimiterFailsOpenWhenMapsAreFull(t *testing.T) {
-	limiter := newAuthLimiter()
-	fill := func(windows map[string]*limitWindow) {
+func TestAuthLimiterMapCapacityPolicies(t *testing.T) {
+	fill := func(windows map[string]*limitWindow, start time.Time) {
 		for i := 0; i < limiterMaxEntries; i++ {
-			windows["filler-"+strconv.Itoa(i)] = &limitWindow{start: time.Now(), count: 1}
+			windows["filler-"+strconv.Itoa(i)] = &limitWindow{start: start, count: 1}
 		}
 	}
-	fill(limiter.pairs)
-	req := httptest.NewRequest(http.MethodPost, "/login", nil)
-	req.RemoteAddr = "203.0.113.1:1000"
-	recorder := httptest.NewRecorder()
-	reserved, ok := limiter.allowAccount(recorder, req, "fresh@example.com")
-	if !ok {
-		t.Fatalf("login refused with a full pair map: status %d", recorder.Code)
-	}
-	if reserved.account == nil || reserved.account.count != 1 {
-		t.Fatalf("account reservation = %#v, want count 1", reserved)
-	}
-	limiter.clearFailures(req, "fresh@example.com", reserved)
-	if reserved.account.count != 0 {
-		t.Fatalf("account count after success = %d, want 0", reserved.account.count)
-	}
+	request := httptest.NewRequest(http.MethodPost, "/login", nil)
+	request.RemoteAddr = "203.0.113.1:1000"
 
-	fill(limiter.accounts)
-	other := limiter.accounts["filler-0"]
-	reserved, ok = limiter.allowAccount(httptest.NewRecorder(), req, "second@example.com")
-	if !ok || reserved.account != nil {
-		t.Fatalf("full account map: allowed = %v, reservation = %#v; want allowed with no reservation", ok, reserved)
-	}
-	limiter.clearFailures(req, "second@example.com", reserved)
-	if other.count != 1 {
-		t.Fatalf("an unrecorded reservation changed another account: count %d", other.count)
-	}
+	t.Run("live IP entries fail closed", func(t *testing.T) {
+		limiter := newAuthLimiter()
+		fill(limiter.ips, time.Now())
+		recorder := httptest.NewRecorder()
+		if limiter.allowIP(recorder, request) {
+			t.Fatal("allowIP() admitted a new IP with a full live map")
+		}
+		assertTooManyAttempts(t, recorder, 60)
+	})
+
+	t.Run("live pair entries fail open", func(t *testing.T) {
+		limiter := newAuthLimiter()
+		fill(limiter.pairs, time.Now())
+		reserved, ok := limiter.allowAccount(httptest.NewRecorder(), request, "fresh@example.com")
+		if !ok || reserved.pair != nil || reserved.account == nil || reserved.account.count != 1 {
+			t.Fatalf("reservation = %#v, allowed = %v; want pair skipped and account counted", reserved, ok)
+		}
+		limiter.clearFailures(request, "fresh@example.com", reserved)
+		if reserved.account.count != 0 {
+			t.Fatalf("account count after success = %d, want 0", reserved.account.count)
+		}
+	})
+
+	t.Run("live account entries fail open", func(t *testing.T) {
+		limiter := newAuthLimiter()
+		fill(limiter.accounts, time.Now())
+		other := limiter.accounts["filler-0"]
+		reserved, ok := limiter.allowAccount(httptest.NewRecorder(), request, "second@example.com")
+		if !ok || reserved.account != nil {
+			t.Fatalf("full account map: allowed = %v, reservation = %#v; want allowed with no account reservation", ok, reserved)
+		}
+		limiter.clearFailures(request, "second@example.com", reserved)
+		if other.count != 1 {
+			t.Fatalf("an unrecorded reservation changed another account: count %d", other.count)
+		}
+	})
+
+	t.Run("expired IP entries are swept and admit", func(t *testing.T) {
+		limiter := newAuthLimiter()
+		fill(limiter.ips, time.Now().Add(-ipAttemptWindow))
+		if !limiter.allowIP(httptest.NewRecorder(), request) {
+			t.Fatal("allowIP() refused after all full-map entries expired")
+		}
+		if _, exists := limiter.ips["filler-0"]; exists {
+			t.Fatal("expired filler entry remains after admit sweep")
+		}
+		if limiter.ips[ipKey(request)] == nil {
+			t.Fatal("new IP entry was not admitted after the sweep")
+		}
+	})
 }
 
 func TestAuthLimiterSuccessDoesNotReturnASlotFromAnExpiredWindow(t *testing.T) {

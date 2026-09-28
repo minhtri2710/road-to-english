@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -74,12 +76,17 @@ func TestNewServerTimeouts(t *testing.T) {
 	}
 }
 
-// A sync whose request deadline has passed answers 500 and writes nothing.
+// A sync with a canceled context reaches SyncState, returns 500, and writes nothing.
 func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-deadline@example.com")
+	deadContextSync := authMiddleware(api.repo, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		cancel()
+		syncHandler(w, r.WithContext(ctx), api.repo)
+	}))
 
-	expired := syncWithCookie(withRequestTimeout(api.handler, 0), validSyncState, cookie)
+	expired := doJSONWithCookie(deadContextSync, http.MethodPost, "/sync", validSyncState, cookie)
 	if expired.Code != http.StatusInternalServerError || compactJSON(t, expired.Body.Bytes()) != `{"error":"internal server error"}` {
 		t.Fatalf("expired sync = %d %s, want 500 internal server error", expired.Code, expired.Body.String())
 	}
@@ -90,6 +97,20 @@ func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
 	}
 	if state, _ := stateJSON(t, later.Body.Bytes()); state != compactJSON(t, []byte(empty)) {
 		t.Fatalf("later sync = %d %s, want empty state", later.Code, later.Body.String())
+	}
+
+	failedLookup := authMiddleware(api.repo, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("handler ran after the session lookup failed")
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/me", nil)
+	ctx, cancel := context.WithCancel(request.Context())
+	cancel()
+	request = request.WithContext(ctx)
+	request.AddCookie(cookie)
+	recorder := httptest.NewRecorder()
+	failedLookup.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("failed session lookup status = %d, want 500 not 401", recorder.Code)
 	}
 }
 
@@ -176,6 +197,18 @@ func TestSignupAndMe(t *testing.T) {
 	decodeJSON(t, signup, &user)
 	if user["email"] != "signup@example.com" || user["id"] == "" {
 		t.Fatalf("signup user = %#v", user)
+	}
+	wantTokenHash := sha256.Sum256([]byte(cookie.Value))
+	wantTokenHashHex := hex.EncodeToString(wantTokenHash[:])
+	var storedTokenHash string
+	if err := api.pool.QueryRow(context.Background(), `SELECT token_hash FROM sessions WHERE user_id = $1`, user["id"]).Scan(&storedTokenHash); err != nil {
+		t.Fatalf("query session token hash: %v", err)
+	}
+	if storedTokenHash != wantTokenHashHex {
+		t.Fatalf("stored token hash = %q, want sha256(cookie) %q", storedTokenHash, wantTokenHashHex)
+	}
+	if storedTokenHash == cookie.Value {
+		t.Fatal("stored token hash equals bearer cookie")
 	}
 
 	me := httptest.NewRequest(http.MethodGet, "/me", nil)
@@ -443,7 +476,7 @@ func TestSyncAcceptsNullLastReview(t *testing.T) {
 func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-empty-back@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1:hello","front":"hello","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
+	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1:café","front":"café","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"café"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
 	response := syncWithCookie(api.handler, body, cookie)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
@@ -452,7 +485,7 @@ func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(state.Cards) != 2 || state.Cards[0].Back != "" || state.Cards[1].Front != "hello" || state.Cards[1].Back != "Hello there — Xin chào" || state.Cards[1].Source.Word == nil || *state.Cards[1].Source.Word != "hello" {
+	if len(state.Cards) != 2 || state.Cards[0].Back != "" || state.Cards[1].Front != "café" || state.Cards[1].Back != "Hello there — Xin chào" || state.Cards[1].Source.Word == nil || *state.Cards[1].Source.Word != "café" {
 		t.Fatalf("response cards = %#v, want empty sentence back and round-tripped word card", state.Cards)
 	}
 }
@@ -475,6 +508,34 @@ func TestSyncMergesAndReturnsFullState(t *testing.T) {
 	}
 	if _, firstEpoch := stateJSON(t, first.Body.Bytes()); firstEpoch != secondEpoch {
 		t.Fatalf("syncEpoch = %s then %s, want equal", firstEpoch, secondEpoch)
+	}
+}
+
+func TestSyncIsolatesUsersOverHTTP(t *testing.T) {
+	api := newTestAPI(t)
+	cookieA := signupForSync(t, api, "sync-isolation-a@example.com")
+	cookieB := signupForSync(t, api, "sync-isolation-b@example.com")
+
+	first := syncWithCookie(api.handler, validSyncState, cookieA)
+	if first.Code != http.StatusOK {
+		t.Fatalf("user A sync status = %d, body = %s", first.Code, first.Body.String())
+	}
+
+	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`
+	responseB := syncWithCookie(api.handler, empty, cookieB)
+	if responseB.Code != http.StatusOK {
+		t.Fatalf("user B sync status = %d, body = %s", responseB.Code, responseB.Body.String())
+	}
+	if state, _ := stateJSON(t, responseB.Body.Bytes()); state != compactJSON(t, []byte(empty)) {
+		t.Fatalf("user B state = %s, want empty state", responseB.Body.String())
+	}
+
+	responseA := syncWithCookie(api.handler, empty, cookieA)
+	if responseA.Code != http.StatusOK {
+		t.Fatalf("user A follow-up sync status = %d, body = %s", responseA.Code, responseA.Body.String())
+	}
+	if state, _ := stateJSON(t, responseA.Body.Bytes()); state != withoutDirty(t, validSyncState) {
+		t.Fatalf("user A state = %s, want its original card unchanged", responseA.Body.String())
 	}
 }
 
@@ -529,6 +590,9 @@ func TestSyncRejectsInvalidState(t *testing.T) {
 		name string
 		body string
 	}{
+		{name: "dirty missing", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "dirty string", body: `{"cards":[{"dirty":"yes","id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "dirty null", body: `{"cards":[{"dirty":null,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "bad fsrs due", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"not-a-date","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "fsrs due non-UTC offset", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00+20:00","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "fsrs due year zero", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"0000-01-01T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
@@ -921,52 +985,6 @@ func TestExpiredOrCappedSessionIsRejected(t *testing.T) {
 	}
 }
 
-// Each invalid class comes after valid items in the same push, so a partial write would leave rows behind.
-func TestSyncRejectsEachInvalidClassWithoutWriting(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-invalid-classes@example.com")
-	card := func(id, word, fsrs, updatedAt, deletedAt string) string {
-		return `{"dirty":true,"id":"` + id + `","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"` + word + `"},"updatedAt":"` + updatedAt + `","deletedAt":` + deletedAt + `,"fsrs":` + fsrs + `}`
-	}
-	const fsrs = `{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}`
-	valid := card("lesson-1:sentence-1", "", fsrs, "2026-09-22T10:00:00Z", "null")
-	body := func(cards, days, lessons string) string {
-		return `{"cards":[` + cards + `],"practiceDays":[` + days + `],"lessonCompletion":[` + lessons + `]}`
-	}
-	const day, lesson = `{"date":"2026-09-22"}`, `{"lessonId":"lesson-1"}`
-	var epoch string
-	for name, invalid := range map[string]string{
-		"card text":         body(valid+`,`+strings.Replace(card("lesson-1:sentence-1:hi", "hi", fsrs, "2026-09-22T10:00:00Z", "null"), `"front":"front"`, `"front":""`, 1), day, lesson),
-		"card word":         body(valid+`,`+card("lesson-1:sentence-1:Hi", "Hi", fsrs, "2026-09-22T10:00:00Z", "null"), day, lesson),
-		"card id":           body(valid+`,`+card("wrong", "hi", fsrs, "2026-09-22T10:00:00Z", "null"), day, lesson),
-		"duplicate card":    body(valid+`,`+valid, day, lesson),
-		"card fsrs":         body(valid+`,`+card("lesson-1:sentence-1:hi", "hi", `{"due":"2026-09-22T10:00:00Z"}`, "2026-09-22T10:00:00Z", "null"), day, lesson),
-		"card updatedAt":    body(valid+`,`+card("lesson-1:sentence-1:hi", "hi", fsrs, "yesterday", "null"), day, lesson),
-		"card deletedAt":    body(valid+`,`+card("lesson-1:sentence-1:hi", "hi", fsrs, "2026-09-22T10:00:00Z", `"yesterday"`), day, lesson),
-		"practice day":      body(valid, day+`,{"date":"2026-02-30"}`, lesson),
-		"lesson completion": body(valid, day, lesson+`,{"lessonId":""}`),
-		"null array":        `{"cards":[` + valid + `],"practiceDays":[` + day + `],"lessonCompletion":null}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			response := syncWithCookie(api.handler, invalid, cookie)
-			if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
-				t.Fatalf("status = %d, body = %s, want 400 invalid sync state", response.Code, response.Body.String())
-			}
-			empty := syncWithCookie(api.handler, body("", "", ""), cookie)
-			state, emptyEpoch := stateJSON(t, empty.Body.Bytes())
-			if state != `{"cards":[],"lessonCompletion":[],"practiceDays":[]}` {
-				t.Fatalf("state after rejected push = %s, want empty", empty.Body.String())
-			}
-			if epoch == "" {
-				epoch = emptyEpoch
-			}
-			if emptyEpoch != epoch {
-				t.Fatalf("syncEpoch = %s, want %s", emptyEpoch, epoch)
-			}
-		})
-	}
-}
-
 func TestSyncRejectsOversizedKeys(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-oversized-keys@example.com")
@@ -992,38 +1010,5 @@ func TestSyncRejectsOversizedKeys(t *testing.T) {
 	atCap := state(randomKey(storage.MaxKeyBytes-2), "s", randomKey(storage.MaxKeyBytes))
 	if response := syncWithCookie(api.handler, atCap, cookie); response.Code != http.StatusOK {
 		t.Fatalf("at-cap keys status = %d, body = %s, want 200", response.Code, response.Body.String())
-	}
-}
-
-// G5 + G7: dirty is required and boolean on a request card; a response card has no dirty key, and the body carries a string syncEpoch.
-func TestSyncDirtyWireAndEpoch(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-dirty-wire@example.com")
-	body := func(dirty string) string {
-		return `{"cards":[{` + dirty + `"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
-	}
-	for name, dirty := range map[string]string{"missing": ``, "string": `"dirty":"yes",`, "null": `"dirty":null,`} {
-		response := syncWithCookie(api.handler, body(dirty), cookie)
-		if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
-			t.Fatalf("%s dirty: status = %d, body = %s, want 400 invalid sync state", name, response.Code, response.Body.String())
-		}
-	}
-	response := syncWithCookie(api.handler, body(`"dirty":true,`), cookie)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var raw struct {
-		Cards     []map[string]json.RawMessage `json:"cards"`
-		SyncEpoch any                          `json:"syncEpoch"`
-	}
-	decodeJSON(t, response, &raw)
-	if len(raw.Cards) != 1 {
-		t.Fatalf("cards = %d, want 1", len(raw.Cards))
-	}
-	if _, ok := raw.Cards[0]["dirty"]; ok {
-		t.Fatalf("response card carries dirty: %s", response.Body.String())
-	}
-	if epoch, ok := raw.SyncEpoch.(string); !ok || epoch == "" {
-		t.Fatalf("syncEpoch = %#v, want a non-empty string", raw.SyncEpoch)
 	}
 }

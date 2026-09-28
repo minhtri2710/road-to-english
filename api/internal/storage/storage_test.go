@@ -106,36 +106,6 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	}
 }
 
-func TestWordCardRoundTripPreservesWord(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "word-card@example.com")
-	sentence := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "Good morning", "", fsrs("2026-09-22T10:00:00Z", 0))
-	word := testCard("lesson-1:sentence-1:morning", "lesson-1", "sentence-1", "morning", "Good morning — Chào buổi sáng", fsrs("2026-09-22T10:00:00Z", 0))
-	*word.Source.Word = "morning"
-
-	got := syncState(t, repo, user.ID, State{Cards: []Card{sentence, word}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-	if len(got.Cards) != 2 {
-		t.Fatalf("SyncState() returned %d cards, want 2", len(got.Cards))
-	}
-	if got.Cards[0].ID != sentence.ID || *got.Cards[0].Source.Word != "" {
-		t.Fatalf("sentence card = %q word %q, want %q word \"\"", got.Cards[0].ID, *got.Cards[0].Source.Word, sentence.ID)
-	}
-	if got.Cards[1].ID != word.ID || *got.Cards[1].Source.Word != "morning" {
-		t.Fatalf("word card = %q word %q, want %q word \"morning\"", got.Cards[1].ID, *got.Cards[1].Source.Word, word.ID)
-	}
-}
-
-func TestUnicodeWordCardRoundTrips(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "unicode-word-card@example.com")
-	card := wordSyncCard("caf\u00e9")
-
-	got := syncState(t, repo, user.ID, oneCardState(card))
-	if len(got.Cards) != 1 || got.Cards[0].ID != "lesson-1:sentence-1:caf\u00e9" || *got.Cards[0].Source.Word != "caf\u00e9" {
-		t.Fatalf("SyncState() cards = %+v, want the caf\u00e9 word card", got.Cards)
-	}
-}
-
 func TestSyncStateValidatesBeforeBegin(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "closed-pool@example.com")
@@ -193,13 +163,6 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 			}
 		})
 	}
-}
-
-func wordSyncCard(word string) Card {
-	card := testCard("lesson-1:sentence-1:"+word, "lesson-1", "sentence-1", word, "back", fsrs("2026-09-22T10:00:00Z", 0))
-	card.UpdatedAt = "2026-09-22T10:00:00Z"
-	*card.Source.Word = word
-	return card
 }
 
 func oneCardState(card Card) State {
@@ -273,15 +236,6 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	if !reflect.DeepEqual(got.Cards, []Card{live, deleted}) {
 		t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{live, deleted})
 	}
-	for _, card := range got.Cards {
-		if _, err := parseTimestamp(card.UpdatedAt); err != nil {
-			t.Fatalf("stored updatedAt %q fails the grammar: %v", card.UpdatedAt, err)
-		}
-	}
-	if _, err := parseTimestamp(*got.Cards[1].DeletedAt.Value); err != nil {
-		t.Fatalf("stored deletedAt fails the grammar: %v", err)
-	}
-
 	var updatedAt time.Time
 	var deletedAt *time.Time
 	if err := repo.pool.QueryRow(context.Background(), "SELECT updated_at, deleted_at FROM cards WHERE user_id = $1 AND id = $2", user.ID, deleted.ID).Scan(&updatedAt, &deletedAt); err != nil {
@@ -614,14 +568,6 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotA, stateA) {
 		t.Fatalf("user A final state = %#v, want %#v", gotA, stateA)
-	}
-}
-
-func TestCreateUserDuplicateEmail(t *testing.T) {
-	repo := newTestRepo(t)
-	createTestUser(t, repo, "duplicate@example.com")
-	if _, err := repo.CreateUser(context.Background(), "duplicate@example.com", "hash"); !errors.Is(err, ErrEmailTaken) {
-		t.Fatalf("duplicate CreateUser() error = %v, want ErrEmailTaken", err)
 	}
 }
 

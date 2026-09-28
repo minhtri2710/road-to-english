@@ -73,6 +73,25 @@ describe("sync scheduler", () => {
     scheduler.stop();
   });
 
+  it("does not apply an in-flight reply or report status after stop", async () => {
+    const remote = card("2026-01-02T00:00:00Z");
+    const held = deferred<{ cards: VocabCard[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
+    syncMock.mockImplementationOnce(async () => held.promise);
+    const onApplied = vi.fn(async () => undefined);
+    const statuses: SyncStatus[] = [];
+    const scheduler = createSyncScheduler("user-1", onApplied, (status) => statuses.push(status));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+
+    scheduler.stop();
+    held.resolve({ cards: [remote], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(await getAllCards()).toEqual([]);
+    expect(onApplied).not.toHaveBeenCalled();
+    expect(statuses).toEqual([]);
+  });
+
   it("syncs a local mutation while signed in", async () => {
     syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
     const scheduler = createSyncScheduler("user-1", async () => undefined, () => undefined);

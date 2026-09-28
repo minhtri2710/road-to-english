@@ -4,12 +4,24 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestPasswordHashAndCheck(t *testing.T) {
 	hash, err := HashPassword("correct horse battery staple")
 	if err != nil {
 		t.Fatalf("HashPassword() error = %v", err)
+	}
+	if hash == "correct horse battery staple" {
+		t.Fatal("HashPassword() returned the plain password")
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if err != nil {
+		t.Fatalf("bcrypt.Cost() error = %v", err)
+	}
+	if cost != bcrypt.DefaultCost {
+		t.Fatalf("bcrypt cost = %d, want %d", cost, bcrypt.DefaultCost)
 	}
 	if !CheckPassword(hash, "correct horse battery staple") {
 		t.Fatal("CheckPassword() rejected the correct password")
