@@ -47,19 +47,6 @@ test("remove a saved word with the Saved toggle, then Undo puts it back in Revie
   await expect(page.getByText("morning", { exact: true })).toBeVisible();
 });
 
-test("save a hyphenated compound as one word and review it", async ({ page }) => {
-  await openLibraryLesson(page, "Weather & Clothes");
-
-  await expect(page.getByRole("button", { name: "T", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "T-shirt", exact: true }).click();
-  await page.getByRole("button", { name: "Save word" }).click();
-  await expect(page.getByRole("button", { name: "Saved" })).toHaveAccessibleName("Saved, remove from review deck");
-
-  await viewLink(page, "Review").click();
-  await expect(page.getByText("1 due")).toBeVisible();
-  await expect(page.getByText("T-shirt", { exact: true })).toBeVisible();
-});
-
 test("Display menu opens by keyboard, navigates options, and Escape restores focus", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
   const display = page.getByRole("button", { name: "Display" });
@@ -76,11 +63,9 @@ test("Display menu opens by keyboard, navigates options, and Escape restores foc
   }
 });
 
-test("sentence reading uses 20px/30px with joined punctuation and a real bold stress face", async ({ page }) => {
+test("sentence reading joins punctuation and uses a real bold stress face", async ({ page }) => {
   await openLibraryLesson(page, "Stress Pairs: Nouns and Verbs");
   const album = page.getByRole("button", { name: "album", exact: true }).first();
-  const reading = album.locator("xpath=ancestor::p");
-  await expect.poll(() => reading.evaluate((node) => [getComputedStyle(node).fontSize, getComputedStyle(node).lineHeight])).toEqual(["20px", "30px"]);
   const metrics = await album.evaluate((button) => {
     const textRange = (element: Element, text: string) => {
       if (!element) throw new Error(`element not found for text: ${text}`);
@@ -108,16 +93,11 @@ test("sentence reading uses 20px/30px with joined punctuation and a real bold st
     const bandGlyph = textRange(band, "band");
     const willGlyph = textRange(will, "will");
     return {
-      wordFontSize: getComputedStyle(button).fontSize,
-      wordLineHeight: getComputedStyle(button).lineHeight,
       gap: punctuationGlyph.left - albumGlyph.right,
       wordGap: willGlyph.left - bandGlyph.right,
       punctuation: punctuation.textContent,
     };
   });
-  console.log(`sentence reading metrics: ${JSON.stringify(metrics)}`);
-  expect(metrics.wordFontSize).toBe("20px");
-  expect(metrics.wordLineHeight).toBe("30px");
   expect(metrics.gap).toBeLessThanOrEqual(2);
   expect(metrics.wordGap).toBeLessThanOrEqual(10);
 
@@ -141,46 +121,18 @@ test("sentence reading uses 20px/30px with joined punctuation and a real bold st
   const stressedWeight = await page.getByRole("button", { name: "album", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
   const unstressedWeight = await page.getByRole("button", { name: "will", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
   const loaded = await page.evaluate(() => document.fonts.check('700 20px "Be Vietnam Pro"', "album"));
-  console.log(`stress font metrics: ${JSON.stringify({ stressed: stressedWeight, unstressed: unstressedWeight, loaded })}`);
   expect({ stressed: stressedWeight, unstressed: unstressedWeight, loaded }).toEqual({ stressed: "700", unstressed: "400", loaded: true });
 });
 
-test("shadow one sentence at a time through to the last sentence and back", async ({ page }) => {
+test("one-at-a-time mode limits the lesson to one sentence and restores the list", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
   const guided = await menuItem(page, "One at a time");
   await guided.click();
   await expect(guided).toHaveAttribute("aria-checked", "true");
-
-  const position = page.getByRole("heading", { level: 2 });
-  await expect(position).toHaveText("Sentence 1 of 9");
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("Sentence 1 of 9");
   await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Previous" })).toHaveAttribute("aria-disabled", "true");
-
-  const next = page.getByRole("button", { name: "Next" });
-  await next.click();
-  await expect(position).toHaveText("Sentence 2 of 9");
-  await expect(position).toBeFocused();
-  await expect(page.getByRole("status").filter({ hasText: "Sentence 2 of 9" })).toHaveCount(1);
-  for (let sentence = 3; sentence <= 9; sentence += 1) {
-    await next.click();
-    await expect(position).toHaveText(`Sentence ${sentence} of 9`);
-  }
-  await expect(page.getByText("Long time no see. How have you been?")).toBeVisible();
-  await expect(next).toHaveAttribute("aria-disabled", "true");
-  await next.focus();
-  await page.keyboard.press("Enter");
-  await expect(position).toHaveText("Sentence 9 of 9");
-  await expect(next).toBeFocused();
-
-  const previous = page.getByRole("button", { name: "Previous" });
-  for (let sentence = 8; sentence >= 1; sentence -= 1) {
-    await previous.click();
-    await expect(position).toHaveText(`Sentence ${sentence} of 9`);
-  }
-  await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
-  await expect(previous).toHaveAttribute("aria-disabled", "true");
 
   await (await menuItem(page, "One at a time")).click();
-  await expect(position).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(9);
 });

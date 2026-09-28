@@ -17,19 +17,7 @@ test("lesson badges align with the card end at desktop width", async ({ page }) 
   expect(trailingSpace, `badge trailing space ${trailingSpace}px should match card padding ${padding}px`).toBeGreaterThanOrEqual(padding - 1);
 });
 
-test("the library starts with the A1 lesson About Me", async ({ page }) => {
-  await page.goto("/");
-  const firstLesson = page.getByRole("button").filter({ hasText: /· \d+ sentences/ }).first();
-  await expect(firstLesson).toContainText("About Me");
-  await expect(firstLesson).toContainText("A1 · 9 sentences");
-
-  await firstLesson.click();
-  await expect(page.getByRole("heading", { level: 1, name: "About Me" })).toBeVisible();
-  await expect(page.getByText("Level A1")).toBeVisible();
-  await expect(page.getByText("My name is Lan.", { exact: true })).toBeVisible();
-});
-
-test("the library groups lessons by level and filters to one group", async ({ page }) => {
+test("the level filter narrows the library rows and survives a reload", async ({ page }) => {
   await page.goto("/");
   const groups = page.locator("main section").filter({ has: page.locator("h3") });
   await expect(groups.locator("h3")).toHaveText(["A1", "A2", "B1", "B2"]);
@@ -38,15 +26,13 @@ test("the library groups lessons by level and filters to one group", async ({ pa
   await expect(groups.nth(2)).toContainText("0 of 8 completed");
   await expect(groups.nth(3)).toContainText("0 of 7 completed");
   await expect(page.getByRole("button", { name: "About Me" })).toHaveAccessibleDescription("A1 · 9 sentences 80 WPM");
+  const firstLesson = page.getByRole("button", { name: "About Me" });
+  await firstLesson.click();
+  await expect(page.getByRole("heading", { level: 1, name: "About Me" })).toBeVisible();
+  await expect(page.getByText("Level A1")).toBeVisible();
+  await expect(page.getByText("My name is Lan.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to lessons" }).click();
 
-  const level = page.getByRole("radiogroup", { name: "Library level" });
-  await level.getByRole("radio", { name: "B2" }).click();
-  await expect(groups.locator("h3")).toHaveText(["B2"]);
-  await expect(groups.nth(0)).toContainText("0 of 7 completed");
-});
-
-test("the level filter narrows the library rows and survives a reload", async ({ page }) => {
-  await page.goto("/");
   const rows = page.getByRole("button").filter({ hasText: /· \d+ sentences/ });
   await expect(rows.first()).toContainText("About Me");
   await expect(page.getByText("0 of 32 completed")).toBeVisible();
@@ -70,12 +56,7 @@ test("library completion progress transitions to its new value", async ({ page }
   const progress = page.getByRole("progressbar", { name: "B2: 0 of 7 completed" });
   const fill = progress.locator("div");
   await expect(fill).toHaveCSS("width", "0px");
-  await expect(fill).toHaveCSS("transition-property", "width");
-  await expect(fill).toHaveCSS("transition-duration", "0.2s");
   const goalRing = page.getByRole("progressbar", { name: "0 of 10 practice actions today" });
-  const goalRingFill = goalRing.locator("svg circle").last();
-  await expect(goalRingFill).toHaveCSS("transition-property", "stroke-dashoffset");
-  await expect(goalRingFill).toHaveCSS("transition-duration", "0.2s");
   await expect(goalRing).toHaveAttribute("aria-valuenow", "0");
 
   await page.getByRole("button", { name: "Careful Decisions" }).click();

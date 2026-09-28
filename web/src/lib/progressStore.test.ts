@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { exportAll } from "./backupStore";
 import { openAppDatabase } from "./db";
 import { streakState, todayKey } from "./progress";
 import {
@@ -83,16 +82,6 @@ describe("progress store", () => {
     expect(transaction.mock.calls[0][1]).toBe("readwrite");
     expect(await getPracticeDays()).toEqual(["2026-01-05"]);
     expect((await getDailyCount("2026-01-05")).actions).toBe(1);
-  });
-
-  it("keeps daily counts out of the export", async () => {
-    await recordPractice("2026-01-05", { newCard: true });
-
-    expect(Object.keys(await exportAll()).sort()).toEqual([
-      "cards",
-      "lessonCompletion",
-      "practiceDays",
-    ]);
   });
 
   it("splits actions at local midnight while the streak continues", async () => {

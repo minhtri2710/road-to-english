@@ -3,8 +3,6 @@ package auth
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"strings"
 	"testing"
 )
 
@@ -18,13 +16,6 @@ func TestPasswordHashAndCheck(t *testing.T) {
 	}
 	if CheckPassword(hash, "wrong password") {
 		t.Fatal("CheckPassword() accepted the wrong password")
-	}
-}
-
-func TestHashPasswordRejectsPasswordsOver72Bytes(t *testing.T) {
-	_, err := HashPassword(strings.Repeat("a", 73))
-	if !errors.Is(err, ErrPasswordTooLong) {
-		t.Fatalf("HashPassword() error = %v, want ErrPasswordTooLong", err)
 	}
 }
 

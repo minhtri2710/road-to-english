@@ -41,30 +41,6 @@ test("create an account, see it sync, sign out, reject a wrong password, show th
   await expect(page.getByText("Synced just now")).toBeVisible();
 });
 
-test("the Account disclosure expands the form and collapses on Escape and Close", async ({ page }) => {
-  await page.goto("/");
-  const disclosure = accountDisclosure(page);
-  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByLabel("Email")).toHaveCount(0);
-
-  await disclosure.click();
-  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
-  const region = page.locator(`[id="${await disclosure.getAttribute("aria-controls")}"]`);
-  await expect(region.getByLabel("Email")).toBeFocused();
-  // "Sign in" names only the submit button; the mode choice is a radio.
-  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(1);
-  await expect(accountModes(page).getByRole("radio", { name: "Sign in" })).toBeChecked();
-  await page.keyboard.press("Escape");
-  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(disclosure).toBeFocused();
-
-  await page.keyboard.press("Enter");
-  await expect(page.getByLabel("Email")).toBeFocused();
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(disclosure).toBeFocused();
-});
-
 test("a 429 with Retry-After counts down with submit disabled, then re-enables", async ({ page }) => {
   await page.clock.install();
   await limitLogin(page, "3");

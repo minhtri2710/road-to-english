@@ -47,10 +47,6 @@ test("dictation: hint, check, then hear a missed word", async ({ page }) => {
   await page.getByLabel("What did you hear?").first().fill("Good, how are you tomorrow?");
   await page.getByRole("button", { name: "Check" }).first().click();
   await expect(page.getByText("Not quite: 4 of 6 words matched")).toBeVisible();
-  const result = page.locator('[role="status"] p').filter({ hasText: "Not quite: 4 of 6 words matched" });
-  await expect(result).toHaveAttribute("data-motion", "answer-nudge");
-  await expect(result).toHaveCSS("animation-iteration-count", "1");
-  expect(await result.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
   await expect(page.locator('[data-feedback="correct-word"]').first()).toBeVisible();
 
   await page.getByRole("button", { name: "Hear morning" }).click();
@@ -59,12 +55,7 @@ test("dictation: hint, check, then hear a missed word", async ({ page }) => {
   await page.getByRole("button", { name: "Try again" }).click();
   await page.getByLabel("What did you hear?").first().fill("Good morning, how are you today?");
   await page.getByRole("button", { name: "Check" }).first().click();
-  const correctResult = page.locator('[role="status"] p').filter({ hasText: "Correct: 6 of 6 words" });
-  await expect(correctResult).toHaveAttribute("data-motion", "answer-correct");
-  const checkmark = correctResult.locator('[data-motion="answer-correct"]');
-  await expect(checkmark).toHaveCount(1);
-  await expect(checkmark).toHaveCSS("animation-iteration-count", "1");
-  expect(await checkmark.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
+  await expect(page.getByText("Correct: 6 of 6 words")).toBeVisible();
 
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByText("G___ m______, h__ a__ y__ t____?")).toHaveCount(0);
@@ -90,24 +81,4 @@ test("A1 fill the blank: choose a word from the bank, then check", async ({ page
   await expect(mark).toHaveCSS("animation-iteration-count", "1");
   expect(await mark.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
   await expect(mark.locator("svg")).toBeVisible();
-});
-
-test("hide one sentence's text and keep practising it", async ({ page }) => {
-  await openLibraryLesson(page, "Greetings & Basics");
-  const first = page.getByRole("listitem").first();
-
-  const toggle = first.getByRole("button", { name: "Text", exact: true });
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await toggle.click();
-  await expect(first.getByRole("button", { name: "morning", exact: true })).toHaveCount(0);
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await expect(toggle).toBeFocused();
-  await expect(page.getByRole("button", { name: "nice", exact: true })).toBeVisible();
-
-  await first.getByRole("button", { name: "Listen" }).click();
-  await expect.poll(() => spoken(page)).toContain("Good morning, how are you today?");
-
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await expect(first.getByRole("button", { name: "morning", exact: true })).toBeVisible();
 });

@@ -84,15 +84,6 @@ describe("sync scheduler", () => {
     scheduler.stop();
   });
 
-  it("does not sync a local mutation while signed out", async () => {
-    syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
-
-    await putCard(card("2026-01-02T00:00:00Z"));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(syncMock).not.toHaveBeenCalled();
-  });
-
   it("coalesces triggers during one request into one follow-up", async () => {
     const first = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
     const second = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
@@ -165,9 +156,12 @@ describe("sync scheduler", () => {
   const empty = { cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH };
   const tooLarge = () => new ApiError(413, null, "too many cards");
 
-  it("sends an unchanged body refused with 413 no more, whatever triggers the run", async () => {
+  it.each([
+    ["413", tooLarge],
+    ["400", () => new ApiError(400, null, "invalid sync state")],
+  ])("sends an unchanged body refused with %s no more, whatever triggers the run", async (_name, error) => {
     const reports: [SyncStatus, string | null][] = [];
-    syncMock.mockRejectedValueOnce(tooLarge());
+    syncMock.mockRejectedValueOnce(error());
     await putCard(card("2026-01-02T00:00:00Z"));
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status, code) => reports.push([status, code]));
 
@@ -180,7 +174,8 @@ describe("sync scheduler", () => {
     }
 
     expect(syncMock).toHaveBeenCalledTimes(1);
-    expect(reports).toEqual(Array.from({ length: 4 }, () => ["tooLarge", "too many cards"]));
+    const refused: [SyncStatus, string | null] = _name === "413" ? ["tooLarge", "too many cards"] : ["rejected", null];
+    expect(reports).toEqual(Array.from({ length: 4 }, () => refused));
     scheduler.stop();
   });
 

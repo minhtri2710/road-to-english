@@ -33,7 +33,6 @@ describe("WordPanel", () => {
     expect(buttonsNamed(container, "album")).toHaveLength(1);
     expect(album.textContent).toBe("album");
     expect(album.parentElement?.textContent).toBe("album.");
-    expect(album.parentElement?.className).not.toBe("");
   });
 
   it("expands the selected word's button and points it at the word panel", async () => {
@@ -100,6 +99,7 @@ describe("WordPanel", () => {
       (button) => button.textContent === "Save to review",
     );
     if (!saveButton) throw new Error("Save to review button not found");
+    const put = vi.spyOn(IDBObjectStore.prototype, "put");
 
     await harnessAct(async () => {
       saveButton.click();
@@ -112,6 +112,8 @@ describe("WordPanel", () => {
       }
     });
 
+    expect(put.mock.contexts.filter((store) => (store as IDBObjectStore).name === "cards")).toHaveLength(1);
+    put.mockRestore();
     const cards = await getAllCards();
     expect(
       cards.filter((card) => card.source.sentenceId === sentence.id),

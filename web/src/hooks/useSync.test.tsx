@@ -153,6 +153,29 @@ describe("useSync", () => {
     expect(container.textContent).not.toContain(syncFailed);
   });
 
+  it("syncs a local mutation while signed in", async () => {
+    const { container } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
+    await waitForCondition(() => callsTo("/sync") === 1);
+    await waitForCondition(() => syncLine(container) !== undefined);
+    const syncCallsBeforeMutation = callsTo("/sync");
+    const card = (await import("../test/fixtures")).card("sentence-1", new Date());
+    const { putCard } = await import("../lib/vocabStore");
+    await putCard(card);
+    await waitForCondition(() => callsTo("/sync") > syncCallsBeforeMutation);
+    expect(callsTo("/sync")).toBe(syncCallsBeforeMutation + 1);
+  });
+
+  it("does not send a local mutation to sync while signed out", async () => {
+    const { container } = await renderApp({ route: (path) => (path === "/me" ? new Response(null, { status: 401 }) : undefined) });
+    await waitForCondition(() => container.textContent?.includes("Lesson library") ?? false);
+    const syncCallsBeforeMutation = callsTo("/sync");
+    const card = (await import("../test/fixtures")).card("sentence-1", new Date());
+    const { putCard } = await import("../lib/vocabStore");
+    await putCard(card);
+    await expect(waitForCondition(() => callsTo("/sync") > syncCallsBeforeMutation)).rejects.toThrow("Timed out");
+    expect(callsTo("/sync")).toBe(syncCallsBeforeMutation);
+  });
+
   it("re-syncs when the window gains focus", async () => {
     const { container } = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
     await waitForCondition(() => callsTo("/sync") === 1);
@@ -256,7 +279,6 @@ describe("useSync", () => {
     vi.restoreAllMocks();
     const synced = await renderApp({ route: (path) => (path === "/me" ? userResponse() : undefined) });
     await waitForCondition(() => syncLine(synced.container) !== undefined);
-    expect(syncLine(synced.container)?.textContent).toBe("Synced just now");
     expect(syncLine(synced.container)?.closest("header")).not.toBeNull();
   });
 

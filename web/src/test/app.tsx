@@ -49,7 +49,7 @@ export function userResponse(): Response {
   return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
 }
 
-export type FetchRoute = (path: string) => Response | Promise<Response> | undefined;
+type FetchRoute = (path: string) => Response | Promise<Response> | undefined;
 
 // Serves each fetch from route, or from responseFor when route returns undefined.
 export function routeFetch(route: FetchRoute = () => undefined, lesson?: Lesson): void {
@@ -60,7 +60,7 @@ export function routeFetch(route: FetchRoute = () => undefined, lesson?: Lesson)
   vi.stubGlobal("fetch", fetchMock);
 }
 
-export interface AppView {
+interface AppView {
   container: HTMLDivElement;
   root: Root;
   unmount: () => Promise<void>;

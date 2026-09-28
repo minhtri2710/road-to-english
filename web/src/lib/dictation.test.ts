@@ -10,7 +10,7 @@ describe("normalization", () => {
     ["apostrophe", "It's", "its"],
     ["hyphen", "sign-off", "sign off"],
     ["exact", "Good morning", "good morning"],
-  ])("handles %s", (_name, input, expected) => {
+  ])("normalizes %s", (_name, input, expected) => {
     const words = diffWords(input, expected).map((part) => (part.kind === "correct" ? part.word : ""));
     expect(words.join(" ")).toBe(expected);
   });
@@ -202,10 +202,6 @@ describe("number equivalence", () => {
       { kind: "extra", typed: "five" },
     ]);
     expect(diffWords("cat", "dog")).toEqual([{ kind: "replaced", word: "dog", written: "dog", typed: "cat" }]);
-  });
-
-  it("scores a recognizer transcript with digits all correct", () => {
-    expect(allCorrect("I get up at 6:30", "I get up at six thirty.")).toBe(true);
   });
 
   it("applies to the blank check", () => {

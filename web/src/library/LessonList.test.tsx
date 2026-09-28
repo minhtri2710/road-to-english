@@ -19,6 +19,8 @@ import {
   renderApp,
   resetApp,
   responseFor,
+  submitInput,
+  waitForActions,
   waitForCondition,
 } from "../test/app";
 import { userLesson } from "../test/fixtures";
@@ -106,7 +108,6 @@ describe("LessonList", () => {
     expect(container.textContent).not.toContain("Your data");
     expect(container.querySelector('[role="radiogroup"][aria-label="Library level"]')).not.toBeNull();
     expect(container.querySelector('form [role="group"][aria-label="Lesson level"]')).toBeNull();
-    expect(container.querySelectorAll('[aria-label="Level"]')).toHaveLength(0);
   });
 
   it("Retry re-fetches the library after a failure", async () => {
@@ -228,6 +229,19 @@ describe("LessonList", () => {
       text.indexOf(part),
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));
+    const initialOffset = ring.querySelectorAll("svg circle")[1]!.getAttribute("stroke-dashoffset");
+    await click(container, "Start lesson");
+    await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
+    await click(container, "Dictation");
+    const input = container.querySelector<HTMLInputElement>(`#dictation-greetings-basics-1`);
+    if (!input) throw new Error("dictation input not found");
+    await submitInput(input, "Good morning, how are you today?");
+    await waitForActions(1);
+    await click(container, "Back to lessons");
+    await waitForCondition(() => container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow") === "1");
+    const updatedRing = container.querySelectorAll('[role="progressbar"]')[0]!;
+    expect(updatedRing.getAttribute("aria-valuenow")).toBe("1");
+    expect(updatedRing.querySelectorAll("svg circle")[1]!.getAttribute("stroke-dashoffset")).not.toBe(initialOffset);
   });
 
   it("announces a met goal through the ring name and visible text", async () => {

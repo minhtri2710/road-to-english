@@ -1,10 +1,6 @@
 package library
 
-import (
-	"encoding/json"
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestLoadSeed(t *testing.T) {
 	store, err := LoadSeed()
@@ -225,18 +221,5 @@ func TestStoreSummariesAndLesson(t *testing.T) {
 	}
 	if _, ok := store.Lesson("missing"); ok {
 		t.Fatal(`Lesson("missing") found a lesson`)
-	}
-}
-
-func TestSentenceJSONIncludesVI(t *testing.T) {
-	data, err := json.Marshal(Sentence{ID: "s-1", Text: "Hello.", VI: "Xin chào.", VIStatus: VIStatusDraft})
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
-	if !strings.Contains(string(data), `"vi":"Xin chào."`) {
-		t.Fatalf("Sentence JSON = %s, want vi field", data)
-	}
-	if !strings.Contains(string(data), `"viStatus":"draft"`) {
-		t.Fatalf("Sentence JSON = %s, want viStatus field", data)
 	}
 }

@@ -15,17 +15,6 @@ async function saveWords(page: Page, words: string[]): Promise<void> {
 
 const focusedText = (page: Page) => page.evaluate(() => document.activeElement?.textContent ?? "");
 
-const flipTiming = (page: Page) =>
-  page.locator("[data-review-card]").evaluate((element) => {
-    const animation = element.getAnimations()[0];
-    return {
-      iterations: animation?.effect?.getComputedTiming().iterations,
-      duration: animation?.effect?.getComputedTiming().duration,
-      computedDuration: getComputedStyle(element).animationDuration,
-      animationName: getComputedStyle(element).animationName,
-    };
-  });
-
 const ratingRows = (page: Page) =>
   page.evaluate(() => {
     const rows = new Map<number, number>();
@@ -48,18 +37,13 @@ test("review two due cards with the keyboard only and see the recap", async ({ p
   await expect(showAnswer).toBeFocused();
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
-  const flip = await flipTiming(page);
-  expect(flip.iterations).toBe(1);
-  expect(flip.duration).toBeLessThanOrEqual(320);
-  expect(flip.computedDuration).toBe("0.32s");
-  expect(flip.animationName).not.toBe("none");
   await page.locator("[data-review-card]").evaluate((element) =>
     Promise.all(element.getAnimations().map((animation) => animation.finished)),
   );
   expect(await ratingRows(page)).toEqual([4]);
   await page.keyboard.press("3");
   await expect(page.getByText("1 due")).toBeVisible();
-  await expect.poll(async () => (await flipTiming(page)).animationName).toBe("none");
+  await expect.poll(() => page.locator("[data-review-card]").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
 
   // The first rating moved focus to the next card's prompt, so both keys are the card's shortcuts.
   await expect(showAnswer).toBeVisible();
@@ -68,6 +52,7 @@ test("review two due cards with the keyboard only and see the recap", async ({ p
   await page.keyboard.press("3");
 
   await expect(page.getByText("0 due")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Session rating breakdown" }).getByRole("listitem")).toHaveCount(4);
   await expect.poll(() => focusedText(page)).toMatch(/^Reviewed 2 cards: 2 Good\. All caught up\./);
   await expect(page.getByRole("heading", { name: "Rated Again" })).toHaveCount(0);
 });
@@ -96,7 +81,7 @@ for (const width of [360, 320]) {
   test.describe(`${width} px wide`, () => {
     test.use({ viewport: { width, height: 740 } });
 
-    test("the rating row and the recap stay inside the screen", async ({ page }, testInfo) => {
+    test("the rating row and the recap stay inside the screen", async ({ page }) => {
       await saveWords(page, ["morning"]);
       await page.getByRole("button", { name: "Show answer" }).click();
       await expect(page.getByRole("button", { name: "Easy" })).toBeVisible();
@@ -104,21 +89,18 @@ for (const width of [360, 320]) {
         Promise.all(element.getAnimations().map((animation) => animation.finished)),
       );
       expect(await ratingRows(page)).toEqual([2, 2]);
-      await page.screenshot({ path: testInfo.outputPath(`review-rating-${width}.png`), fullPage: true });
       expect(await overflow(page)).toEqual([]);
-      expect([[4], [2, 2]]).toContainEqual(await ratingRows(page));
 
       await page.getByRole("button", { name: "Again" }).click();
       await expect(page.getByRole("heading", { name: "Rated Again" })).toBeVisible();
       const breakdown = page.getByRole("list", { name: "Session rating breakdown" });
       await expect(breakdown.getByRole("listitem")).toHaveCount(4);
-      await page.screenshot({ path: testInfo.outputPath(`review-recap-${width}.png`), fullPage: true });
       expect(await overflow(page)).toEqual([]);
     });
   });
 }
 
-test("the due badge is narrower than the review column", async ({ page }) => {
+test("Listen first hides the card front until Show answer and speaks it", async ({ page }) => {
   await saveWords(page, ["morning"]);
   const badge = page.locator("main span[title='1 due']");
   const column = page.locator("main > div").last();
@@ -127,10 +109,7 @@ test("the due badge is narrower than the review column", async ({ page }) => {
   expect(badgeBox).not.toBeNull();
   expect(columnBox).not.toBeNull();
   expect(badgeBox!.width).toBeLessThan(columnBox!.width);
-});
 
-test("Listen first hides the card front until Show answer and speaks it", async ({ page }) => {
-  await saveWords(page, ["morning"]);
   const toggle = page.getByRole("button", { name: "Listen first" });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");

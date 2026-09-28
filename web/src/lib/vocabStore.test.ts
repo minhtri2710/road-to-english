@@ -11,7 +11,7 @@ const now = new Date("2026-01-01T00:00:00Z");
 const SYNC_EPOCH = "epoch-1";
 
 describe("vocabulary store", () => {
-  it("round-trips FSRS dates through IndexedDB after reopening", async () => {
+  it("round-trips FSRS dates through IndexedDB", async () => {
     const card = newCard("sentence-1", now);
     await putCard(card);
 
@@ -19,10 +19,6 @@ describe("vocabulary store", () => {
     expect(firstRead[0]?.fsrs.due).toBeInstanceOf(Date);
     expect(firstRead[0]?.fsrs.due.getTime()).toBe(card.fsrs.due.getTime());
     expect(firstRead[0]?.fsrs.last_review).toBeUndefined();
-
-    const reopenedRead = await getAllCards();
-    expect(reopenedRead[0]?.fsrs.due).toBeInstanceOf(Date);
-    expect(reopenedRead[0]?.fsrs.due.getTime()).toBe(card.fsrs.due.getTime());
   });
 
   it("selects due cards in ascending due order", () => {

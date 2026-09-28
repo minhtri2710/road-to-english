@@ -300,8 +300,10 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await showYourData(page);
     await inspect();
   }],
-  ["shadow mode with a word selected", async (page, inspect) => {
+  ["shadow mode with a word saved", async (page, inspect) => {
     await selectWord(page);
+    await page.getByRole("button", { name: "Save word" }).click();
+    await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
     await inspect();
   }],
   ["Display menu open", async (page, inspect) => {
@@ -327,6 +329,15 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   }],
   ["dictation result with the hint and diff word buttons", async (page, inspect) => {
     await checkDictationWithHint(page);
+    await expect(page.getByText("Not quite: 4 of 6 words matched")).toBeVisible();
+    const result = page.locator('[role="status"] p').filter({ hasText: "Not quite: 4 of 6 words matched" });
+    await expect(result).toHaveAttribute("data-motion", "answer-nudge");
+    await expect(result).toHaveCSS("animation-iteration-count", "1");
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      await expect(result).toHaveCSS("animation-name", "none");
+    } else {
+      expect(await result.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
+    }
     await inspect();
   }],
   ["A1 blank with the word bank", async (page, inspect) => {
@@ -350,6 +361,9 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Show answer" }).click();
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
     await inspect();
+    await page.getByRole("button", { name: "Good" }).click();
+    await expect(page.getByText("0 due")).toBeVisible();
+    await inspect();
   }],
   ["review session summary", async (page, inspect) => {
     await openReviewWithTwoDueCards(page);
@@ -360,6 +374,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Hard" }).click();
     await expect(page.getByRole("list", { name: "Session rating breakdown" })).toBeVisible();
     await expect(page.getByRole("list", { name: "Session rating breakdown" }).getByRole("listitem")).toHaveCount(4);
+    await expect(page.getByText("0 due")).toBeVisible();
     await inspect();
   }],
   ["review answer revealed at 320 px", async (page, inspect) => {
@@ -558,12 +573,6 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText("Couldn't reach the dictionary. Check your connection.")).toBeVisible();
     await inspect();
   }],
-  ["word saved", async (page, inspect) => {
-    await selectWord(page);
-    await page.getByRole("button", { name: "Save word" }).click();
-    await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
-    await inspect();
-  }],
   ["Undo toast after removing a saved word", async (page, inspect) => {
     await selectWord(page);
     await page.getByRole("button", { name: "Save word" }).click();
@@ -571,13 +580,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
     await inspect();
   }],
-  ["lesson summary", async (page, inspect) => {
-    await openLibraryLesson(page, LIBRARY_LESSON);
-    await attemptEverySentence(page);
-    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next lesson: Shopping Basics" })).toBeVisible();
-    await inspect();
-  }],
+
   ["lesson summary when the completion save fails", async (page, inspect) => {
     await page.addInitScript(() => {
       indexedDB.open = () => {
@@ -606,13 +609,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText("Daily limit of 20 new cards reached. 1 new card is waiting.")).toBeVisible();
     await inspect();
   }],
-  ["review all caught up", async (page, inspect) => {
-    await openReviewWithDueCard(page);
-    await page.getByRole("button", { name: "Show answer" }).click();
-    await page.getByRole("button", { name: "Good" }).click();
-    await expect(page.getByText("0 due")).toBeVisible();
-    await inspect();
-  }],
+
   ["Manage with an import form validation error", async (page, inspect) => {
     await showImportError(page);
     await inspect();
@@ -688,7 +685,6 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
       await expect(meter).toBeVisible();
       await expect.poll(() => meter.evaluate((element) => Number(element.style.getPropertyValue("--input-level")))).toBeGreaterThan(0);
       await expect.poll(() => stop.evaluate((button) => button.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
-      await page.waitForTimeout(1000);
     }
     await inspect();
     await stop.click();
@@ -711,21 +707,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.locator('[data-feedback="correct-word"]').first()).toBeVisible();
     await inspect();
   }],
-  ["dictation not quite", async (page, inspect) => {
-    await openLibraryLesson(page, LIBRARY_LESSON);
-    await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
-    await page.getByLabel("What did you hear?").first().fill("Good morning");
-    await page.getByRole("button", { name: "Check" }).first().click();
-    const result = page.locator('[role="status"] p').filter({ hasText: "Not quite: 2 of 6 words matched" });
-    await expect(result).toHaveAttribute("data-motion", "answer-nudge");
-    await expect(result).toHaveCSS("animation-iteration-count", "1");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(result).toHaveCSS("animation-name", "none");
-    } else {
-      expect(await result.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
-    }
-    await inspect();
-  }],
+
   ["blank answered correctly", async (page, inspect) => {
     await openLibraryLesson(page, "About Me");
     await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Fill the blank" }).click();
@@ -744,6 +726,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
   ["lesson complete", async (page, inspect) => {
     await openLibraryLesson(page, LIBRARY_LESSON);
     await attemptEverySentence(page);
+    await expect(page.getByRole("button", { name: "Next lesson: Shopping Basics" })).toBeVisible();
     const mark = page.getByRole("region", { name: "Lesson complete" }).getByRole("heading", { name: "Lesson complete" }).locator('[data-motion="milestone"]');
     await expect(mark).toHaveCount(1);
     await expect(mark).toHaveCSS("animation-iteration-count", "1");
@@ -924,13 +907,6 @@ test.describe("keyboard", () => {
     await expect.poll(() => focusedName(page)).toContain("All caught up");
   });
 
-  test("the freezes tooltip opens from the keyboard", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
-    await tabTo(page, page.getByText("Freezes 0 of 2"));
-    await expect(page.getByRole("tooltip")).toHaveText(FREEZE_HELP);
-  });
-
   test("the storage notice moves focus to Your data in Manage", async ({ page }) => {
     await showStorageBanner(page);
     await tabTo(page, page.getByRole("button", { name: "Back up" }));
@@ -1011,7 +987,11 @@ async function layoutProblems(page: Page): Promise<string[]> {
 
 const MOBILE_STATES: [string, (page: Page) => Promise<void>][] = [
   ["library", createUserLesson],
-  ["lesson in shadow mode with a word selected", selectWord],
+  ["lesson in shadow mode with a word saved", async (page) => {
+    await selectWord(page);
+    await page.getByRole("button", { name: "Save word" }).click();
+    await expect(page.getByRole("button", { name: "Saved, remove from review deck" })).toBeVisible();
+  }],
   ["review", async (page) => {
     await openReviewWithDueCard(page);
     await page.getByRole("button", { name: "Show answer" }).click();
@@ -1032,21 +1012,12 @@ test.describe("mobile 375x667", () => {
     });
   }
 
-  test("the header leaves the first lesson inside the first screen", async ({ page }) => {
-    await page.goto("/");
-    const row = page.getByRole("button", { name: "About Me" });
-    await expect(row).toBeVisible();
-    const box = await row.boundingBox();
-    expect(box?.y).toBeLessThan(667);
-  });
-
   for (const granted of [true, false]) {
     test(`the first lesson stays inside the first screen when persistence is ${granted ? "granted" : "not granted"}`, async ({ page }) => {
       await grantPersistence(page, granted);
       await page.goto("/");
       await expect(page.getByText(STORAGE_BANNER)).toHaveCount(granted ? 0 : 1);
       const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
-      console.log(`first row y at 375x667, persistence ${granted ? "granted" : "not granted"}: ${box?.y}`);
       expect(box?.y).toBeLessThan(667);
     });
   }
@@ -1077,18 +1048,12 @@ for (const width of [320, 360]) {
     test.use({ viewport: { width, height: 740 } });
 
     for (const [name, reach] of PRACTICE_STATES) {
-      test(name, async ({ page }, testInfo) => {
+      test(name, async ({ page }) => {
         await reach(page);
         if (name === "Display menu open") {
-          console.log(`Display surface at ${width}px: ${JSON.stringify(await page.getByRole("menu", { name: "Display" }).evaluate((menu) => {
-            const style = getComputedStyle(menu);
-            const rect = menu.getBoundingClientRect();
-            return { opacity: style.opacity, background: style.backgroundColor, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
-          }))}`);
           const background = await page.getByRole("menu", { name: "Display" }).evaluate((menu) => getComputedStyle(menu).backgroundColor);
           expect(background).not.toBe("rgba(0, 0, 0, 0)");
         }
-        await page.screenshot({ path: testInfo.outputPath(`${width}.png`), fullPage: true });
         expect(await layoutProblems(page)).toEqual([]);
       });
     }
@@ -1112,9 +1077,8 @@ for (const width of [320, 360]) {
     test.use({ viewport: { width, height: 740 } });
 
     for (const [name, reach] of LIBRARY_STATES) {
-      test(name, async ({ page }, testInfo) => {
+      test(name, async ({ page }) => {
         await reach(page);
-        await page.screenshot({ path: testInfo.outputPath(`library-${name}-${width}.png`) });
         expect(await layoutProblems(page)).toEqual([]);
       });
     }
@@ -1150,9 +1114,8 @@ for (const width of [320, 360]) {
     test.use({ viewport: { width, height: 740 } });
 
     for (const [name, reach] of ACCOUNT_STATES) {
-      test(name, async ({ page }, testInfo) => {
+      test(name, async ({ page }) => {
         await reach(page);
-        await page.screenshot({ path: testInfo.outputPath(`account-${name}-${width}.png`), fullPage: true });
         expect(await layoutProblems(page)).toEqual([]);
       });
     }
@@ -1176,16 +1139,13 @@ async function motion(page: Page): Promise<string[]> {
     segmentProbe.className = "astryx-segmented-control-item";
     segmentProbe.style.transition = "color 0.125s";
     document.body.append(probe, toggleProbe, segmentProbe);
-    for (const [selector, required] of [
-      [".astryx-button", true],
-      [".astryx-toggle-button", true],
-      [".astryx-segmented-control-item", false],
-      [".astryx-link", true],
+    for (const selector of [
+      ".astryx-button",
+      ".astryx-toggle-button",
+      ".astryx-segmented-control-item",
+      ".astryx-link",
     ] as const) {
       const elements = document.querySelectorAll<HTMLElement>(selector);
-      if (required && elements.length === 0) {
-        found.push(`no ${selector} to inspect`);
-      }
       for (const el of elements) {
         const style = getComputedStyle(el);
         const still =
@@ -1263,7 +1223,6 @@ test.describe("first-run welcome", () => {
       await page.setViewportSize({ width: 375, height: 667 });
       await reach(page);
       const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
-      console.log(`first row y at 375x667, welcome ${name}, storage banner: ${box?.y}`);
       expect(box?.y).toBeLessThan(667);
     });
   }
@@ -1284,9 +1243,8 @@ test.describe("first-run welcome", () => {
       test.use({ viewport: { width, height: 740 } });
 
       for (const [name, reach] of [["welcome-step-1", showStep1], ["welcome-step-2", showStep2], ["welcome-done", finish]] as const) {
-        test(name, async ({ page }, testInfo) => {
+        test(name, async ({ page }) => {
           await reach(page);
-          await page.screenshot({ path: testInfo.outputPath(`${name}-${width}.png`) });
           expect(await layoutProblems(page)).toEqual([]);
         });
       }

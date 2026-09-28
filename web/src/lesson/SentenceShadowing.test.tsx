@@ -21,44 +21,6 @@ import { greetingsLesson } from "../test/fixtures";
 describe("SentenceShadowing", () => {
   afterEach(resetApp);
 
-  it("listens to a sentence at the clamped target speed", async () => {
-    const speak = vi.fn();
-    const cancel = vi.fn();
-    class FakeUtterance {
-      lang = "";
-      rate = 1;
-      constructor(readonly text: string) {}
-    }
-    vi.stubGlobal("speechSynthesis", { speak, cancel });
-    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-    installMediaDevices(async () => {
-      throw new Error("recording not used");
-    });
-    vi.stubGlobal("MediaRecorder", class {});
-
-    const highWpmLesson = { ...greetingsLesson, targetWpm: 1000 };
-    const { container, root } = await openLesson(highWpmLesson);
-
-    await click(container, "Listen");
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({
-      text: highWpmLesson.sentences[0].text,
-      rate: 2,
-      lang: "en-US",
-    }));
-    expect(cancel).toHaveBeenCalled();
-
-    await harnessAct(async () => {
-      root.unmount();
-    });
-    container.remove();
-
-    const lowWpmLesson = { ...greetingsLesson, targetWpm: 1 };
-    // The URL still routes to the lesson, so the remount opens it directly.
-    const low = await renderApp({ lesson: lowWpmLesson });
-    await click(low.container, "Listen");
-    expect(speak).toHaveBeenLastCalledWith(expect.objectContaining({ rate: 0.4 }));
-  });
-
   it("records, stops, replays, and releases the microphone", async () => {
     const cancel = vi.fn();
     vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel });
@@ -204,7 +166,7 @@ describe("SentenceShadowing", () => {
     ).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 
-  it("scales the clamped shadowing rate by the chosen speed", async () => {
+  it("scales the shadowing rate by the chosen speed", async () => {
     const speech = installSpeechFakes();
     const rateAt = async (container: HTMLElement, speed: string) => {
       await click(container, "Display");
@@ -232,14 +194,6 @@ describe("SentenceShadowing", () => {
       a1.root.unmount();
     });
     a1.container.remove();
-
-    const low = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 1 } });
-    expect(await rateAt(low.container, "1x")).toBe(0.4);
-    expect(await rateAt(low.container, "0.5x")).toBe(0.2);
-    await harnessAct(async () => {
-      low.root.unmount();
-    });
-    low.container.remove();
 
     const high = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 1000 } });
     expect(await rateAt(high.container, "1x")).toBe(2);

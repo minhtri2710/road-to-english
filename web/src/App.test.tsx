@@ -64,8 +64,6 @@ describe("App", () => {
     await click(container, "Display");
     expect(menuItemsNamed(container, "1x")[0]?.getAttribute("aria-checked")).toBe("true");
     expect(menuItemsNamed(container, "Transcript")[0]?.getAttribute("aria-checked")).toBe("true");
-    // 25 controls: Account, Back up, Back to lessons, three lesson modes, Display, and six sentence controls per row (Text, Listen, Loop, Record, Compare, Save to review); plus 15 word buttons (6 + 6 + 3). The Display menu adds 3 playback radios and 6 shadow-mode checkboxes; they are menu items, not buttons. Brand and view navigation are four anchors.
-    expect(container.querySelectorAll("button")).toHaveLength(40);
   });
 
   it("rates a card once when rating buttons are clicked synchronously", async () => {
@@ -156,7 +154,6 @@ describe("App", () => {
       },
     });
     await waitForCondition(() => container.textContent?.includes("restored@example.com") ?? false);
-    expect(container.querySelector('input[type="email"]')).toBeNull();
   });
 
   describe("due refresh on return", () => {

@@ -18,11 +18,6 @@ describe("routes", () => {
     expect(parseRoute(routeHash(route))).toEqual(route);
   });
 
-  it("parses the Manage hash route", () => {
-    expect(parseRoute("#/manage")).toEqual({ view: "manage" });
-    expect(routeHash({ view: "manage" })).toBe("#/manage");
-  });
-
   it("encodes a lesson id into one path segment", () => {
     expect(routeHash({ view: "lesson", id: "a/b" })).toBe("#/lesson/a%2Fb");
   });

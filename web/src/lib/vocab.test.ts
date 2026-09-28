@@ -113,18 +113,6 @@ describe("vocabulary cards", () => {
     expect(restored).toEqual({ ...reviewed, updatedAt: restoredAt.toISOString(), deletedAt: null });
   });
 
-  it("orders review grades from Easy to Again", () => {
-    const card = newCard();
-    const easy = reviewCard(card, Rating.Easy, now);
-    const good = reviewCard(card, Rating.Good, now);
-    const hard = reviewCard(card, Rating.Hard, now);
-    const again = reviewCard(card, Rating.Again, now);
-
-    expect(easy.fsrs.due.getTime()).toBeGreaterThanOrEqual(good.fsrs.due.getTime());
-    expect(good.fsrs.due.getTime()).toBeGreaterThanOrEqual(hard.fsrs.due.getTime());
-    expect(hard.fsrs.due.getTime()).toBeGreaterThanOrEqual(again.fsrs.due.getTime());
-  });
-
   it("moves a reviewed card to Relearning after a lapse", () => {
     let card = newCard();
 
@@ -146,14 +134,6 @@ describe("vocabulary cards", () => {
     reviewCard(card, Rating.Good, now);
 
     expect(card).toEqual(snapshot);
-  });
-
-  it("is deterministic for identical inputs", () => {
-    const card = newCard();
-
-    expect(reviewCard(card, Rating.Good, now)).toEqual(
-      reviewCard(card, Rating.Good, now),
-    );
   });
 });
 

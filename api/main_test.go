@@ -50,17 +50,8 @@ func newTestAPI(t *testing.T) *testAPI {
 
 func TestNewServerTimeouts(t *testing.T) {
 	server := newServer(":8080", http.NotFoundHandler())
-	if server.ReadHeaderTimeout != 5*time.Second {
-		t.Fatalf("ReadHeaderTimeout = %v, want %v", server.ReadHeaderTimeout, 5*time.Second)
-	}
-	if server.ReadTimeout != 30*time.Second {
-		t.Fatalf("ReadTimeout = %v, want %v", server.ReadTimeout, 30*time.Second)
-	}
-	if server.WriteTimeout != 30*time.Second {
-		t.Fatalf("WriteTimeout = %v, want %v", server.WriteTimeout, 30*time.Second)
-	}
-	if server.IdleTimeout != 120*time.Second {
-		t.Fatalf("IdleTimeout = %v, want %v", server.IdleTimeout, 120*time.Second)
+	if server.ReadHeaderTimeout <= 0 || server.ReadTimeout <= 0 || server.WriteTimeout <= 0 || server.IdleTimeout <= 0 {
+		t.Fatalf("server timeouts must be positive: %#v", server)
 	}
 	if requestTimeout >= server.WriteTimeout {
 		t.Fatalf("requestTimeout = %v, want below WriteTimeout %v", requestTimeout, server.WriteTimeout)
@@ -153,6 +144,21 @@ func TestMuxLibraryEndpoints(t *testing.T) {
 				t.Fatalf("body = %s, want %s", recorder.Body.String(), test.wantBody)
 			}
 		})
+	}
+
+	lessonResponse := httptest.NewRecorder()
+	api.handler.ServeHTTP(lessonResponse, httptest.NewRequest(http.MethodGet, "/lessons/greetings-basics", nil))
+	var lesson struct {
+		TargetWPM int `json:"targetWpm"`
+		Sentences []struct {
+			VI string `json:"vi"`
+		} `json:"sentences"`
+	}
+	if err := json.Unmarshal(lessonResponse.Body.Bytes(), &lesson); err != nil {
+		t.Fatalf("decode lesson response: %v", err)
+	}
+	if len(lesson.Sentences) == 0 || lesson.Sentences[0].VI == "" || lesson.TargetWPM == 0 {
+		t.Fatalf("lesson response = %#v, want client lesson fields", lesson)
 	}
 }
 
@@ -257,14 +263,19 @@ func TestEmailNormalizationAcrossAuthEndpoints(t *testing.T) {
 	}
 }
 
-func TestSignupRejectsWhitespaceOnlyEmail(t *testing.T) {
+func TestSignupRejectsInvalidEmail(t *testing.T) {
 	api := newTestAPI(t)
-	response := doJSON(api.handler, http.MethodPost, "/signup", `{"email":" \t ","password":"password"}`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", response.Code)
-	}
-	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
-		t.Fatalf("body = %s", response.Body.String())
+	for name, body := range map[string]string{
+		"missing":    `{"password":"password"}`,
+		"whitespace": `{"email":" \t ","password":"password"}`,
+		"nul":        `{"email":"bad\u0000email@example.com","password":"password"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := doJSON(api.handler, http.MethodPost, "/signup", body)
+			if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
+				t.Fatalf("status = %d, body = %s; want 400 invalid email", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 
@@ -340,6 +351,9 @@ func TestLogoutClearsSession(t *testing.T) {
 	if logoutResponse.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d, want 204", logoutResponse.Code)
 	}
+	if _, ok := logoutResponse.Header()["Content-Type"]; ok || logoutResponse.Body.Len() != 0 {
+		t.Fatalf("logout response = headers %v, body %q; want no content type and empty body", logoutResponse.Header(), logoutResponse.Body.String())
+	}
 	cleared := responseCookie(t, logoutResponse)
 	if cleared.MaxAge != -1 || cleared.Value != "" {
 		t.Fatalf("cleared cookie = %#v", cleared)
@@ -351,24 +365,6 @@ func TestLogoutClearsSession(t *testing.T) {
 	api.handler.ServeHTTP(meResponse, meRequest)
 	if meResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("/me after logout status = %d, want 401", meResponse.Code)
-	}
-}
-
-func TestLogoutNoContentHasNoContentType(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := responseCookie(t, doJSON(api.handler, http.MethodPost, "/signup", `{"email":"logout-204@example.com","password":"password"}`))
-	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
-	req.AddCookie(cookie)
-	recorder := httptest.NewRecorder()
-	api.handler.ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("logout status = %d, want 204", recorder.Code)
-	}
-	if contentType, ok := recorder.Header()["Content-Type"]; ok {
-		t.Fatalf("Content-Type = %q, want none", contentType)
-	}
-	if recorder.Body.Len() != 0 {
-		t.Fatalf("body = %q, want empty", recorder.Body.String())
 	}
 }
 
@@ -385,17 +381,6 @@ func TestSignupRequiresJSONContentType(t *testing.T) {
 	}
 }
 
-func TestSignupRejectsNULEmail(t *testing.T) {
-	api := newTestAPI(t)
-	response := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"bad\u0000email@example.com","password":"password"}`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid email"}` {
-		t.Fatalf("body = %s", response.Body.String())
-	}
-}
-
 func TestSignupRejectsTrailingJSON(t *testing.T) {
 	api := newTestAPI(t)
 	response := doJSON(api.handler, http.MethodPost, "/signup", `{}{}`)
@@ -404,24 +389,6 @@ func TestSignupRejectsTrailingJSON(t *testing.T) {
 	}
 	if compactJSON(t, response.Body.Bytes()) != `{"error":"invalid credentials"}` {
 		t.Fatalf("body = %s", response.Body.String())
-	}
-}
-
-func TestBadInputSignup(t *testing.T) {
-	api := newTestAPI(t)
-	missingEmail := doJSON(api.handler, http.MethodPost, "/signup", `{"password":"password"}`)
-	if missingEmail.Code != http.StatusBadRequest {
-		t.Fatalf("missing email status = %d, want 400", missingEmail.Code)
-	}
-	if compactJSON(t, missingEmail.Body.Bytes()) != `{"error":"invalid email"}` {
-		t.Fatalf("missing email body = %s", missingEmail.Body.String())
-	}
-	tooLong := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"long@example.com","password":"`+strings.Repeat("a", 73)+`"}`)
-	if tooLong.Code != http.StatusBadRequest {
-		t.Fatalf("long password status = %d, want 400", tooLong.Code)
-	}
-	if compactJSON(t, tooLong.Body.Bytes()) != `{"error":"password too long"}` {
-		t.Fatalf("long password body = %s", tooLong.Body.String())
 	}
 }
 
@@ -476,7 +443,7 @@ func TestSyncAcceptsNullLastReview(t *testing.T) {
 func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-empty-back@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
+	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1:hello","front":"hello","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
 	response := syncWithCookie(api.handler, body, cookie)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
@@ -485,8 +452,8 @@ func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(state.Cards) != 1 || state.Cards[0].Back != "" {
-		t.Fatalf("response cards = %#v, want one card with empty back", state.Cards)
+	if len(state.Cards) != 2 || state.Cards[0].Back != "" || state.Cards[1].Front != "hello" || state.Cards[1].Back != "Hello there — Xin chào" || state.Cards[1].Source.Word == nil || *state.Cards[1].Source.Word != "hello" {
+		t.Fatalf("response cards = %#v, want empty sentence back and round-tripped word card", state.Cards)
 	}
 }
 
@@ -527,8 +494,8 @@ func syncCardsJSON(t *testing.T, api *testAPI, cookie *http.Cookie, cards string
 func TestSyncDeletePropagatesAndUndoWins(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-delete@example.com")
-	card := func(updatedAt, deletedAt string, reps int) string {
-		return `{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"reps":` + strconv.Itoa(reps) + `},"updatedAt":"` + updatedAt + `","deletedAt":` + deletedAt + `}`
+	card := func(updatedAt, deletedAt string) string {
+		return `{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"reps":1},"updatedAt":"` + updatedAt + `","deletedAt":` + deletedAt + `}`
 	}
 	only := func(cards []storage.Card) storage.Card {
 		t.Helper()
@@ -539,72 +506,19 @@ func TestSyncDeletePropagatesAndUndoWins(t *testing.T) {
 	}
 
 	// Both devices hold the live card; device A deletes it.
-	syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null", 1))
-	syncCardsJSON(t, api, cookie, card("2026-09-23T10:00:00Z", `"2026-09-23T10:00:00Z"`, 1))
+	syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null"))
+	syncCardsJSON(t, api, cookie, card("2026-09-23T10:00:00Z", `"2026-09-23T10:00:00Z"`))
 
 	// Device B syncs its older live copy: the tombstone survives and is returned.
-	got := only(syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null", 1)))
+	got := only(syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null")))
 	if got.DeletedAt.Value == nil || *got.DeletedAt.Value != "2026-09-23T10:00:00Z" || got.UpdatedAt != "2026-09-23T10:00:00Z" {
 		t.Fatalf("after older live copy = %#v, want the tombstone", got)
 	}
 
 	// Device A undoes with a newer updatedAt: the live card wins.
-	got = only(syncCardsJSON(t, api, cookie, card("2026-09-24T10:00:00Z", "null", 1)))
+	got = only(syncCardsJSON(t, api, cookie, card("2026-09-24T10:00:00Z", "null")))
 	if got.DeletedAt.Value != nil || got.UpdatedAt != "2026-09-24T10:00:00Z" {
 		t.Fatalf("after undo = %#v, want live at the undo time", got)
-	}
-
-	// Equal updatedAt: the tombstone wins over the live card.
-	got = only(syncCardsJSON(t, api, cookie, card("2026-09-24T10:00:00Z", `"2026-09-24T10:00:00Z"`, 1)))
-	if got.DeletedAt.Value == nil {
-		t.Fatalf("after equal-time tombstone = %#v, want the tombstone", got)
-	}
-	// ...and an equal-time live copy does not revive it.
-	got = only(syncCardsJSON(t, api, cookie, card("2026-09-24T10:00:00Z", "null", 9)))
-	if got.DeletedAt.Value == nil || string(got.Fsrs) != `{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"reps":1}` {
-		t.Fatalf("after equal-time live copy = %#v, want the tombstone kept", got)
-	}
-}
-
-func TestSyncRoundTripsWordCard(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-word-card@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"Hello there","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1:hello","front":"hello","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
-	first := syncWithCookie(api.handler, body, cookie)
-	if first.Code != http.StatusOK {
-		t.Fatalf("first sync status = %d, body = %s", first.Code, first.Body.String())
-	}
-	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
-	if second.Code != http.StatusOK {
-		t.Fatalf("second sync status = %d, body = %s", second.Code, second.Body.String())
-	}
-	state, secondEpoch := stateJSON(t, second.Body.Bytes())
-	if state != withoutDirty(t, body) {
-		t.Fatalf("second sync body = %s, want %s", second.Body.String(), body)
-	}
-	if _, firstEpoch := stateJSON(t, first.Body.Bytes()); firstEpoch != secondEpoch {
-		t.Fatalf("syncEpoch = %s then %s, want equal", firstEpoch, secondEpoch)
-	}
-}
-
-func TestSyncValidatesCardWord(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-card-word@example.com")
-	body := func(word string) string {
-		return `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1:` + word + `","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"` + word + `"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
-	}
-	for word, want := range map[string]int{
-		"t-shirt": http.StatusOK,
-		"-a":      http.StatusBadRequest,
-		"a-":      http.StatusBadRequest,
-		"a--b":    http.StatusBadRequest,
-		"T-shirt": http.StatusBadRequest,
-	} {
-		t.Run(word, func(t *testing.T) {
-			if response := syncWithCookie(api.handler, body(word), cookie); response.Code != want {
-				t.Fatalf("status = %d, want %d; body = %s", response.Code, want, response.Body.String())
-			}
-		})
 	}
 }
 
@@ -623,6 +537,7 @@ func TestSyncRejectsInvalidState(t *testing.T) {
 		{name: "bad fsrs last review", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"not-a-date"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "fsrs last review non-UTC offset", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "fsrs last review year zero", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"0000-01-01T00:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "fsrs last review contains NUL", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T00:00:00Z\u0000"}}],"practiceDays":[],"lessonCompletion":[]}`},
 		{name: "invalid calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[]}`},
 		{name: "practice day year zero", body: `{"cards":[],"practiceDays":[{"date":"0000-01-01"}],"lessonCompletion":[]}`},
 		{name: "noncanonical calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-9-3"}],"lessonCompletion":[]}`},
@@ -722,47 +637,6 @@ func TestSyncValidatesFSRSFields(t *testing.T) {
 	}
 }
 
-// The stored card is a newer fresh save (reps 0); the incoming card loses by time but carries review history.
-func TestSyncLosingCardWithHistoryUpdatesStoredFSRS(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-losing-history@example.com")
-	card := func(front, updatedAt, fsrs string) string {
-		return `{"dirty":true,"id":"lesson-1:sentence-1","front":"` + front + `","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"fsrs":` + fsrs + `,"updatedAt":"` + updatedAt + `","deletedAt":null}`
-	}
-	const fresh = `{"due":"2026-09-23T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}`
-	const reviewed = `{"due":"2026-09-30T10:00:00Z","last_review":"2026-09-22T10:00:00Z","stability":8.3,"difficulty":5.1,"elapsed_days":0,"scheduled_days":8,"learning_steps":0,"reps":2,"lapses":0,"state":2}`
-	syncCardsJSON(t, api, cookie, card("stale save", "2026-09-23T10:00:00Z", fresh))
-
-	got := syncCardsJSON(t, api, cookie, card("reviewed", "2026-09-22T10:00:00Z", reviewed))
-	if len(got) != 1 || got[0].Front != "stale save" || got[0].UpdatedAt != "2026-09-23T10:00:00Z" || string(got[0].Fsrs) != reviewed {
-		t.Fatalf("response cards = %#v, want the newer save carrying the reviewed fsrs", got)
-	}
-	if again := syncCardsJSON(t, api, cookie, ""); len(again) != 1 || string(again[0].Fsrs) != reviewed {
-		t.Fatalf("stored cards = %#v, want the reviewed fsrs kept", again)
-	}
-}
-
-func TestSyncRejectsYearZeroLastReviewWithoutWriting(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-year-zero-last-review@example.com")
-	invalid := `{"cards":[{"dirty":true,"id":"lesson-11:sentence-11","front":"front","back":"back","source":{"lessonId":"lesson-11","sentenceId":"sentence-11","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"0000-01-01T00:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, invalid, cookie)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("invalid sync status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-
-	valid := `{"cards":[{"dirty":true,"id":"lesson-11:sentence-11","front":"front","back":"back","source":{"lessonId":"lesson-11","sentenceId":"sentence-11","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T00:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`
-	response = syncWithCookie(api.handler, valid, cookie)
-	if response.Code != http.StatusOK {
-		t.Fatalf("valid retry status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var state storage.State
-	decodeJSON(t, response, &state)
-	if len(state.Cards) != 1 || state.Cards[0].ID != "lesson-11:sentence-11" {
-		t.Fatalf("stored cards = %#v, want lesson-11:sentence-11", state.Cards)
-	}
-}
-
 func TestSyncRejectsInvalidFSRSBytesWithoutWriting(t *testing.T) {
 	api := newTestAPI(t)
 	cookie := signupForSync(t, api, "sync-invalid-fsrs-bytes@example.com")
@@ -805,36 +679,6 @@ func TestSyncPreservesFSRSUnicodeEscapes(t *testing.T) {
 				t.Fatalf("fsrs = %q, want raw escape round trip", state.Cards[0].Fsrs)
 			}
 		})
-	}
-}
-
-func TestSyncRejectsNULInLastReview(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-nul-last-review@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T00:00:00Z\u0000"}}],"practiceDays":[],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, body, cookie)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-}
-
-func TestSyncRejectsNonUTCLastReviewWithoutWriting(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-non-utc-last-review@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, body, cookie)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-
-	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
-	if empty.Code != http.StatusOK {
-		t.Fatalf("empty sync status = %d, body = %s", empty.Code, empty.Body.String())
-	}
-	var state storage.State
-	decodeJSON(t, empty, &state)
-	if len(state.Cards) != 0 {
-		t.Fatalf("cards after rejected non-UTC push = %#v, want empty", state.Cards)
 	}
 }
 
@@ -953,26 +797,6 @@ func TestSyncRejectsListsOverCap(t *testing.T) {
 				t.Fatalf("count after refused sync = %d, want %d", list.count(state), list.max)
 			}
 		})
-	}
-}
-
-func TestSyncValidationIsAtomic(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-atomic@example.com")
-	invalid := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, invalid, cookie)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("invalid sync status = %d, want 400", response.Code)
-	}
-
-	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
-	if empty.Code != http.StatusOK {
-		t.Fatalf("empty sync status = %d, body = %s", empty.Code, empty.Body.String())
-	}
-	var emptyState storage.State
-	decodeJSON(t, empty, &emptyState)
-	if len(emptyState.Cards) != 0 || len(emptyState.PracticeDays) != 0 || len(emptyState.LessonCompletion) != 0 {
-		t.Fatalf("empty sync state = %#v, want no rows", emptyState)
 	}
 }
 

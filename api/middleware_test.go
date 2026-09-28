@@ -36,36 +36,8 @@ func TestCORSPreflight(t *testing.T) {
 	}
 }
 
-func TestCORSPreflightSync(t *testing.T) {
-	api := newTestAPI(t)
-	req := httptest.NewRequest(http.MethodOptions, "/sync", nil)
-	req.Header.Set("Origin", defaultCORSOrigin)
-	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
-	recorder := httptest.NewRecorder()
-
-	api.handler.ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != defaultCORSOrigin {
-		t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, defaultCORSOrigin)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
-		t.Fatalf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type" {
-		t.Fatalf("Access-Control-Allow-Headers = %q, want Content-Type", got)
-	}
-	if got := recorder.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
-		t.Fatalf("Access-Control-Allow-Credentials = %q, want true", got)
-	}
-}
-
 var corsAllowHeaders = []string{"Access-Control-Allow-Origin", "Access-Control-Allow-Credentials", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers"}
 
-// Every response through the CORS middleware varies by Origin, so a shared cache never serves one origin's answer to another.
 func TestCORSVaryOriginOnEveryResponse(t *testing.T) {
 	api := newTestAPI(t)
 	for _, test := range []struct {

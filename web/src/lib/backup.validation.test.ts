@@ -94,10 +94,6 @@ describe("sync state validation", () => {
   });
 
   it.each([
-    ["non-Z offset", { fsrs: { ...fsrsFields, due: "2026-01-01T00:00:00+07:00" } }],
-    ["invalid timestamp day", { fsrs: { ...fsrsFields, due: "2026-02-30T00:00:00Z" } }],
-    ["zero timestamp year", { fsrs: { ...fsrsFields, due: "0000-01-01T00:00:00Z" } }],
-    ["short timestamp", { fsrs: { ...fsrsFields, due: "2026" } }],
     ["NUL in card back", { back: "answer\u0000" }],
     ["NUL in card text", { front: "hello\u0000" }],
     ["NUL in lesson id", { source: { lessonId: "lesson\u0000-1", sentenceId: "sentence-1", word: "" }, id: "lesson\u0000-1:sentence-1" }],

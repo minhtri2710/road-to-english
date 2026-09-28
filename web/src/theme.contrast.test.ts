@@ -30,7 +30,6 @@ function expectContrast(foreground: readonly [string, string], background: reado
 describe("project theme contrast", () => {
   it("keeps accent text and icons legible on primary actions", () => {
     expectContrast(themePalette.onAccent, themePalette.accent, 4.5, "text on accent");
-    expectContrast(themePalette.onAccent, themePalette.accent, 3, "icon on accent");
   });
 
   it("keeps semantic action text and icons legible on their fills", () => {
@@ -40,7 +39,6 @@ describe("project theme contrast", () => {
       ["error", themePalette.onError, themePalette.error],
     ] as const) {
       expectContrast(foreground, background, 4.5, `text on ${name}`);
-      expectContrast(foreground, background, 3, `icon on ${name}`);
     }
   });
 
@@ -59,20 +57,32 @@ describe("project theme contrast", () => {
   it("keeps the accent legible on body and surface backgrounds", () => {
     for (const [name, background] of Object.entries(backgrounds)) {
       expectContrast(themePalette.accent, background, 4.5, `accent text on ${name}`);
-      expectContrast(themePalette.accent, background, 3, `accent UI on ${name}`);
     }
   });
 
   it("keeps every level color legible on the level-card surface", () => {
     for (const [level, color] of Object.entries(themePalette.levels)) {
       expectContrast(color, themePalette.surface, 4.5, `${level} badge text on surface`);
-      expectContrast(color, themePalette.surface, 3, `${level} card accent on surface`);
-      expectContrast(color, themePalette.surface, 3, `${level} badge border on surface`);
     }
   });
 
-  it("uses a passing text color on the accent for primary buttons", () => {
-    expectContrast(themePalette.onAccent, themePalette.accent, 4.5, "primary button foreground");
-    expect(projectTheme.tokens["--color-on-accent"]).toContain("#FFFFFF");
+  it("keeps every theme token paired with its palette in light and dark modes", () => {
+    for (const [key, palette] of Object.entries({
+      "--color-background-body": themePalette.body,
+      "--color-background-surface": themePalette.surface,
+      "--color-text-primary": themePalette.text,
+      "--color-accent": themePalette.accent,
+      "--color-text-accent": themePalette.accent,
+      "--color-icon-accent": themePalette.accent,
+      "--color-on-accent": themePalette.onAccent,
+      "--color-success": themePalette.success,
+      "--color-on-success": themePalette.onSuccess,
+      "--color-warning": themePalette.warning,
+      "--color-on-warning": themePalette.onWarning,
+      "--color-error": themePalette.error,
+      "--color-on-error": themePalette.onError,
+    })) {
+      expect(projectTheme.tokens[key], key).toBe(`light-dark(${palette.join(", ")})`);
+    }
   });
 });

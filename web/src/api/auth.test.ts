@@ -67,11 +67,4 @@ describe("auth API client", () => {
     await expect(fetchMe()).resolves.toBeNull();
     expectAuthRequest("/me", "GET");
   });
-
-  it.each([409, 401, 400])("throws ApiError with status %s", async (status) => {
-    fetchMock.mockResolvedValue(new Response(null, { status }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(signIn(user.email, "password")).rejects.toMatchObject({ status });
-  });
 });

@@ -23,6 +23,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("speech rate", () => {
+  it.each([
+    [90, 1, 0.5],
+    [90, 0.75, 0.375],
+    [90, 0.5, 0.25],
+    [80, 1, 80 / 180],
+    [80, 0.5, 40 / 180],
+    [1, 1, 0.4],
+    [1, 0.5, 0.2],
+    [1000, 1, 2],
+    [1000, 0.5, 1],
+  ])("clamps %i WPM at speed %s", (wpm, speed, rate) => {
+    installSpeechFakes();
+    const utterance = speak("Hello", wpm, speed) as unknown as FakeUtterance & { rate: number };
+    expect(utterance.rate).toBeCloseTo(rate);
+  });
+});
+
 describe("speak", () => {
   it("reports word boundaries and ignores other boundary kinds", () => {
     installSpeechFakes();

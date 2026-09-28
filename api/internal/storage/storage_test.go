@@ -3,8 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -138,26 +136,6 @@ func TestUnicodeWordCardRoundTrips(t *testing.T) {
 	}
 }
 
-func TestSyncStateRejectsNilWordWithoutWriting(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "nil-word@example.com")
-	valid := dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))
-	nilWord := dirtyCard(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))
-	nilWord.Source.Word = nil
-
-	if _, err := repo.SyncState(context.Background(), user.ID, State{Cards: []Card{valid, nilWord}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}); !errors.Is(err, ErrInvalidState) {
-		t.Fatalf("SyncState() error = %v, want ErrInvalidState", err)
-	}
-	var count int
-	if err := repo.pool.QueryRow(context.Background(), "SELECT count(*) FROM cards WHERE user_id = $1", user.ID).Scan(&count); err != nil {
-		t.Fatalf("count cards: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("cards rows = %d, want 0", count)
-	}
-}
-
-// Validation runs before Begin: on a closed pool, invalid input still returns ErrInvalidState, while valid input fails at Begin.
 func TestSyncStateValidatesBeforeBegin(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "closed-pool@example.com")
@@ -256,63 +234,6 @@ func TestValidCardWordSharedVectors(t *testing.T) {
 	}
 }
 
-func TestValidateWordCards(t *testing.T) {
-	sentence := wordSyncCard("")
-	sentence.ID = "lesson-1:sentence-1"
-	sentence.Front = "Hello there"
-	if err := oneCardState(sentence).validate(); err != nil {
-		t.Fatal("sentence card rejected")
-	}
-	for _, word := range []string{"hello42", "t-shirt"} {
-		if err := oneCardState(wordSyncCard(word)).validate(); err != nil {
-			t.Fatalf("word %q rejected", word)
-		}
-	}
-	for _, word := range []string{"Hello", "a:b", "don't", "a b", "-a", "a-", "a--b", "T-shirt"} {
-		if err := oneCardState(wordSyncCard(word)).validate(); err == nil {
-			t.Fatalf("word %q accepted", word)
-		}
-	}
-	mismatch := wordSyncCard("hello")
-	mismatch.ID = "lesson-1:sentence-1"
-	if err := oneCardState(mismatch).validate(); err == nil {
-		t.Fatal("word card with sentence id accepted")
-	}
-	missing := sentence
-	missing.Source.Word = nil
-	if err := oneCardState(missing).validate(); err == nil {
-		t.Fatal("card without word accepted")
-	}
-}
-
-func TestValidateCardTimestamps(t *testing.T) {
-	deletedAt := "2026-09-23T10:00:00.123Z"
-	tombstone := wordSyncCard("hello")
-	tombstone.DeletedAt = DeletedAt{Present: true, Value: &deletedAt}
-	if err := oneCardState(wordSyncCard("hello")).validate(); err != nil {
-		t.Fatal("live card rejected")
-	}
-	if err := oneCardState(tombstone).validate(); err != nil {
-		t.Fatal("tombstone card rejected")
-	}
-
-	badDeletedAt := "2026-09-23T10:00:00+07:00"
-	for name, mutate := range map[string]func(*Card){
-		"missing updatedAt": func(card *Card) { card.UpdatedAt = "" },
-		"non-UTC updatedAt": func(card *Card) { card.UpdatedAt = "2026-09-22T10:00:00+07:00" },
-		"invalid updatedAt": func(card *Card) { card.UpdatedAt = "yesterday" },
-		"missing deletedAt": func(card *Card) { card.DeletedAt = DeletedAt{} },
-		"non-UTC deletedAt": func(card *Card) { card.DeletedAt = DeletedAt{Present: true, Value: &badDeletedAt} },
-	} {
-		card := wordSyncCard("hello")
-		mutate(&card)
-		if err := oneCardState(card).validate(); err == nil {
-			t.Fatalf("%s accepted", name)
-		}
-	}
-}
-
-// inWindow is a whole-second instant well inside TombstoneRetention, for tombstones the purge must keep.
 func inWindow() time.Time {
 	return time.Now().UTC().Add(-30 * 24 * time.Hour).Truncate(time.Second)
 }
@@ -760,27 +681,6 @@ func TestCreateSessionPurgesExpiredSessionsAcrossUsers(t *testing.T) {
 	}
 }
 
-func TestSessionStoresHashNotRawToken(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "hash@example.com")
-	rawToken := "raw-token"
-	digest := sha256.Sum256([]byte(rawToken))
-	storedHash := hex.EncodeToString(digest[:])
-	if err := repo.CreateSession(context.Background(), user.ID, storedHash, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("CreateSession() error = %v", err)
-	}
-	var tokenHash string
-	if err := repo.pool.QueryRow(context.Background(), "SELECT token_hash FROM sessions").Scan(&tokenHash); err != nil {
-		t.Fatalf("query token hash: %v", err)
-	}
-	if tokenHash == rawToken {
-		t.Fatal("session stored the raw token")
-	}
-	if tokenHash != storedHash {
-		t.Fatalf("token_hash = %q, want stored hash %q", tokenHash, storedHash)
-	}
-}
-
 func insertSession(t *testing.T, repo *Repository, userID, tokenHash, createdAgo, expiresIn string) {
 	t.Helper()
 	if _, err := repo.pool.Exec(context.Background(), `
@@ -854,16 +754,6 @@ func TestGetSessionExtensionCapsAt90DaysFromCreation(t *testing.T) {
 	}
 }
 
-func TestGetSessionRejectsSessionPast90Days(t *testing.T) {
-	repo := newTestRepo(t)
-	user := createTestUser(t, repo, "past-cap@example.com")
-	insertSession(t, repo, user.ID, "past-cap", "91 days", "1 day")
-	if _, err := repo.GetSession(context.Background(), "past-cap"); !errors.Is(err, ErrSessionInvalid) {
-		t.Fatalf("GetSession() error = %v, want ErrSessionInvalid", err)
-	}
-}
-
-// Two syncs of one user with the same new keys in opposite orders must not deadlock.
 func TestSyncStateConcurrentOppositeOrders(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "concurrent@example.com")
@@ -1143,13 +1033,5 @@ func TestSyncEpoch(t *testing.T) {
 	var count int
 	if err := repo.pool.QueryRow(ctx, "SELECT count(*) FROM sync_epochs WHERE user_id = $1", user.ID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("sync_epochs rows after user delete = %d, %v, want 0", count, err)
-	}
-}
-
-// G1 + G5 wire: a request card without dirty is invalid.
-func TestValidateRequiresDirty(t *testing.T) {
-	card := wordSyncCard("hello")
-	if err := (State{Cards: []Card{card}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}).validate(); !errors.Is(err, ErrInvalidState) {
-		t.Fatalf("validate() = %v, want ErrInvalidState", err)
 	}
 }

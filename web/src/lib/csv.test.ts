@@ -36,10 +36,6 @@ describe("cardsCsv", () => {
     );
   });
 
-  it("writes the due ISO string", () => {
-    expect(cardsCsv([card("s1", due, { front: "x", back: "y" })])).toContain('"2026-09-23T10:20:30.000Z"');
-  });
-
   it("leaves out deleted cards", () => {
     expect(cardsCsv([card("s1", due, { front: "kept", back: "a" }), deleteCard(card("s2", due, { front: "gone", back: "b" }), due)])).toBe(
       '\uFEFF"front","back","due"\r\n"kept","a","' + due.toISOString() + '"\r\n',
