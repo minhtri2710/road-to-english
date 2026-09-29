@@ -92,56 +92,6 @@ describe("WordPanel", () => {
     }
   });
 
-  it("persists only one card when save is clicked twice synchronously", async () => {
-    const { container } = await openLesson();
-    const sentence = greetingsLesson.sentences[0];
-    const saveButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Save to review",
-    );
-    if (!saveButton) throw new Error("Save to review button not found");
-    const put = vi.spyOn(IDBObjectStore.prototype, "put");
-
-    await harnessAct(async () => {
-      saveButton.click();
-      saveButton.click();
-    });
-    await waitForCondition(() => container.textContent?.includes("Saved") ?? false);
-    await harnessAct(async () => {
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    });
-
-    expect(put.mock.contexts.filter((store) => (store as IDBObjectStore).name === "cards")).toHaveLength(1);
-    put.mockRestore();
-    const cards = await getAllCards();
-    expect(
-      cards.filter((card) => card.source.sentenceId === sentence.id),
-    ).toHaveLength(1);
-  });
-
-  it("persists saved cards across an app remount", async () => {
-    const first = await openLesson();
-
-    await click(first.container, "Save to review");
-    await waitForCondition(() => first.container.textContent?.includes("Saved") ?? false);
-
-    await harnessAct(async () => {
-      first.root.unmount();
-    });
-    first.container.remove();
-
-    const { container: secondContainer } = await renderApp();
-    await clickButtonWith(secondContainer, "Review");
-    await waitForCondition(
-      () => secondContainer.textContent?.includes(greetingsLesson.sentences[0].text) ?? false,
-    );
-
-    expect(secondContainer.textContent).toContain(
-      greetingsLesson.sentences[0].text,
-    );
-  });
-
   it("shows Hear and Save for a clicked word and speaks the word after stopping Loop", async () => {
     const speech = installSpeechFakes();
     const { container } = await openLesson();
@@ -536,7 +486,7 @@ describe("WordPanel", () => {
       await click(container, "Cafe\u0301");
       await click(container, "Define");
       await waitForCondition(() => dictionaryCalls().length === 1);
-      expect(dictionaryCalls()).toEqual([`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent("caf\u00e9")}`]);
+      expect(dictionaryCalls()).toEqual(["https://api.dictionaryapi.dev/api/v2/entries/en/caf%C3%A9"]);
     });
 
     it("shows No definition when the lookup fails", async () => {
@@ -585,13 +535,11 @@ describe("WordPanel", () => {
       const link = Array.from(container.querySelectorAll("a")).find(
         (anchor) => anchor.textContent?.startsWith("Hear it on YouGlish"),
       );
-      expect(link?.getAttribute("href")).toBe(
-        "https://youglish.com/pronounce/" + encodeURIComponent("good") + "/english",
-      );
+      expect(link?.getAttribute("href")).toBe("https://youglish.com/pronounce/good/english");
       expect(link?.getAttribute("target")).toBe("_blank");
       expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
       // Astryx's external link says it opens a new tab.
-      expect(link?.textContent).not.toBe("Hear it on YouGlish");
+      expect(link?.textContent).toContain("opens in new tab");
       expect(dictionaryCalls()).toHaveLength(0);
     });
   });

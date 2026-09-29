@@ -71,11 +71,12 @@ describe("useDailyGoal", () => {
     expect(container.querySelector('[data-motion="milestone"]')).toBeNull();
   });
 
-  it("shows the daily-goal celebration only on the false-to-true announcement edge", async () => {
+  it("keeps the daily-goal celebration mounted on rerender", async () => {
     await harnessAct(() => goal.practiceCommitted(5));
     await render(5);
-    expect(container.querySelectorAll('[data-motion="milestone"]')).toHaveLength(1);
+    const milestone = container.querySelector('[data-motion="milestone"]');
+    expect(milestone).not.toBeNull();
     await render(5);
-    expect(container.querySelectorAll('[data-motion="milestone"]')).toHaveLength(1);
+    expect(container.querySelector('[data-motion="milestone"]')).toBe(milestone);
   });
 });

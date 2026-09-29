@@ -49,17 +49,17 @@ describe("useSync", () => {
       inputLabelled(container, "Email").form?.querySelector<HTMLButtonElement>('button[type="submit"]'),
       "Sign in submit button",
     );
-    await waitForCondition(() => callsTo("/sync") === 1);
+    await waitForCondition(() => syncLine(container)?.textContent === "Synced just now");
     expect(callsTo("/sync")).toBe(1);
   });
 
   it("syncs exactly once after /me restores a user", async () => {
-    await renderApp({
+    const { container } = await renderApp({
       route: (path) => {
         if (path === "/me") return new Response(JSON.stringify({ id: "user-1", email: "restored@example.com" }), { status: 200 });
       },
     });
-    await waitForCondition(() => callsTo("/sync") === 1);
+    await waitForCondition(() => syncLine(container)?.textContent === "Synced just now");
     expect(callsTo("/sync")).toBe(1);
   });
 

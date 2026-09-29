@@ -24,22 +24,36 @@ describe("ImportTextForm", () => {
     expect(hint!.compareDocumentPosition(textArea) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("defaults the level to the level filter unless it is All, and still lets the learner change it", async () => {
+  it("defaults to B1 under All and lets the learner pick another level", async () => {
     const { container } = await renderApp();
     await waitForCondition(hasText(container, "Daily Routine"));
     const manage = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find((link) => link.textContent?.trim() === "Manage");
     await harnessAct(async () => { manage?.click(); });
     expect(levelButton(container, "B1")?.getAttribute("aria-pressed")).toBe("true");
 
-    const a2 = levelButton(container, "A2")!;
     await harnessAct(async () => {
-      a2.click();
+      levelButton(container, "A2")!.click();
     });
     expect(levelButton(container, "A2")?.getAttribute("aria-pressed")).toBe("true");
 
     await harnessAct(async () => {
       levelButton(container, "B2")!.click();
     });
+    expect(levelButton(container, "B2")?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("defaults the form level from a non-default library filter", async () => {
+    const { container } = await renderApp();
+    await waitForCondition(hasText(container, "Daily Routine"));
+    const filter = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"][aria-label="Library level"] button')).find(
+      (button) => button.textContent?.startsWith("B2"),
+    );
+    await harnessAct(async () => { filter?.click(); });
+    expect(filter?.getAttribute("aria-checked")).toBe("true");
+
+    const manage = Array.from(container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Views"] a')).find((link) => link.textContent?.trim() === "Manage");
+    await harnessAct(async () => { manage?.click(); });
+    await waitForCondition(hasText(container, "Import text"));
     expect(levelButton(container, "B2")?.getAttribute("aria-pressed")).toBe("true");
   });
 });

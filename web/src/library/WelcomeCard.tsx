@@ -85,9 +85,6 @@ export function WelcomeCard({
                 <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} />
               ))}
             </ToggleButtonGroup>
-            <Text as="p" type="supporting">
-              You can change both later: the level filter below the Today card and the goal in the Today card.
-            </Text>
           </>
         )}
         <HStack gap={1} align="center">

@@ -572,9 +572,6 @@ describe("LessonList", () => {
       await click(first.container, "Next");
       const region = welcome(first.container)!;
       expect(region.textContent).toContain("Step 2 of 2");
-      expect(region.textContent).toContain(
-        "You can change both later: the level filter below the Today card and the goal in the Today card.",
-      );
       expect(document.activeElement).toBe(question(region, "How much practice a day?"));
 
       // Choosing keeps focus on the choice: the question takes focus only once, after Next.

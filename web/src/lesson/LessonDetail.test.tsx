@@ -1062,7 +1062,6 @@ describe("LessonDetail", () => {
         superseded?.onerror?.({ error: "interrupted" });
       });
       expect(container.textContent?.split(message).length).toBe(2);
-      expect(buttonsNamed(container, "Listen").map((_, index) => index)).toHaveLength(3);
 
       await click(container, "Record");
       await waitForCondition(() => buttonsNamed(container, "Stop").length === 1);

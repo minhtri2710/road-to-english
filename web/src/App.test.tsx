@@ -5,7 +5,6 @@ import { todayKey } from "./lib/progress";
 import { recordPractice, getPracticeDays } from "./lib/progressStore";
 import { createCard, deleteCard, Rating, reviewCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
-import { blankFor } from "./lib/dictation";
 import * as backupStore from "./lib/backupStore";
 import * as progressStore from "./lib/progressStore";
 import * as userLessonsStore from "./lib/userLessons";
@@ -103,6 +102,10 @@ describe("App", () => {
     );
     expect(container.textContent).toContain(greetingsLesson.sentences[1].text);
     expect(container.textContent).not.toContain(greetingsLesson.sentences[0].text);
+    expect(container.textContent).not.toContain("This card changed on another device. Showing the latest.");
+    const rated = (await getAllCards()).find((card) => card.front === greetingsLesson.sentences[0].text);
+    expect(rated?.fsrs.reps).toBe(1);
+    expect(rated?.fsrs.last_review).not.toBeNull();
   });
 
   it("moves focus to what replaced the control on lesson open, save, Back, show answer, and rating", async () => {
@@ -890,13 +893,11 @@ describe("App", () => {
       expect(view.container.textContent).toContain("Correct");
 
       await click(view.container, "Fill the blank");
-      const { parts, index } = blankFor("We drink it every morning.");
-      expect(view.container.textContent).toContain(
-        parts.map((part, i) => (i === index ? "____blank" : part)).join(""),
-      );
+      expect(view.container.textContent).toContain("We drink it every ____blank.");
+      expect(view.container.textContent).not.toContain("We drink it every morning.");
       const blank = view.container.querySelector<HTMLInputElement>("#blank-s3");
       if (!blank) throw new Error("blank input not found");
-      await submitInput(blank, parts[index]!);
+      await submitInput(blank, "morning");
       expect(view.container.textContent).toContain("Correct");
       expect(lessonFetches()).toEqual([]);
     });

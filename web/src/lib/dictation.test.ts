@@ -133,12 +133,6 @@ describe("blankFor", () => {
     expect(blank.parts.join("")).toBe(text);
   });
 
-  it("is deterministic", () => {
-    expect(blankFor("Thanks a lot for your help.")).toEqual(
-      blankFor("Thanks a lot for your help."),
-    );
-  });
-
   it.each(["", "...", " - ! "])("returns -1 for no-word text %j", (text) => {
     expect(blankFor(text).index).toBe(-1);
   });

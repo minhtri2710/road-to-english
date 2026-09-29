@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as backupStore from "../lib/backupStore";
 import { exportData } from "../lib/backup";
-import { cardsCsv } from "../lib/csv";
 import { todayKey } from "../lib/progress";
 import { getPracticeDays, recordPractice } from "../lib/progressStore";
 import { createCard } from "../lib/vocab";
@@ -49,7 +48,7 @@ describe("BackupControls", () => {
     await putCard(
       createCard(
         { front: 'say "hi"', back: "chào, bạn", source: { lessonId: "l", sentenceId: "s", word: "" } },
-        new Date(),
+        new Date("2026-01-02T03:04:05.000Z"),
       ),
     );
     const blobs: Blob[] = [];
@@ -74,7 +73,9 @@ describe("BackupControls", () => {
 
     expect(blobs).toHaveLength(1);
     expect(blobs[0]?.type).toBe("text/csv;charset=utf-8");
-    expect(await blobs[0]?.text()).toBe(cardsCsv(await getAllCards()));
+    expect(await blobs[0]?.text()).toBe(
+      '\uFEFF"front","back","due"\r\n"say ""hi""","chào, bạn","2026-01-02T03:04:05.000Z"\r\n',
+    );
     expect(downloads).toEqual([`road-to-english-cards-${todayKey(new Date())}.csv`]);
   });
 
@@ -146,8 +147,6 @@ describe("BackupControls", () => {
     await waitForCondition(hasText(container, "Backup error: export broke"));
     await click(container, "Export");
     await waitForCondition(() => !hasText(container, "Backup error")());
-    await click(container, "Export CSV");
-    expect(container.textContent).not.toContain("Backup error");
   });
 
   it("words the import confirm for signed-out and signed-in users", async () => {

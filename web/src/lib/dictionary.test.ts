@@ -48,10 +48,10 @@ describe("lookupWord", () => {
     await lookupWord("a b");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent("a b"));
     expect(url).toBe("https://api.dictionaryapi.dev/api/v2/entries/en/a%20b");
     expect(init).toMatchObject({ credentials: "omit", referrerPolicy: "no-referrer" });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(false);
     expect(init?.headers).toBeUndefined();
     expect(init?.body).toBeUndefined();
   });

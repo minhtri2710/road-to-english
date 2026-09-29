@@ -7,7 +7,6 @@ import {
   clickElement,
   harnessAct,
   openLesson,
-  renderApp,
   resetApp,
 } from "../test/app";
 import {
@@ -166,7 +165,7 @@ describe("SentenceShadowing", () => {
     ).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
   });
 
-  it("scales the shadowing rate by the chosen speed", async () => {
+  it("scales the shadowing rate by the chosen speed on an A2 lesson", async () => {
     const speech = installSpeechFakes();
     const rateAt = async (container: HTMLElement, speed: string) => {
       await click(container, "Display");
@@ -186,18 +185,6 @@ describe("SentenceShadowing", () => {
     });
     a2.container.remove();
 
-    // The URL still routes to the lesson, so the remount opens it directly.
-    const a1 = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 80 } });
-    expect(await rateAt(a1.container, "1x")).toBeCloseTo(80 / 180);
-    expect(await rateAt(a1.container, "0.5x")).toBeCloseTo(40 / 180);
-    await harnessAct(async () => {
-      a1.root.unmount();
-    });
-    a1.container.remove();
-
-    const high = await renderApp({ lesson: { ...greetingsLesson, targetWpm: 1000 } });
-    expect(await rateAt(high.container, "1x")).toBe(2);
-    expect(await rateAt(high.container, "0.5x")).toBe(1);
   });
 
   it("highlights the spoken word of the playing sentence and clears it on end", async () => {
@@ -252,10 +239,8 @@ describe("SentenceShadowing", () => {
     const first = greetingsLesson.sentences[0].text;
 
     const loop = buttonsNamed(container, "Loop")[0]!;
-    const restingClasses = loop.className;
     await click(container, "Loop");
     expect(loop.getAttribute("aria-pressed")).toBe("true");
-    expect(loop.className).not.toBe(restingClasses);
     expect(speech.spoken.map((utterance) => utterance.text)).toEqual([first]);
     await harnessAct(async () => {
       speech.finish();

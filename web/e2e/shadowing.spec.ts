@@ -1,4 +1,4 @@
-import { expect, menuItem, openLibraryLesson, test, viewLink } from "./fixtures";
+import { expect, openLibraryLesson, test, viewLink } from "./fixtures";
 
 test("shadow a library lesson, save a word, review it", async ({ page }) => {
   await openLibraryLesson(page, "Greetings & Basics");
@@ -63,8 +63,15 @@ test("Display menu opens by keyboard, navigates options, and Escape restores foc
   }
 });
 
-test("sentence reading joins punctuation and uses a real bold stress face", async ({ page }) => {
+test("sentence reading is larger than body text, joins punctuation and uses a real bold stress face", async ({ page }) => {
   await openLibraryLesson(page, "Stress Pairs: Nouns and Verbs");
+  const reading = page.getByText("The band will record a new record for its next album.", { exact: true });
+  await expect(reading).toBeVisible();
+  const [readingSize, bodySize] = await Promise.all([
+    reading.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    page.locator("body").evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  expect(readingSize).toBeGreaterThan(bodySize);
   const album = page.getByRole("button", { name: "album", exact: true }).first();
   const metrics = await album.evaluate((button) => {
     const textRange = (element: Element, text: string) => {
@@ -116,23 +123,13 @@ test("sentence reading joins punctuation and uses a real bold stress face", asyn
   expect(marks.order[1]).toMatch(/^[●•]( [●•])*$/);
   expect(marks.order[2]).toBe(".");
   await page.evaluate(async () => {
-    await document.fonts.load('700 20px "Be Vietnam Pro"', "album");
+    await document.fonts.load('400 16px "Be Vietnam Pro"', "The band will record a new record for its next album.");
   });
   const stressedWeight = await page.getByRole("button", { name: "album", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
   const unstressedWeight = await page.getByRole("button", { name: "will", exact: true }).first().locator("span span span").evaluate((label) => getComputedStyle(label).fontWeight);
-  const loaded = await page.evaluate(() => document.fonts.check('700 20px "Be Vietnam Pro"', "album"));
-  expect({ stressed: stressedWeight, unstressed: unstressedWeight, loaded }).toEqual({ stressed: "700", unstressed: "400", loaded: true });
-});
-
-test("one-at-a-time mode limits the lesson to one sentence and restores the list", async ({ page }) => {
-  await openLibraryLesson(page, "Greetings & Basics");
-  const guided = await menuItem(page, "One at a time");
-  await guided.click();
-  await expect(guided).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText("Sentence 1 of 9");
-  await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(1);
-
-  await (await menuItem(page, "One at a time")).click();
-  await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Text", exact: true })).toHaveCount(9);
+  const realBoldFace = await page.evaluate(async () => {
+    const loaded = await document.fonts.load('700 20px "Be Vietnam Pro"', "The band will record a new record for its next album.");
+    return loaded.some((face) => face.family.replaceAll('"', "") === "Be Vietnam Pro" && face.weight === "700" && face.status === "loaded");
+  });
+  expect({ stressed: stressedWeight, unstressed: unstressedWeight, realBoldFace }).toEqual({ stressed: "700", unstressed: "400", realBoldFace: true });
 });

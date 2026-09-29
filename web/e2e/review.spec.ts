@@ -102,14 +102,6 @@ for (const width of [360, 320]) {
 
 test("Listen first hides the card front until Show answer and speaks it", async ({ page }) => {
   await saveWords(page, ["morning"]);
-  const badge = page.locator("main span[title='1 due']");
-  const column = page.locator("main > div").last();
-  const badgeBox = await badge.boundingBox();
-  const columnBox = await column.boundingBox();
-  expect(badgeBox).not.toBeNull();
-  expect(columnBox).not.toBeNull();
-  expect(badgeBox!.width).toBeLessThan(columnBox!.width);
-
   const toggle = page.getByRole("button", { name: "Listen first" });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -121,6 +113,19 @@ test("Listen first hides the card front until Show answer and speaks it", async 
   await expect(page.getByText("morning", { exact: true })).toBeVisible();
   await expect(page.getByText("Listen and recall the card.")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
+});
+
+test("the due badge does not stretch across its parent", async ({ page }) => {
+  await saveWords(page, ["morning"]);
+  await expect(page.getByText("1 due")).toBeVisible();
+  const badge = page.locator("main span[title='1 due']");
+  await expect(badge).toBeVisible();
+  const parent = badge.locator("xpath=..");
+  const badgeBox = await badge.boundingBox();
+  const parentBox = await parent.boundingBox();
+  expect(badgeBox).not.toBeNull();
+  expect(parentBox).not.toBeNull();
+  expect(badgeBox!.width).toBeLessThan(parentBox!.width);
 });
 
 test("rating buttons carry their semantic colors in light and dark themes", async ({ page }) => {

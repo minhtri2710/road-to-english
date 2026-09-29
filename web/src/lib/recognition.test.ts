@@ -48,6 +48,12 @@ describe("recognition", () => {
     expect(recognitionSupported()).toBe(true);
   });
 
+  it("reports support from the standard SpeechRecognition constructor", () => {
+    FakeRecognition.instances = [];
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    expect(recognitionSupported()).toBe(true);
+  });
+
   it("starts with one-shot English settings and resolves the transcript", async () => {
     install();
     const { result } = recognizeOnce();

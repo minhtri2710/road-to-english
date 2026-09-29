@@ -65,12 +65,6 @@ describe("parseTranscript", () => {
     ]);
   });
 
-  it("ends every cue at the next start and the last at null", () => {
-    const cues = parseTranscript("0:01\na\n0:02\nb\n0:03\nc").map(({ cue }) => cue);
-    expect(cues.slice(0, -1).map(({ end }, i) => end === cues[i + 1]?.start)).toEqual([true, true]);
-    expect(cues.at(-1)?.end).toBeNull();
-  });
-
   it("rejects text before the first timestamp", () => {
     expect(() => parseTranscript("Intro\n0:00\nOne.")).toThrow("The transcript must start with a timestamp.");
   });

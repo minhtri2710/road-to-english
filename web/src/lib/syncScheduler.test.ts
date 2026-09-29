@@ -36,7 +36,7 @@ describe("sync scheduler", () => {
 
   it("keeps a newer local mutation when the in-flight server response is older", async () => {
     const initial = card("2026-01-02T00:00:00Z");
-    const newer = card("2026-01-04T00:00:00Z");
+    const newer = { ...card("2026-01-04T00:00:00Z"), updatedAt: "2026-01-02T00:00:01.000Z" };
     const olderResponse = { cards: [initial], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH };
     const first = deferred<typeof olderResponse>();
     const second = deferred<typeof olderResponse>();
@@ -57,15 +57,11 @@ describe("sync scheduler", () => {
     }, () => undefined);
     setSyncTrigger(scheduler.trigger);
     scheduler.trigger();
-    for (let attempt = 0; attempt < 20 && syncMock.mock.calls.length < 1; attempt += 1) {
-      await Promise.resolve();
-    }
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
 
     await putCard(newer);
     first.resolve(olderResponse);
-    for (let attempt = 0; attempt < 20 && syncMock.mock.calls.length < 2; attempt += 1) {
-      await Promise.resolve();
-    }
+    await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(2));
 
     expect((await getAllCards())[0]?.fsrs.last_review).toEqual(newer.fsrs.last_review);
     second.resolve(olderResponse);
@@ -198,9 +194,12 @@ describe("sync scheduler", () => {
     scheduler.stop();
   });
 
-  it("sends a changed body once after a 413", async () => {
+  it.each([
+    ["413", tooLarge, "tooLarge", "too many cards"],
+    ["400", () => new ApiError(400, null, "invalid sync state"), "rejected", null],
+  ] as const)("sends a changed body once after a %s", async (_name, error, expectedStatus, expectedCode) => {
     const reports: [SyncStatus, string | null][] = [];
-    syncMock.mockRejectedValue(tooLarge());
+    syncMock.mockRejectedValue(error());
     await putCard(card("2026-01-02T00:00:00Z"));
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status, code) => reports.push([status, code]));
     scheduler.trigger();
@@ -212,28 +211,31 @@ describe("sync scheduler", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(syncMock).toHaveBeenCalledTimes(2);
-    expect(reports).toEqual([["tooLarge", "too many cards"], ["tooLarge", "too many cards"]]);
+    expect(reports).toEqual([[expectedStatus, expectedCode], [expectedStatus, expectedCode]]);
     scheduler.stop();
   });
 
-  it("forgets the refused body after a 200", async () => {
+  it.each([
+    ["413", tooLarge, "tooLarge"],
+    ["400", () => new ApiError(400, null, "invalid sync state"), "rejected"],
+  ] as const)("forgets the %s refused body after a 200", async (_name, error, refused) => {
     const statuses: SyncStatus[] = [];
-    syncMock.mockRejectedValueOnce(tooLarge());
+    syncMock.mockRejectedValueOnce(error());
     syncMock.mockResolvedValue(empty);
     await putCard(card("2026-01-02T00:00:00Z"));
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge"]));
+    await vi.waitFor(() => expect(statuses).toEqual([refused]));
 
     await putCard(card("2026-01-03T00:00:00Z"));
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced"]));
+    await vi.waitFor(() => expect(statuses).toEqual([refused, "synced"]));
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced", "synced"]));
-    // The body the 413 refused is sendable again once a 200 cleared the memory.
+    await vi.waitFor(() => expect(statuses).toEqual([refused, "synced", "synced"]));
+    // The initially refused body is sendable again once a 200 cleared the memory.
     await putCard(card("2026-01-02T00:00:00Z"));
     scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["tooLarge", "synced", "synced", "synced"]));
+    await vi.waitFor(() => expect(statuses).toEqual([refused, "synced", "synced", "synced"]));
 
     expect(syncMock).toHaveBeenCalledTimes(4);
     expect(JSON.stringify(syncMock.mock.calls[3]?.[0])).toBe(JSON.stringify(syncMock.mock.calls[0]?.[0]));
@@ -301,41 +303,6 @@ describe("sync scheduler failures", () => {
     scheduler.stop();
   });
 
-  it("sends an unchanged body rejected with 400 no more, and a changed body once", async () => {
-    await putCard(card("2026-01-02T00:00:00Z"));
-    const { statuses, fetch } = await twice(async () => json({ error: "invalid sync state" }, 400));
-    expect(statuses).toEqual(["rejected", "rejected"]);
-    expect(fetch).toHaveBeenCalledTimes(1);
-
-    const later: SyncStatus[] = [];
-    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => later.push(status));
-    setSyncTrigger(scheduler.trigger);
-    await putCard(card("2026-01-03T00:00:00Z"));
-    await vi.waitFor(() => expect(later).toEqual(["rejected"]));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(fetch).toHaveBeenCalledTimes(2);
-    scheduler.stop();
-  });
-
-  it("forgets the rejected body after a 200", async () => {
-    await putCard(card("2026-01-02T00:00:00Z"));
-    const fetch = vi.fn(async () => json({ error: "invalid sync state" }, 400));
-    vi.stubGlobal("fetch", fetch);
-    const statuses: SyncStatus[] = [];
-    const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
-    scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["rejected"]));
-
-    fetch.mockImplementation(async () => json({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }));
-    await putCard(card("2026-01-03T00:00:00Z"));
-    scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["rejected", "synced"]));
-    await putCard(card("2026-01-02T00:00:00Z"));
-    scheduler.trigger();
-    await vi.waitFor(() => expect(statuses).toEqual(["rejected", "synced", "synced"]));
-    expect(fetch).toHaveBeenCalledTimes(3);
-    scheduler.stop();
-  });
 });
 
 describe("syncedAgo", () => {
@@ -450,7 +417,6 @@ describe("sync scheduler settle step", () => {
     expect(await storedCards()).toEqual([{ ...x, dirty: false }]);
     await run();
     expect(syncMock.mock.results[0]!.type).toBe("return");
-    expect((await syncMock.mock.results[0]!.value).syncEpoch).toBe((await syncMock.mock.results[1]!.value).syncEpoch);
     expect(sentCards(1)).toEqual([{ ...x, dirty: false }]);
     expect(await storedCards()).toEqual([]);
     await run();

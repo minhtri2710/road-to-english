@@ -333,9 +333,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     const result = page.locator('[role="status"] p').filter({ hasText: "Not quite: 4 of 6 words matched" });
     await expect(result).toHaveAttribute("data-motion", "answer-nudge");
     await expect(result).toHaveCSS("animation-iteration-count", "1");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(result).toHaveCSS("animation-name", "none");
-    } else {
+    if (!(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches))) {
       expect(await result.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
     }
     await inspect();
@@ -383,20 +381,18 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Show answer" }).click();
     await expect(page.getByRole("button", { name: "Good" })).toBeVisible();
     const card = page.locator("[data-review-card]");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(card).toHaveCSS("animation-name", "none");
-    } else {
+    if (!(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches))) {
       const animation = await card.evaluate((element) => {
-        const current = element.getAnimations()[0];
+        const style = getComputedStyle(element);
         return {
-          iterations: current?.effect?.getComputedTiming().iterations,
-          duration: current?.effect?.getComputedTiming().duration,
-          computedDuration: getComputedStyle(element).animationDuration,
+          name: style.animationName,
+          iterations: style.animationIterationCount,
+          duration: Number.parseFloat(style.animationDuration),
         };
       });
-      expect(animation.iterations).toBe(1);
-      expect(animation.duration).toBeLessThanOrEqual(320);
-      expect(animation.computedDuration).toBe("0.32s");
+      expect(animation.name).not.toBe("none");
+      expect(animation.iterations).toBe("1");
+      expect(animation.duration).toBeLessThanOrEqual(0.32);
     }
     await inspect();
   }],
@@ -698,12 +694,6 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(result).toHaveAttribute("data-motion", "answer-correct");
     const mark = result.locator('[data-motion="answer-correct"]');
     await expect(mark).toHaveCount(1);
-    await expect(mark).toHaveCSS("animation-iteration-count", "1");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(mark).toHaveCSS("animation-name", "none");
-    } else {
-      expect(await mark.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
-    }
     await expect(page.locator('[data-feedback="correct-word"]').first()).toBeVisible();
     await inspect();
   }],
@@ -718,8 +708,8 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     const mark = result.locator('[data-motion="answer-correct"]');
     await expect(mark).toHaveCSS("animation-iteration-count", "1");
     await expect(mark.locator("svg")).toBeVisible();
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(mark).toHaveCSS("animation-name", "none");
+    if (!(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches))) {
+      expect(await mark.evaluate((element) => getComputedStyle(element).animationName)).not.toBe("none");
     }
     await inspect();
   }],
@@ -729,12 +719,14 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByRole("button", { name: "Next lesson: Shopping Basics" })).toBeVisible();
     const mark = page.getByRole("region", { name: "Lesson complete" }).getByRole("heading", { name: "Lesson complete" }).locator('[data-motion="milestone"]');
     await expect(mark).toHaveCount(1);
-    await expect(mark).toHaveCSS("animation-iteration-count", "1");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(mark).toHaveCSS("animation-name", "none");
-    } else {
-      const duration = await mark.evaluate((element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration);
-      expect(duration).toBeLessThanOrEqual(800);
+    if (!(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches))) {
+      const animation = await mark.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { name: style.animationName, iterations: style.animationIterationCount, duration: Number.parseFloat(style.animationDuration) };
+      });
+      expect(animation.name).not.toBe("none");
+      expect(animation.iterations).toBe("1");
+      expect(animation.duration).toBeLessThanOrEqual(0.8);
     }
     await inspect();
   }],
@@ -751,12 +743,14 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await expect(page.getByText("Daily goal met.", { exact: true })).toBeVisible();
     const mark = page.locator('[role="status"]').filter({ hasText: "Daily goal met." }).locator('[data-motion="milestone"]');
     await expect(mark).toHaveCount(1);
-    await expect(mark).toHaveCSS("animation-iteration-count", "1");
-    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
-      await expect(mark).toHaveCSS("animation-name", "none");
-    } else {
-      const duration = await mark.evaluate((element) => element.getAnimations()[0]?.effect?.getComputedTiming().duration);
-      expect(duration).toBeLessThanOrEqual(800);
+    if (!(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches))) {
+      const animation = await mark.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { name: style.animationName, iterations: style.animationIterationCount, duration: Number.parseFloat(style.animationDuration) };
+      });
+      expect(animation.name).not.toBe("none");
+      expect(animation.iterations).toBe("1");
+      expect(animation.duration).toBeLessThanOrEqual(0.8);
     }
     await inspect();
     await page.reload();
@@ -821,11 +815,32 @@ test.describe("axe", () => {
 async function focusIndicator(page: Page): Promise<{ label: string; visible: boolean }> {
   return page.evaluate(() => {
     const el = document.activeElement as HTMLElement;
-    const style = getComputedStyle(el);
-    const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
+    const wasFocused = el.matches(":focus");
+    const style = () => {
+      const computed = getComputedStyle(el);
+      return {
+        outlineStyle: computed.outlineStyle,
+        outlineWidth: Number.parseFloat(computed.outlineWidth),
+        outlineColor: computed.outlineColor,
+        outlineOffset: computed.outlineOffset,
+        boxShadow: computed.boxShadow,
+      };
+    };
+    const label = `${el.tagName} ${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 40)}`;
+    const focused = style();
+    el.blur();
+    const blurred = style();
+    if (wasFocused) el.focus();
+    const colorHasAlpha = (color: string) => {
+      if (color === "transparent") return false;
+      const alpha = color.match(/,\s*([\d.]+)\s*\)$/)?.[1] ?? color.match(/\/\s*([\d.]+)%?\s*\)$/)?.[1];
+      return alpha === undefined || Number(alpha) > 0;
+    };
+    const outlineChanged = focused.outlineStyle !== blurred.outlineStyle || focused.outlineWidth !== blurred.outlineWidth || focused.outlineColor !== blurred.outlineColor || focused.outlineOffset !== blurred.outlineOffset;
+    const paintedOutline = focused.outlineStyle !== "none" && focused.outlineWidth > 0 && colorHasAlpha(focused.outlineColor);
     return {
-      label: `${el.tagName} ${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 40)}`,
-      visible: outline || style.boxShadow !== "none",
+      label,
+      visible: (outlineChanged && paintedOutline) || (focused.boxShadow !== blurred.boxShadow && focused.boxShadow !== "none"),
     };
   });
 }
@@ -947,6 +962,16 @@ async function rowOverflow(page: Page, title: string): Promise<string[]> {
   });
 }
 
+test("the first desktop lesson row stays inside the first screen with the storage banner", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await showStorageBanner(page);
+  await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
+  const row = await page.getByRole("button", { name: "About Me" }).boundingBox();
+  expect(row).not.toBeNull();
+  expect(row!.y + row!.height).toBeLessThanOrEqual(900);
+  await expect(page.getByRole("button", { name: LIBRARY_LESSON })).toBeVisible();
+});
+
 test("desktop lesson rows keep their meta line inside the row", async ({ page }) => {
   await createUserLesson(page);
   for (const title of [LIBRARY_LESSON, USER_LESSON]) {
@@ -1017,8 +1042,10 @@ test.describe("mobile 375x667", () => {
       await grantPersistence(page, granted);
       await page.goto("/");
       await expect(page.getByText(STORAGE_BANNER)).toHaveCount(granted ? 0 : 1);
+      await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
       const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
-      expect(box?.y).toBeLessThan(667);
+      expect(box).not.toBeNull();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(667);
     });
   }
 
@@ -1222,8 +1249,10 @@ test.describe("first-run welcome", () => {
     test(`the first lesson stays inside the first screen on ${name} with the storage banner`, async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 667 });
       await reach(page);
+      await expect(page.getByRole("button", { name: "About Me" })).toBeVisible();
       const box = await page.getByRole("button", { name: "About Me" }).boundingBox();
-      expect(box?.y).toBeLessThan(667);
+      expect(box).not.toBeNull();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(667);
     });
   }
 

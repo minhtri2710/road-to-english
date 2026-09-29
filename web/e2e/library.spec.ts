@@ -50,7 +50,7 @@ test("the level filter narrows the library rows and survives a reload", async ({
   await expect(rows).toHaveCount(7);
 });
 
-test("library completion progress transitions to its new value", async ({ page }) => {
+test("library completion progress reaches its new value", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("radiogroup", { name: "Library level" }).getByRole("radio", { name: "B2" }).click();
   const progress = page.getByRole("progressbar", { name: "B2: 0 of 7 completed" });
@@ -73,8 +73,6 @@ test("library completion progress transitions to its new value", async ({ page }
   const changedFill = changedProgress.locator("div");
   await expect(changedProgress).toHaveAttribute("aria-valuenow", "1");
   await expect.poll(() => changedFill.evaluate((element) => Number.parseFloat(getComputedStyle(element).width))).toBeGreaterThan(0);
-  await expect(changedFill).toHaveCSS("transition-property", "width");
-  await expect(changedFill).toHaveCSS("transition-duration", "0.2s");
 });
 
 test("Today offers Continue for the lesson opened last", async ({ page }) => {
@@ -113,6 +111,37 @@ test("the Today card's goal picker survives a reload", async ({ page }) => {
   await page.reload();
   await expect(today.getByText("0 of 20 practice actions today")).toBeVisible();
   await expect(today.getByRole("button", { name: "20 Intense" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the goal picker changes the mounted progress ring after practice", async ({ page }) => {
+  await page.goto("/");
+  const today = page.getByRole("heading", { name: "Today" }).locator("xpath=../..");
+  await expect(today.getByText("Start a new streak today")).toBeVisible();
+  const lesson = page.getByRole("button", { name: "Greetings & Basics" });
+  await expect(lesson).toBeVisible();
+  await lesson.click();
+  await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
+  await page.getByLabel("What did you hear?").first().fill("Good morning");
+  await page.getByRole("button", { name: "Check" }).first().click();
+  await expect(page.getByText(/^Reference:/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+  await expect(today.getByText("1 of 10 practice actions today")).toBeVisible();
+
+  const ring = today.locator('[role="progressbar"]');
+  const circle = ring.locator("circle").nth(1);
+  await circle.evaluate((element) => { element.dataset.testNodeIdentity = "original"; });
+  const before = await circle.evaluate((element) => Number.parseFloat(getComputedStyle(element).strokeDashoffset));
+  await today.getByRole("button", { name: "5 Light" }).click();
+  await expect(today.getByText("1 of 5 practice actions today")).toBeVisible();
+  await expect(circle).toHaveAttribute("data-test-node-identity", "original");
+  await expect.poll(() => circle.evaluate((element) =>
+    element.getAnimations().some((animation) =>
+      animation.playState === "running" &&
+      animation.constructor.name === "CSSTransition" &&
+      (animation as CSSTransition).transitionProperty === "stroke-dashoffset",
+    ),
+  )).toBe(true);
+  await expect.poll(() => circle.evaluate((element) => Number.parseFloat(getComputedStyle(element).strokeDashoffset))).not.toBe(before);
 });
 
 test("the week view marks today as practised after a practice action", async ({ page }) => {

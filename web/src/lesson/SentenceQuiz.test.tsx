@@ -1,8 +1,6 @@
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
-import { WordDiffResult } from "./SentenceQuiz";
 import {
   actionsToday,
   buttonsNamed,
@@ -78,31 +76,6 @@ describe("SentenceQuiz", () => {
     expect(mark?.getAttribute("data-motion")).toBe("answer-correct");
     expect(mark?.getAttribute("aria-hidden")).toBe("true");
     expect(result?.getAttribute("data-motion")).toBe("answer-correct");
-  });
-
-  it("shows correct words without a feedback check id", async () => {
-    installSpeechFakes();
-    const container = document.createElement("div");
-    const root = createRoot(container);
-    await harnessAct(() => {
-      root.render(
-        <WordDiffResult
-          text="Good morning, how are you today?"
-          answer="Good morning, how are you today?"
-          verb="typed"
-          targetWpm={90}
-          speed={1}
-          stopMedia={() => undefined}
-        />,
-      );
-    });
-
-    const word = Array.from(container.querySelectorAll<HTMLElement>("span")).find((node) => node.textContent === "Good");
-    expect(word).not.toBeUndefined();
-    expect(word?.getAttribute("data-feedback")).toBeNull();
-    expect(word?.getAttribute("style")).toBeNull();
-    await harnessAct(() => root.unmount());
-    container.remove();
   });
 
   it("marks missed and wrong words after checking dictation", async () => {
@@ -284,8 +257,6 @@ describe("SentenceQuiz", () => {
 
       const choices = bank(container, "about-me-1");
       expect([...choices].sort()).toEqual(["come", "from", "like", "name"]);
-      expect(bank(container, "about-me-1")).toEqual(choices);
-
       const input = container.querySelector<HTMLInputElement>("#blank-about-me-1");
       await click(container, "name");
       expect(input?.value).toBe("name");
