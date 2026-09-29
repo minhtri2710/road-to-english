@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { test as base, expect, type Download, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Download, type Page } from "@playwright/test";
 
 const YT_API = "https://www.youtube.com/iframe_api";
 
@@ -68,24 +68,32 @@ function installBrowserFakes() {
   speechSynthesis.cancel = () => undefined;
 }
 
+async function installContextSetup(context: BrowserContext, external: string[]): Promise<void> {
+  await context.route("**/*", (route) => {
+    const url = route.request().url();
+    const { hostname } = new URL(url);
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return route.continue();
+    }
+    if (url === YT_API) {
+      return route.fulfill({ contentType: "text/javascript", body: FAKE_YT_API });
+    }
+    external.push(url);
+    return route.abort();
+  });
+  await context.addInitScript(installBrowserFakes);
+}
+
 // Every test starts past the first-run welcome unless it opts in with test.use({ welcomed: false }).
-export const test = base.extend<{ external: string[]; welcomed: boolean }>({
+export const test = base.extend<{
+  external: string[];
+  welcomed: boolean;
+  secondDevice: { page: Page; external: string[] };
+}>({
   welcomed: [true, { option: true }],
   external: async ({ context }, use) => {
     const external: string[] = [];
-    await context.route("**/*", (route) => {
-      const url = route.request().url();
-      const { hostname } = new URL(url);
-      if (hostname === "localhost" || hostname === "127.0.0.1") {
-        return route.continue();
-      }
-      if (url === YT_API) {
-        return route.fulfill({ contentType: "text/javascript", body: FAKE_YT_API });
-      }
-      external.push(url);
-      return route.abort();
-    });
-    await context.addInitScript(installBrowserFakes);
+    await installContextSetup(context, external);
     await use(external);
     expect(external, "external requests").toEqual([]);
   },
@@ -95,6 +103,18 @@ export const test = base.extend<{ external: string[]; welcomed: boolean }>({
       await page.addInitScript(() => localStorage.setItem("road-to-english.welcomed", "done"));
     }
     await use(page);
+  },
+  secondDevice: async ({ browser, baseURL, welcomed }, use) => {
+    const context = await browser.newContext({ baseURL });
+    const external: string[] = [];
+    await installContextSetup(context, external);
+    if (welcomed) {
+      await context.addInitScript(() => localStorage.setItem("road-to-english.welcomed", "done"));
+    }
+    const page = await context.newPage();
+    await use({ page, external });
+    await context.close();
+    expect(external, "second device external requests").toEqual([]);
   },
 });
 
