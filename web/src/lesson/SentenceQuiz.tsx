@@ -103,7 +103,7 @@ export function WordDiffResult({
   answer: string;
   verb: "typed" | "said";
   notes?: string;
-  checkId?: number;
+  checkId: number;
   targetWpm: number;
   speed: number;
   stopMedia: () => void;
@@ -113,7 +113,6 @@ export function WordDiffResult({
   const matched = diff.filter((entry) => entry.kind === "correct").length;
   const endings = endingHints(diff);
   const correct = diff.length > 0 && diff.every((entry) => entry.kind === "correct");
-  const feedbackEnabled = checkId !== undefined;
   const canSpeak = speechSupported();
   const wordContent = (entry: WordDiff) => {
     if (entry.kind === "extra") {
@@ -141,14 +140,14 @@ export function WordDiffResult({
       {verb === "said" ? (
         <>
           <Text as="p">What the browser heard: {answer}</Text>
-          <Text as="p" weight="semibold" xstyle={[feedbackEnabled && styles.result, feedbackEnabled && !correct && styles.wrongResult]} key={checkId} data-motion={feedbackEnabled ? (correct ? "answer-correct" : "answer-nudge") : undefined}>
-            {feedbackEnabled && correct && <CorrectMark />}
+          <Text as="p" weight="semibold" xstyle={[styles.result, !correct && styles.wrongResult]} key={checkId} data-motion={correct ? "answer-correct" : "answer-nudge"}>
+            {correct && <CorrectMark />}
             The browser matched {matched} of {total} words
           </Text>
         </>
       ) : (
-        <Text as="p" weight="semibold" xstyle={[feedbackEnabled && styles.result, feedbackEnabled && !correct && styles.wrongResult]} key={checkId} data-motion={feedbackEnabled ? (correct ? "answer-correct" : "answer-nudge") : undefined}>
-          {feedbackEnabled && correct && <CorrectMark />}
+        <Text as="p" weight="semibold" xstyle={[styles.result, !correct && styles.wrongResult]} key={checkId} data-motion={correct ? "answer-correct" : "answer-nudge"}>
+          {correct && <CorrectMark />}
           {correct
             ? `Correct: ${total} of ${total} words`
             : `Not quite: ${matched} of ${total} words matched`}
@@ -162,10 +161,10 @@ export function WordDiffResult({
             <Text
               as="span"
               color="primary"
-              data-feedback={feedbackEnabled && entry.kind === "correct" ? "correct-word" : undefined}
+              data-feedback={entry.kind === "correct" ? "correct-word" : undefined}
               xstyle={[
                 entry.kind === "correct" ? styles.wordCorrect : sharedStyles.error,
-                feedbackEnabled && entry.kind === "correct" && styles.wordFeedback,
+                entry.kind === "correct" && styles.wordFeedback,
               ]}
             >
               {wordContent(entry)}

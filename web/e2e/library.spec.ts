@@ -129,18 +129,18 @@ test("the goal picker changes the mounted progress ring after practice", async (
 
   const ring = today.locator('[role="progressbar"]');
   const circle = ring.locator("circle").nth(1);
-  await circle.evaluate((element) => { element.dataset.testNodeIdentity = "original"; });
+  // Listen before the click: a 200ms transition can end before a poll sees it running.
+  await circle.evaluate((element) => {
+    element.dataset.testNodeIdentity = "original";
+    element.addEventListener("transitionrun", (event) => {
+      if ((event as TransitionEvent).propertyName === "stroke-dashoffset") element.dataset.dashoffsetTransition = "run";
+    });
+  });
   const before = await circle.evaluate((element) => Number.parseFloat(getComputedStyle(element).strokeDashoffset));
   await today.getByRole("button", { name: "5 Light" }).click();
   await expect(today.getByText("1 of 5 practice actions today")).toBeVisible();
   await expect(circle).toHaveAttribute("data-test-node-identity", "original");
-  await expect.poll(() => circle.evaluate((element) =>
-    element.getAnimations().some((animation) =>
-      animation.playState === "running" &&
-      animation.constructor.name === "CSSTransition" &&
-      (animation as CSSTransition).transitionProperty === "stroke-dashoffset",
-    ),
-  )).toBe(true);
+  await expect(circle).toHaveAttribute("data-dashoffset-transition", "run");
   await expect.poll(() => circle.evaluate((element) => Number.parseFloat(getComputedStyle(element).strokeDashoffset))).not.toBe(before);
 });
 
