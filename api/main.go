@@ -22,8 +22,8 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func newMux(store *library.Store, repo *storage.Repository) *http.ServeMux {
-	limiter := newAuthLimiter()
+func newMux(store *library.Store, repo *storage.Repository, now func() time.Time) *http.ServeMux {
+	limiter := newAuthLimiter(now)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /lessons", func(w http.ResponseWriter, _ *http.Request) {
@@ -140,7 +140,7 @@ func run() error {
 		origin = defaultCORSOrigin
 	}
 
-	handler := corsMiddleware(jsonResponseMiddleware(newMux(store, repo)), origin)
+	handler := corsMiddleware(jsonResponseMiddleware(newMux(store, repo, time.Now)), origin)
 	log.Printf("API server listening on :%s", port)
 	return newServer(":"+port, handler).ListenAndServe()
 }

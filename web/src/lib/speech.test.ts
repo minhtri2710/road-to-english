@@ -1,22 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { installSpeechFakes } from "../test/browser";
 import { speak, stopSpeaking } from "./speech";
 
 interface FakeUtterance {
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onboundary: ((event: { name: string; charIndex: number }) => void) | null;
-}
-
-function installSpeechFakes() {
-  class Utterance {
-    onend: (() => void) | null = null;
-    onerror: ((event: { error: string }) => void) | null = null;
-    onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
-    constructor(readonly text: string) {}
-  }
-  vi.stubGlobal("speechSynthesis", { speak: vi.fn(), cancel: vi.fn() });
-  vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
 }
 
 afterEach(() => {

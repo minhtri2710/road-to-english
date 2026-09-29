@@ -4,7 +4,7 @@ import { vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
 import { App } from "../App";
-import { clearSessionPrefs } from "../lib/prefs";
+import { writePref } from "../lib/prefs";
 import { todayKey } from "../lib/progress";
 import { getDailyCount } from "../lib/progressStore";
 import { greetingsLesson, lessonSummaries } from "./fixtures";
@@ -332,7 +332,17 @@ export async function resetApp(): Promise<void> {
   window.history.replaceState(null, "", "/");
   restoreProperty(window, "localStorage", originalLocalStorage);
   localStorage.clear();
-  clearSessionPrefs();
+  for (const key of [
+    "road-to-english.levelFilter",
+    "road-to-english.dailyGoal",
+    "road-to-english.lastLesson",
+    "road-to-english.welcomed",
+    "road-to-english.pronunciationCheck",
+    "road-to-english.autoHideText",
+    "road-to-english.listenFirst",
+  ]) {
+    writePref(key, null);
+  }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   fetchMock.mockReset();

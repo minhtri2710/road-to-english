@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,7 +30,32 @@ type testAPI struct {
 	repo    *storage.Repository
 }
 
+type testClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func newTestClock(now time.Time) *testClock {
+	return &testClock{now: now}
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
 func newTestAPI(t *testing.T) *testAPI {
+	return newTestAPIWithClock(t, newTestClock(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)))
+}
+
+func newTestAPIWithClock(t *testing.T, clock *testClock) *testAPI {
 	t.Helper()
 	var repo *storage.Repository
 	pool := testdb.Open(t, func(dsn string) {
@@ -44,7 +70,7 @@ func newTestAPI(t *testing.T) *testAPI {
 		t.Fatalf("library.LoadSeed() error = %v", err)
 	}
 	return &testAPI{
-		handler: corsMiddleware(jsonResponseMiddleware(newMux(store, repo)), defaultCORSOrigin),
+		handler: corsMiddleware(jsonResponseMiddleware(newMux(store, repo, clock.Now)), defaultCORSOrigin),
 		pool:    pool,
 		repo:    repo,
 	}

@@ -2,12 +2,10 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach } from "vitest";
 
-import { WELCOMED_KEY, WELCOMED_VALUE } from "../hooks/useWelcome";
-
 beforeEach(() => {
   indexedDB = new IDBFactory();
   // Tests start past the first-run welcome; welcome tests remove this key to opt in.
-  localStorage.setItem(WELCOMED_KEY, WELCOMED_VALUE);
+  localStorage.setItem("road-to-english.welcomed", "done");
 });
 
 declare global {

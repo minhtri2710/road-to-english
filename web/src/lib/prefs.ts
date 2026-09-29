@@ -13,11 +13,6 @@ export function readPref(key: string): string | null {
   }
 }
 
-// Forgets the session copies; the App test harness calls it between tests.
-export function clearSessionPrefs(): void {
-  session.clear();
-}
-
 // Stores value, or removes the key for null.
 export function writePref(key: string, value: string | null): void {
   try {

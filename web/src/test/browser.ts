@@ -58,6 +58,7 @@ export function installSpeechFakes() {
     lang = "";
     rate = 1;
     onend: (() => void) | null = null;
+    onerror: ((event: { error: string }) => void) | null = null;
     onboundary: ((event: { name: string; charIndex: number }) => void) | null = null;
     constructor(readonly text: string) {}
   }

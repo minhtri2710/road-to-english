@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as progressStore from "../lib/progressStore";
+import { readPref, writePref } from "../lib/prefs";
 import { todayKey } from "../lib/progress";
 import type { LessonSummary } from "../api/lessons";
 import { putUserLesson } from "../lib/userLessons";
@@ -450,6 +451,14 @@ describe("LessonList", () => {
       await click(container, "Back to lessons");
       await waitForCondition(() => buttonsNamed(container, "Continue").length === 1);
       expect(todayCard(container)!.textContent).toContain("Continue: Daily Routine");
+    });
+
+    it("clears a blocked-storage session choice between tests through the production API", async () => {
+      blockStorage();
+      writePref("road-to-english.levelFilter", "B1");
+      expect(readPref("road-to-english.levelFilter")).toBe("B1");
+      await resetApp();
+      expect(readPref("road-to-english.levelFilter")).toBeNull();
     });
 
     it("keeps a choice for the session when reads work but writes fail", async () => {

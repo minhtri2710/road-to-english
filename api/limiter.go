@@ -25,13 +25,14 @@ type limitWindow struct {
 // ponytail: in-memory, single-instance limiter keyed per IPv4 address or IPv6 /64; move to a shared store if the api runs more than one instance.
 type authLimiter struct {
 	mu       sync.Mutex
+	now      func() time.Time
 	ips      map[string]*limitWindow
 	pairs    map[string]*limitWindow // failed logins per email and IP key
 	accounts map[string]*limitWindow // failed logins per email across all IP keys
 }
 
-func newAuthLimiter() *authLimiter {
-	return &authLimiter{ips: map[string]*limitWindow{}, pairs: map[string]*limitWindow{}, accounts: map[string]*limitWindow{}}
+func newAuthLimiter(now func() time.Time) *authLimiter {
+	return &authLimiter{now: now, ips: map[string]*limitWindow{}, pairs: map[string]*limitWindow{}, accounts: map[string]*limitWindow{}}
 }
 
 // current returns key's live window, dropping expired entries; nil when none is live.
@@ -87,7 +88,7 @@ func (l *authLimiter) allowIP(w http.ResponseWriter, r *http.Request) bool {
 	host := ipKey(r)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
+	now := l.now()
 	entry := current(l.ips, host, ipAttemptWindow, now)
 	if entry == nil {
 		entry = admit(l.ips, host, ipAttemptWindow, now)
@@ -129,7 +130,7 @@ type loginReservation struct {
 func (l *authLimiter) allowAccount(w http.ResponseWriter, r *http.Request, email string) (loginReservation, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
+	now := l.now()
 	pair := live(l.pairs, pairKey(r, email), now)
 	account := live(l.accounts, email, now)
 	if pair != nil && pair.count >= loginFailureLimit {
