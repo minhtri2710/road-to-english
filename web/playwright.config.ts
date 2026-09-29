@@ -10,6 +10,8 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   reporter: "list",
+  // Recent 306-test runs take 4.4–4.6 minutes; 15 minutes leaves loaded-host headroom.
+  globalTimeout: 900_000,
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
     headless: true,
