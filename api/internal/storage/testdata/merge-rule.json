@@ -1,0 +1,96 @@
+{
+  "_comment": "Shared merge-rule vectors loaded by TestCardUpsertMergeRule and web/src/lib/mergeCard.test.ts.",
+  "cases": [
+    {
+      "name": "newer updatedAt wins",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    },
+    {
+      "name": "older updatedAt loses",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" },
+      "incoming": { "front": "b", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    },
+    {
+      "name": "older live copy never resurrects a tombstone",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" },
+      "incoming": { "front": "b", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" }
+    },
+    {
+      "name": "newer live copy replaces a tombstone",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly", "deletedAt": "earlier" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    },
+    {
+      "name": "equal time: incoming tombstone wins",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" }
+    },
+    {
+      "name": "equal time: stored tombstone kept",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" }
+    },
+    {
+      "name": "equal live cards: stored kept",
+      "symmetric": false,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "fresh" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    },
+    {
+      "name": "equal tombstones: stored kept",
+      "symmetric": false,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewedMore", "lastReview": "reviewEarly", "deletedAt": "later" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "later" }
+    },
+    {
+      "name": "newer fresh save over reviewed history keeps the history",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "fresh" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" }
+    },
+    {
+      "name": "older reviewed copy gives its history to a newer fresh save",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "fresh" },
+      "incoming": { "front": "b", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewEarly" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" }
+    },
+    {
+      "name": "older fresh save loses",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" },
+      "incoming": { "front": "b", "updatedAt": "earlier", "history": "fresh" },
+      "want": { "front": "a", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    },
+    {
+      "name": "reviewed beats reviewed by time",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "earlier", "history": "reviewedMore", "lastReview": "reviewLate" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewEarly" }
+    },
+    {
+      "name": "tombstone with history + newer fresh save: live, history kept",
+      "symmetric": true,
+      "stored": { "front": "a", "updatedAt": "earlier", "history": "reviewed", "lastReview": "reviewLate", "deletedAt": "earlier" },
+      "incoming": { "front": "b", "updatedAt": "later", "history": "fresh" },
+      "want": { "front": "b", "updatedAt": "later", "history": "reviewed", "lastReview": "reviewLate" }
+    }
+  ]
+}

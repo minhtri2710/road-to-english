@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"reflect"
 	"slices"
@@ -446,63 +447,146 @@ func TestSyncStateCapsPracticeDaysAndLessonCompletion(t *testing.T) {
 	}
 }
 
-// Mirrors web mergeCard.test.ts case for case.
+type mergeRuleCardFixture struct {
+	Front      string `json:"front"`
+	UpdatedAt  string `json:"updatedAt"`
+	History    string `json:"history"`
+	LastReview string `json:"lastReview"`
+	DeletedAt  string `json:"deletedAt"`
+}
+
+type mergeRuleCaseFixture struct {
+	Name      string               `json:"name"`
+	Symmetric *bool                `json:"symmetric"`
+	Stored    mergeRuleCardFixture `json:"stored"`
+	Incoming  mergeRuleCardFixture `json:"incoming"`
+	Want      mergeRuleCardFixture `json:"want"`
+}
+
+func loadMergeRuleCases(t *testing.T) []mergeRuleCaseFixture {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/merge-rule.json")
+	if err != nil {
+		t.Fatalf("read shared merge-rule vectors: %v", err)
+	}
+	var fixture struct {
+		Comment string                 `json:"_comment"`
+		Cases   []mergeRuleCaseFixture `json:"cases"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&fixture); err != nil {
+		t.Fatalf("decode shared merge-rule vectors: %v", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		t.Fatalf("shared merge-rule vectors have trailing data: %v", err)
+	}
+	if fixture.Comment == "" {
+		t.Fatal("shared merge-rule vectors are missing their comment")
+	}
+	if len(fixture.Cases) != 13 {
+		t.Fatalf("loaded %d shared merge-rule rows, want 13", len(fixture.Cases))
+	}
+	names := make(map[string]bool, len(fixture.Cases))
+	validateCard := func(row, field string, card mergeRuleCardFixture) {
+		t.Helper()
+		if card.Front == "" {
+			t.Fatalf("row %q %s has empty front", row, field)
+		}
+		if card.UpdatedAt != "earlier" && card.UpdatedAt != "later" {
+			t.Fatalf("row %q %s has invalid updatedAt %q", row, field, card.UpdatedAt)
+		}
+		if card.History != "fresh" && card.History != "reviewed" && card.History != "reviewedMore" {
+			t.Fatalf("row %q %s has invalid history %q", row, field, card.History)
+		}
+		if card.History == "fresh" && card.LastReview != "" {
+			t.Fatalf("row %q %s fresh history must not have lastReview", row, field)
+		}
+		if card.History != "fresh" && card.LastReview != "reviewEarly" && card.LastReview != "reviewLate" {
+			t.Fatalf("row %q %s has invalid or missing lastReview %q", row, field, card.LastReview)
+		}
+		if card.DeletedAt != "" && card.DeletedAt != "earlier" && card.DeletedAt != "later" {
+			t.Fatalf("row %q %s has invalid deletedAt %q", row, field, card.DeletedAt)
+		}
+		if card.DeletedAt != "" && card.DeletedAt != card.UpdatedAt {
+			t.Fatalf("row %q %s has deletedAt %q different from updatedAt %q", row, field, card.DeletedAt, card.UpdatedAt)
+		}
+	}
+	for _, row := range fixture.Cases {
+		if row.Name == "" || names[row.Name] {
+			t.Fatalf("shared merge-rule vectors have empty or duplicate row name %q", row.Name)
+		}
+		names[row.Name] = true
+		if row.Symmetric == nil {
+			t.Fatalf("row %q is missing symmetric", row.Name)
+		}
+		validateCard(row.Name, "stored", row.Stored)
+		validateCard(row.Name, "incoming", row.Incoming)
+		validateCard(row.Name, "want", row.Want)
+	}
+	return fixture.Cases
+}
+
 func TestCardUpsertMergeRule(t *testing.T) {
-	fresh := fsrs("2026-01-01T00:00:00Z", 0)
-	reviewed := fsrs("2026-01-09T00:00:00Z", 3)
-	reviewedMore := fsrs("2026-01-20T00:00:00Z", 5)
-	card := func(front, updatedAt string, fsrs []byte) Card {
-		value := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", fsrs)
-		value.UpdatedAt = updatedAt
+	base := inWindow()
+	times := map[string]string{
+		"earlier": base.Add(-48 * time.Hour).Format(time.RFC3339),
+		"later":   base.Add(-24 * time.Hour).Format(time.RFC3339),
+	}
+	reviewTimes := map[string]string{
+		"reviewEarly": "2026-01-01T00:00:00Z",
+		"reviewLate":  "2026-01-03T00:00:00Z",
+	}
+	historyReps := map[string]int{"fresh": 0, "reviewed": 3, "reviewedMore": 5}
+	build := func(vector mergeRuleCardFixture) Card {
+		due := "2026-01-01T00:00:00Z"
+		if vector.History != "fresh" {
+			due = reviewTimes[vector.LastReview]
+		}
+		value := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", vector.Front, "card", fsrs(due, historyReps[vector.History]))
+		value.UpdatedAt = times[vector.UpdatedAt]
+		if vector.DeletedAt != "" {
+			value = tombstone(value, times[vector.DeletedAt])
+		}
 		return value
 	}
-	base := inWindow()
-	earlier, later := base.Add(-48*time.Hour).Format(time.RFC3339), base.Add(-24*time.Hour).Format(time.RFC3339)
-	tests := []struct {
-		name             string
-		stored, incoming Card
-		want             Card
-		// False only for the equal-time both-live or both-tombstone tie, where the stored copy wins.
-		symmetric bool
-	}{
-		{"newer updatedAt wins", card("a", earlier, reviewed), card("b", later, reviewed), card("b", later, reviewed), true},
-		{"older updatedAt loses", card("a", later, reviewed), card("b", earlier, reviewed), card("a", later, reviewed), true},
-		{"older live copy never resurrects a tombstone", tombstone(card("a", "", reviewed), later), card("b", earlier, reviewed), tombstone(card("a", "", reviewed), later), true},
-		{"newer live copy replaces a tombstone", tombstone(card("a", "", reviewed), earlier), card("b", later, reviewed), card("b", later, reviewed), true},
-		{"equal time: incoming tombstone wins", card("a", later, reviewed), tombstone(card("b", "", reviewed), later), tombstone(card("b", "", reviewed), later), true},
-		{"equal time: stored tombstone kept", tombstone(card("a", "", reviewed), later), card("b", later, reviewed), tombstone(card("a", "", reviewed), later), true},
-		{"equal live cards: stored kept", card("a", later, reviewed), card("b", later, fresh), card("a", later, reviewed), false},
-		{"equal tombstones: stored kept", tombstone(card("a", "", reviewed), later), tombstone(card("b", "", reviewedMore), later), tombstone(card("a", "", reviewed), later), false},
-		{"newer fresh save over reviewed history keeps the history", card("a", earlier, reviewed), card("b", later, fresh), card("b", later, reviewed), true},
-		{"older reviewed copy gives its history to a newer fresh save", card("a", later, fresh), card("b", earlier, reviewed), card("a", later, reviewed), true},
-		{"older fresh save loses", card("a", later, reviewed), card("b", earlier, fresh), card("a", later, reviewed), true},
-		{"reviewed beats reviewed by time", card("a", earlier, reviewedMore), card("b", later, reviewed), card("b", later, reviewed), true},
-		{"tombstone with history + newer fresh save: live, history kept", tombstone(card("a", "", reviewed), earlier), card("b", later, fresh), card("b", later, reviewed), true},
-	}
-	run := func(t *testing.T, stored, incoming, want Card) {
+	cases := loadMergeRuleCases(t)
+	run := func(t *testing.T, stored, incoming, want Card, clean bool) {
+		t.Helper()
 		repo := newTestRepo(t)
 		user := createTestUser(t, repo, "merge@example.com")
 		syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+		if clean {
+			incoming = cleanCard(incoming)
+		}
 		got := syncState(t, repo, user.ID, State{Cards: []Card{incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
 		if !reflect.DeepEqual(got.Cards, []Card{want}) {
 			t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{want})
 		}
-		var fsrs []byte
-		if err := repo.pool.QueryRow(context.Background(), "SELECT fsrs FROM cards WHERE user_id = $1 AND id = $2", user.ID, want.ID).Scan(&fsrs); err != nil {
+		var storedFSRS []byte
+		if err := repo.pool.QueryRow(context.Background(), "SELECT fsrs FROM cards WHERE user_id = $1 AND id = $2", user.ID, want.ID).Scan(&storedFSRS); err != nil {
 			t.Fatalf("query stored fsrs: %v", err)
 		}
-		if !bytes.Equal(fsrs, want.Fsrs) {
-			t.Fatalf("stored fsrs = %s, want %s", fsrs, want.Fsrs)
+		if !bytes.Equal(storedFSRS, want.Fsrs) {
+			t.Fatalf("stored fsrs = %s, want %s", storedFSRS, want.Fsrs)
 		}
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			run(t, test.stored, test.incoming, test.want)
-		})
-		if test.symmetric {
-			t.Run(test.name+" (swapped)", func(t *testing.T) {
-				run(t, test.incoming, test.stored, test.want)
+	for _, row := range cases {
+		stored, incoming, want := build(row.Stored), build(row.Incoming), build(row.Want)
+		for _, variant := range []struct {
+			name  string
+			clean bool
+		}{{name: row.Name}, {name: row.Name + " (clean)", clean: true}} {
+			t.Run(variant.name, func(t *testing.T) {
+				run(t, stored, incoming, want, variant.clean)
 			})
+			if *row.Symmetric {
+				swappedName := variant.name + " (swapped)"
+				t.Run(swappedName, func(t *testing.T) {
+					run(t, incoming, stored, want, variant.clean)
+				})
+			}
 		}
 	}
 }
@@ -780,55 +864,6 @@ func TestSyncCleanCardWithoutRowIsNotInserted(t *testing.T) {
 				t.Fatalf("dirty response cards = %v, want %s", responseIDs(out.Cards), card.ID)
 			}
 		})
-	}
-}
-
-// G2: a clean card on an existing row merges exactly as the dirty upsert does.
-func TestSyncCleanCardMergesLikeDirty(t *testing.T) {
-	fresh := fsrs("2026-01-01T00:00:00Z", 0)
-	reviewed := fsrs("2026-01-09T00:00:00Z", 3)
-	base := inWindow()
-	earlier, later := base.Add(-48*time.Hour).Format(time.RFC3339), base.Add(-24*time.Hour).Format(time.RFC3339)
-	card := func(front, updatedAt string, fsrs []byte) Card {
-		value := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", front, "card", fsrs)
-		value.UpdatedAt = updatedAt
-		return value
-	}
-	tests := []struct {
-		name             string
-		stored, incoming Card
-	}{
-		{"newer wins", card("a", earlier, reviewed), card("b", later, reviewed)},
-		{"older loses", card("a", later, reviewed), card("b", earlier, reviewed)},
-		{"older live vs tombstone", tombstone(card("a", "", reviewed), later), card("b", earlier, reviewed)},
-		{"newer live vs tombstone", tombstone(card("a", "", reviewed), earlier), card("b", later, reviewed)},
-		{"equal time incoming tombstone", card("a", later, reviewed), tombstone(card("b", "", reviewed), later)},
-		{"equal time stored tombstone", tombstone(card("a", "", reviewed), later), card("b", later, reviewed)},
-		{"newer fresh keeps stored history", card("a", earlier, reviewed), card("b", later, fresh)},
-		{"older reviewed gives history", card("a", later, fresh), card("b", earlier, reviewed)},
-	}
-	repo := newTestRepo(t)
-	result := func(t *testing.T, email string, stored, incoming Card) ([]Card, string) {
-		user := createTestUser(t, repo, email)
-		syncCards(t, repo, user.ID, dirtyCard(stored))
-		out := syncCards(t, repo, user.ID, incoming)
-		var storedFSRS []byte
-		if err := repo.pool.QueryRow(context.Background(), "SELECT fsrs FROM cards WHERE user_id = $1", user.ID).Scan(&storedFSRS); err != nil {
-			t.Fatalf("query fsrs: %v", err)
-		}
-		return out.Cards, string(storedFSRS)
-	}
-	for i, test := range tests {
-		for j, pair := range [][2]Card{{test.stored, test.incoming}, {test.incoming, test.stored}} {
-			t.Run(test.name+[]string{"", " (swapped)"}[j], func(t *testing.T) {
-				prefix := "g2-" + strconv.Itoa(i) + "-" + strconv.Itoa(j)
-				dirty, dirtyFSRS := result(t, prefix+"-dirty@example.com", pair[0], dirtyCard(pair[1]))
-				clean, cleanFSRS := result(t, prefix+"-clean@example.com", pair[0], cleanCard(pair[1]))
-				if !reflect.DeepEqual(clean, dirty) || cleanFSRS != dirtyFSRS {
-					t.Fatalf("clean = %#v / %s, dirty = %#v / %s", clean, cleanFSRS, dirty, dirtyFSRS)
-				}
-			})
-		}
 	}
 }
 
