@@ -71,9 +71,12 @@ if (fixture.cases.length !== 13) {
   throw new Error(`loaded ${fixture.cases.length} shared merge-rule rows, want 13`);
 }
 const names = new Set<string>();
-const cases = fixture.cases.map((value): MergeRuleCase => {
-  if (!isRecord(value) || typeof value.name !== "string" || value.name === "") {
-    throw new Error("shared merge-rule rows have a row without a name");
+const cases = fixture.cases.map((value, index): MergeRuleCase => {
+  if (!isRecord(value)) {
+    throw new Error(`shared merge-rule row ${index} is not an object`);
+  }
+  if (typeof value.name !== "string" || value.name === "") {
+    throw new Error(`shared merge-rule row ${index} has a missing, non-string or empty name`);
   }
   if (names.has(value.name)) {
     throw new Error(`shared merge-rule rows have duplicate name ${JSON.stringify(value.name)}`);
