@@ -1110,6 +1110,17 @@ for (const width of [320, 360]) {
   });
 }
 
+for (const width of [320, 360]) {
+  test(`storage chip keeps Back up beside its text at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 740 });
+    await showStorageBanner(page);
+    const text = await page.locator("header").getByText(STORAGE_BANNER).boundingBox();
+    const button = await page.locator("header").getByRole("button", { name: "Back up" }).boundingBox();
+    expect(button!.x, "Back up sits right of the text").toBeGreaterThanOrEqual(text!.x + text!.width);
+    expect(button!.y, "Back up starts within the text's rows").toBeLessThan(text!.y + text!.height);
+  });
+}
+
 test.describe("streak text at 320px with 200% text", () => {
   test.use({ viewport: { width: 320, height: 740 } });
 

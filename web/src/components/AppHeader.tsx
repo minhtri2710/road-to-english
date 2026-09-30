@@ -72,12 +72,11 @@ const styles = stylex.create({
   status: {
     display: "flex",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: "var(--spacing-2)",
     maxWidth: "100%",
     marginInlineStart: "auto",
     padding: "var(--spacing-1) var(--spacing-2)",
-    borderRadius: "var(--radius-full)",
+    borderRadius: { default: "var(--radius-full)", "@media (max-width: 480px)": "var(--radius-container)" },
     backgroundColor: "var(--color-accent-muted)",
     color: "var(--color-text-primary)",
   },
@@ -88,6 +87,9 @@ const styles = stylex.create({
   storageText: {
     minWidth: 0,
     overflowWrap: "anywhere",
+  },
+  storageAction: {
+    flexShrink: 0,
   },
   account: {
     minWidth: 0,
@@ -180,7 +182,7 @@ export function AppHeader({
             <Text as="span" type="supporting" xstyle={styles.storageText}>
               Progress saved only in this browser
             </Text>
-            <Button label="Back up" variant="secondary" onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
+            <Button label="Back up" variant="secondary" xstyle={styles.storageAction} onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
           </div>
         )}
         {syncLine?.status === "synced" && (
