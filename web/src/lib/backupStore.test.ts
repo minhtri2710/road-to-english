@@ -17,9 +17,14 @@ import { card, userLesson } from "../test/fixtures";
 const now = new Date("2026-01-05T00:00:00.000Z");
 const SYNC_EPOCH = "epoch-1";
 
-async function expectConsistentExport<T extends { cards: { id: string }[]; practiceDays: { date: string }[] }>(
-  exportSnapshot: () => Promise<T>,
-): Promise<void> {
+type SnapshotStore = "cards" | "practiceDays" | "lessonCompletion" | "userLessons";
+
+async function expectConsistentExport<T extends {
+  cards: { id: string }[];
+  practiceDays: { date: string }[];
+  lessonCompletion: { lessonId: string }[];
+  userLessons?: { id: string }[];
+}>(exportSnapshot: () => Promise<T>, stores: readonly SnapshotStore[]): Promise<void> {
   const transaction = IDBDatabase.prototype.transaction;
   let writeQueued = false;
   let writeComplete: Promise<void> | undefined;
@@ -30,9 +35,16 @@ async function expectConsistentExport<T extends { cards: { id: string }[]; pract
     const tx = transaction.apply(this, args);
     if (!writeQueued && args[1] === "readonly") {
       writeQueued = true;
-      const writer = transaction.call(this, ["cards", "practiceDays"], "readwrite");
+      const writer = transaction.call(this, [...stores], "readwrite");
       writer.objectStore("cards").put({ ...card("snapshot", now), dirty: true });
       writer.objectStore("practiceDays").put({ date: "2026-01-06" });
+      writer.objectStore("lessonCompletion").put({ lessonId: "snapshot-lesson" });
+      if (stores.includes("userLessons")) {
+        writer.objectStore("userLessons").put({
+          ...userLesson,
+          id: "user-00000000-0000-4000-8000-00000000000f",
+        });
+      }
       writeComplete = new Promise((resolve, reject) => {
         writer.addEventListener("complete", () => resolve(), { once: true });
         writer.addEventListener("abort", () => reject(writer.error), { once: true });
@@ -45,9 +57,15 @@ async function expectConsistentExport<T extends { cards: { id: string }[]; pract
     const exported = await exportSnapshot();
     await writeComplete;
     expect(writeQueued).toBe(true);
-    expect(exported.practiceDays.some(({ date }) => date === "2026-01-06")).toBe(
+    const writePresence = [
       exported.cards.some(({ id }) => id === "lesson-1:snapshot"),
-    );
+      exported.practiceDays.some(({ date }) => date === "2026-01-06"),
+      exported.lessonCompletion.some(({ lessonId }) => lessonId === "snapshot-lesson"),
+      ...(stores.includes("userLessons")
+        ? [exported.userLessons?.some(({ id }) => id === "user-00000000-0000-4000-8000-00000000000f") ?? false]
+        : []),
+    ];
+    expect(new Set(writePresence).size).toBe(1);
   } finally {
     openTransaction.mockRestore();
   }
@@ -149,11 +167,16 @@ describe("backup store", () => {
   });
 
   it("exportAll reads a consistent snapshot during a concurrent write", async () => {
-    await expectConsistentExport(exportAll);
+    await expectConsistentExport(exportAll, ["cards", "practiceDays", "lessonCompletion"]);
   });
 
   it("exportBackupData reads a consistent snapshot during a concurrent write", async () => {
-    await expectConsistentExport(exportBackupData);
+    await expectConsistentExport(exportBackupData, [
+      "cards",
+      "practiceDays",
+      "lessonCompletion",
+      "userLessons",
+    ]);
   });
 });
 
