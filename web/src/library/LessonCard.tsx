@@ -29,11 +29,10 @@ const styles = stylex.create({
   titleAndMeta: {
     minWidth: 0,
     whiteSpace: "normal",
-    overflowWrap: "break-word",
+    overflowWrap: "anywhere",
   },
   levelBadge: {
     alignSelf: "start",
-    flexShrink: 0,
     borderWidth: "1px",
     borderStyle: "solid",
     backgroundColor: "var(--color-background-surface)",
@@ -41,7 +40,6 @@ const styles = stylex.create({
   sentenceMeta: {
     fontVariantNumeric: "tabular-nums",
     display: "inline-flex",
-    flexWrap: "wrap",
     alignItems: "baseline",
   },
   badges: {

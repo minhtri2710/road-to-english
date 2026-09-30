@@ -1112,6 +1112,15 @@ for (const width of [320, 360]) {
 
 const TEXT_200 = "html { font-size: 200%; }";
 
+async function expectTitleInsideRow(page: Page, title: string): Promise<void> {
+  const row = page.getByRole("button", { name: title, exact: true });
+  const box = await row.boundingBox();
+  const text = await row.getByText(title, { exact: true }).boundingBox();
+  expect(text!.x, `${title} starts inside its row`).toBeGreaterThanOrEqual(box!.x);
+  expect(text!.x + text!.width, `${title} ends inside its row`).toBeLessThanOrEqual(box!.x + box!.width);
+  expect(text!.y + text!.height, `${title} sits above its row's bottom`).toBeLessThanOrEqual(box!.y + box!.height);
+}
+
 for (const width of [320, 360]) {
   test.describe(`library with 200% text at ${width}px`, () => {
     test.use({ viewport: { width, height: 740 } });
@@ -1123,13 +1132,27 @@ for (const width of [320, 360]) {
         expect(await layoutProblems(page)).toEqual([]);
         if (name === "own-lesson") {
           for (const title of [LIBRARY_LESSON, USER_LESSON, "Stress Pairs: Nouns and Verbs"]) {
-            const row = page.getByRole("button", { name: title, exact: true });
-            const box = await row.boundingBox();
-            const text = await row.getByText(title, { exact: true }).boundingBox();
-            expect(text!.x, `${title} starts inside its row`).toBeGreaterThanOrEqual(box!.x);
-            expect(text!.x + text!.width, `${title} ends inside its row`).toBeLessThanOrEqual(box!.x + box!.width);
-            expect(text!.y + text!.height, `${title} sits above its row's bottom`).toBeLessThanOrEqual(box!.y + box!.height);
+            await expectTitleInsideRow(page, title);
           }
+        }
+      });
+    }
+
+    for (const title of ["Pronunciation", "Pneumonoultramicroscopicsilicovolcanoconiosis".repeat(2)]) {
+      test(`own lesson "${title.slice(0, 13)}" stays inside its row`, async ({ page }) => {
+        await createLesson(page, { title, text: "The first sentence is short. The second one follows." });
+        await page.getByRole("button", { name: "Back to lessons" }).click();
+        await expect(page.getByRole("button", { name: `Delete ${title}` })).toBeVisible();
+        await page.addStyleTag({ content: TEXT_200 });
+        expect(await layoutProblems(page)).toEqual([]);
+        await expectTitleInsideRow(page, title);
+        if (title === "Pronunciation") {
+          const lines = await page.getByRole("button", { name: title, exact: true }).getByText(title, { exact: true }).evaluate((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+          });
+          expect(lines, "a plain word stays on one line").toBe(1);
         }
       });
     }

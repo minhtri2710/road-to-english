@@ -3,10 +3,18 @@ import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
 import { Alert, ErrorMessage } from "../components/feedback";
 import { LessonCard } from "./LessonCard";
+
+const styles = stylex.create({
+  card: {
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
+});
 
 export function UserLessonList({
   lessons,
@@ -48,16 +56,18 @@ export function UserLessonList({
     <VStack as="ul" gap={2} padding={0}>
       {lessons.map((lesson) => (
         <li key={lesson.id}>
-          <HStack gap={1} align="center">
-            <LessonCard
-              title={lesson.title}
-              level={lesson.level}
-              sentenceCount={lesson.sentences.length}
-              targetWpm={lesson.targetWpm}
-              completed={completedLessons.has(lesson.id)}
-              onSelect={() => onSelect(lesson)}
-              takeFocus={() => takeFocus(lesson.id)}
-            />
+          <HStack gap={1} align="center" wrap="wrap">
+            <div className={stylex.props(styles.card).className}>
+              <LessonCard
+                title={lesson.title}
+                level={lesson.level}
+                sentenceCount={lesson.sentences.length}
+                targetWpm={lesson.targetWpm}
+                completed={completedLessons.has(lesson.id)}
+                onSelect={() => onSelect(lesson)}
+                takeFocus={() => takeFocus(lesson.id)}
+              />
+            </div>
             <Button
               label="Delete"
               aria-label={`Delete ${lesson.title}`}
