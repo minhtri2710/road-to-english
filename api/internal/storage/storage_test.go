@@ -524,6 +524,9 @@ func loadMergeRuleCases(t *testing.T) []mergeRuleCaseFixture {
 		validateCard(row.Name, "stored", row.Stored)
 		validateCard(row.Name, "incoming", row.Incoming)
 		validateCard(row.Name, "want", row.Want)
+		if row.Stored.History != "fresh" && row.Incoming.History != "fresh" && row.Stored.History == row.Incoming.History && row.Stored.LastReview == row.Incoming.LastReview {
+			t.Fatalf("row %q stored and incoming share history %q and lastReview %q, so a winner/loser swap would go unseen", row.Name, row.Stored.History, row.Stored.LastReview)
+		}
 	}
 	return fixture.Cases
 }

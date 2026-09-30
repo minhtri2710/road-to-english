@@ -72,16 +72,28 @@ if (fixture.cases.length !== 13) {
 }
 const names = new Set<string>();
 const cases = fixture.cases.map((value): MergeRuleCase => {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["name", "symmetric", "stored", "incoming", "want"]) || typeof value.name !== "string" || value.name === "" || names.has(value.name)) {
-    throw new Error("shared merge-rule rows have an invalid or duplicate name");
+  if (!isRecord(value) || typeof value.name !== "string" || value.name === "") {
+    throw new Error("shared merge-rule rows have a row without a name");
+  }
+  if (names.has(value.name)) {
+    throw new Error(`shared merge-rule rows have duplicate name ${JSON.stringify(value.name)}`);
   }
   names.add(value.name);
+  const rowKeys = ["name", "symmetric", "stored", "incoming", "want"];
+  const missing = rowKeys.filter((key) => !(key in value));
+  const unknown = Object.keys(value).filter((key) => !rowKeys.includes(key));
+  if (missing.length > 0 || unknown.length > 0) {
+    throw new Error(`merge-rule row ${JSON.stringify(value.name)} has missing keys ${JSON.stringify(missing)} and unknown keys ${JSON.stringify(unknown)}`);
+  }
   if (typeof value.symmetric !== "boolean") {
     throw new Error(`merge-rule row ${JSON.stringify(value.name)} has invalid symmetric`);
   }
   validateCardVector(value.name, "stored", value.stored);
   validateCardVector(value.name, "incoming", value.incoming);
   validateCardVector(value.name, "want", value.want);
+  if (value.stored.history !== "fresh" && value.incoming.history !== "fresh" && value.stored.history === value.incoming.history && value.stored.lastReview === value.incoming.lastReview) {
+    throw new Error(`merge-rule row ${JSON.stringify(value.name)} stored and incoming share history and lastReview, so a winner/loser swap would go unseen`);
+  }
   return value as MergeRuleCase;
 });
 
