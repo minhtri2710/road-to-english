@@ -11,8 +11,8 @@ import { LessonCard } from "./LessonCard";
 
 const styles = stylex.create({
   card: {
-    flex: "1 1 8rem",
-    minWidth: 0,
+    flexGrow: 1,
+    flexBasis: "8rem",
   },
 });
 

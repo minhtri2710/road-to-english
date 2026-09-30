@@ -1159,26 +1159,42 @@ for (const width of [320, 360]) {
   });
 }
 
-for (const width of [320, 360]) {
+for (const width of [320, 360, 1280]) {
   for (const [text, drops] of [["html { font-size: 100%; }", false], [TEXT_200, true]] as const) {
-    test(`Delete sits ${drops ? "below" : "beside"} an own lesson's row at ${width}px with ${drops ? 200 : 100}% text`, async ({ page }) => {
+    if (drops && width === 1280) {
+      continue;
+    }
+    test(`Delete sits ${drops ? "directly below" : "beside"} an own lesson's row at ${width}px with ${drops ? 200 : 100}% text`, async ({ page }) => {
       await page.setViewportSize({ width, height: 740 });
-      for (const title of ["Pronunciation", "Notes from the long morning meeting"]) {
+      const titles = ["Pronunciation", "Notes from the long morning meeting"];
+      for (const title of titles) {
         await createLesson(page, { title, text: "The first sentence is short. The second one follows." });
         await page.getByRole("button", { name: "Back to lessons" }).click();
         await expect(page.getByRole("button", { name: `Delete ${title}` })).toBeVisible();
       }
       await page.addStyleTag({ content: text });
-      for (const title of ["Pronunciation", "Notes from the long morning meeting"]) {
-        const row = await page.getByRole("button", { name: title, exact: true }).boundingBox();
-        const button = await page.getByRole("button", { name: `Delete ${title}` }).boundingBox();
+      const boxes = [];
+      for (const title of titles) {
+        const item = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: `Delete ${title}` }) });
+        boxes.push({
+          title,
+          item: (await item.boundingBox())!,
+          row: (await page.getByRole("button", { name: title, exact: true }).boundingBox())!,
+          button: (await page.getByRole("button", { name: `Delete ${title}` }).boundingBox())!,
+        });
+      }
+      for (const { title, item, row, button } of boxes) {
         if (drops) {
-          expect(button!.y, `${title}: Delete below the row`).toBeGreaterThanOrEqual(row!.y + row!.height);
+          expect(button.y - (row.y + row.height), `${title}: Delete starts just under the row`).toBeGreaterThanOrEqual(0);
+          expect(button.y - (row.y + row.height), `${title}: Delete starts just under the row`).toBeLessThanOrEqual(24);
         } else {
-          expect(button!.x, `${title}: Delete right of the row`).toBeGreaterThanOrEqual(row!.x + row!.width);
-          expect(button!.y, `${title}: Delete starts within the row`).toBeLessThan(row!.y + row!.height);
+          expect(button.x, `${title}: Delete right of the row`).toBeGreaterThanOrEqual(row.x + row.width);
+          expect(button.y, `${title}: Delete starts within the row`).toBeLessThan(row.y + row.height);
+          expect(button.x + button.width, `${title}: the row fills the space up to Delete`).toBeGreaterThanOrEqual(item.x + item.width - 1);
         }
       }
+      const [first, second] = boxes.sort((a, b) => a.row.y - b.row.y);
+      expect(first.button.y + first.button.height, "Delete ends above the next lesson").toBeLessThanOrEqual(second.row.y);
     });
   }
 }

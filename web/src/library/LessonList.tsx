@@ -23,7 +23,6 @@ const LEVELS: Level[] = ["A1", "A2", "B1", "B2"];
 const styles = stylex.create({
   levelFilter: {
     flexWrap: "wrap",
-    maxWidth: "100%",
   },
   groupHeading: {
     display: "flex",

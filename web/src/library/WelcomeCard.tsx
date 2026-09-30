@@ -17,7 +17,6 @@ import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 const styles = stylex.create({
   wrapChoice: {
     flexWrap: "wrap",
-    maxWidth: "100%",
   },
   todayCard: {
     padding: "var(--spacing-3)",
