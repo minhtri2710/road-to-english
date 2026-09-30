@@ -734,12 +734,10 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await seedStore(page, "goalAlmostMet");
     await openLibraryLesson(page, LIBRARY_LESSON);
     await page.getByRole("radiogroup", { name: "Lesson mode" }).getByRole("radio", { name: "Dictation" }).click();
-    const ids = await page.getByLabel("What did you hear?").evaluateAll((inputs) => inputs.map((input) => input.id));
-    for (const id of ids.slice(0, 1)) {
-      const form = page.locator("form", { has: page.locator(`#${id}`) });
-      await page.locator(`#${id}`).fill("anything");
-      await form.getByRole("button", { name: "Check" }).click();
-    }
+    // The seed holds 4 of the 5 daily actions, so one answer meets the goal.
+    const id = await page.getByLabel("What did you hear?").first().evaluate((input) => input.id);
+    await page.locator(`#${id}`).fill("anything");
+    await page.locator("form", { has: page.locator(`#${id}`) }).getByRole("button", { name: "Check" }).click();
     await expect(page.getByText("Daily goal met.", { exact: true })).toBeVisible();
     const mark = page.locator('[role="status"]').filter({ hasText: "Daily goal met." }).locator('[data-motion="milestone"]');
     await expect(mark).toHaveCount(1);

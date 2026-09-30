@@ -242,34 +242,34 @@ export function SentenceShadowing({
           }}
         />
         <div data-testid="recording-control" className={stylex.props(styles.recordingControl).className}>
-            <Button
-              label={recorder.state === "recording" ? "Stop" : "Record"}
-              xstyle={recorder.state === "recording" ? styles.recordingButton : undefined}
-              variant="secondary"
-              children={(
-                <span className={stylex.props(styles.recordingLabel).className}>
-                  <span className={stylex.props(styles.recordingLabelText).className}>{recorder.state === "recording" ? "Stop" : "Record"}</span>
-                  <span aria-hidden="true" className={stylex.props(styles.recordingLabelText, styles.recordingLabelHidden).className}>Record</span>
-                </span>
-              )}
-              isDisabled={!canRecord || recorder.state === "requesting"}
-              isLoading={recorder.state === "requesting"}
-              // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-              tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
-              onClick={() => {
-                if (recorder.state === "recording") {
-                  recorder.stopRecording();
-                } else {
-                  stopMedia();
-                  void recorder.startRecording();
-                }
-              }}
-            />
-            {recorder.state === "recording" && recorder.meterAvailable && (
-              <span aria-hidden="true" data-testid="recording-level-meter" className={stylex.props(styles.meterTrack).className}>
-                <span data-testid="recording-level-fill" ref={recorder.meterRef} className={stylex.props(styles.meterFill).className} />
+          <Button
+            label={recorder.state === "recording" ? "Stop" : "Record"}
+            xstyle={recorder.state === "recording" ? styles.recordingButton : undefined}
+            variant="secondary"
+            children={(
+              <span className={stylex.props(styles.recordingLabel).className}>
+                <span className={stylex.props(styles.recordingLabelText).className}>{recorder.state === "recording" ? "Stop" : "Record"}</span>
+                <span aria-hidden="true" className={stylex.props(styles.recordingLabelText, styles.recordingLabelHidden).className}>Record</span>
               </span>
             )}
+            isDisabled={!canRecord || recorder.state === "requesting"}
+            isLoading={recorder.state === "requesting"}
+            // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
+            tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
+            onClick={() => {
+              if (recorder.state === "recording") {
+                recorder.stopRecording();
+              } else {
+                stopMedia();
+                void recorder.startRecording();
+              }
+            }}
+          />
+          {recorder.state === "recording" && recorder.meterAvailable && (
+            <span aria-hidden="true" data-testid="recording-level-meter" className={stylex.props(styles.meterTrack).className}>
+              <span data-testid="recording-level-fill" ref={recorder.meterRef} className={stylex.props(styles.meterFill).className} />
+            </span>
+          )}
         </div>
         <Button
           label="Compare"
