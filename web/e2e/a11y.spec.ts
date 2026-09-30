@@ -1110,6 +1110,32 @@ for (const width of [320, 360]) {
   });
 }
 
+const TEXT_200 = "html { font-size: 200%; }";
+
+for (const width of [320, 360]) {
+  test.describe(`library with 200% text at ${width}px`, () => {
+    test.use({ viewport: { width, height: 740 } });
+
+    for (const [name, reach] of [...LIBRARY_STATES, ["own-lesson", createUserLesson]] as const) {
+      test(name, async ({ page }) => {
+        await reach(page);
+        await page.addStyleTag({ content: TEXT_200 });
+        expect(await layoutProblems(page)).toEqual([]);
+        if (name === "own-lesson") {
+          for (const title of [LIBRARY_LESSON, USER_LESSON, "Stress Pairs: Nouns and Verbs"]) {
+            const row = page.getByRole("button", { name: title, exact: true });
+            const box = await row.boundingBox();
+            const text = await row.getByText(title, { exact: true }).boundingBox();
+            expect(text!.x, `${title} starts inside its row`).toBeGreaterThanOrEqual(box!.x);
+            expect(text!.x + text!.width, `${title} ends inside its row`).toBeLessThanOrEqual(box!.x + box!.width);
+            expect(text!.y + text!.height, `${title} sits above its row's bottom`).toBeLessThanOrEqual(box!.y + box!.height);
+          }
+        }
+      });
+    }
+  });
+}
+
 for (const width of [320, 360]) {
   test(`storage chip keeps Back up beside its text at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 740 });
@@ -1297,6 +1323,14 @@ test.describe("first-run welcome", () => {
       for (const [name, reach] of [["welcome-step-1", showStep1], ["welcome-step-2", showStep2], ["welcome-done", finish]] as const) {
         test(name, async ({ page }) => {
           await reach(page);
+          expect(await layoutProblems(page)).toEqual([]);
+        });
+      }
+
+      for (const [name, reach] of [["welcome-step-1", showStep1], ["welcome-step-2", showStep2]] as const) {
+        test(`${name} with 200% text`, async ({ page }) => {
+          await reach(page);
+          await page.addStyleTag({ content: TEXT_200 });
           expect(await layoutProblems(page)).toEqual([]);
         });
       }

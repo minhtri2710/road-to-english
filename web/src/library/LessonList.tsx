@@ -21,6 +21,10 @@ import { WelcomeCard } from "./WelcomeCard";
 const LEVELS: Level[] = ["A1", "A2", "B1", "B2"];
 
 const styles = stylex.create({
+  levelFilter: {
+    flexWrap: "wrap",
+    maxWidth: "100%",
+  },
   groupHeading: {
     display: "flex",
     alignItems: "baseline",
@@ -192,6 +196,7 @@ export function LessonList({
         <Heading level={2}>Library lessons</Heading>
         <SegmentedControl
           label="Library level"
+          xstyle={styles.levelFilter}
           value={levelFilter}
           onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
         >

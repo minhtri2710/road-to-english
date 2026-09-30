@@ -15,6 +15,10 @@ import { DAILY_GOALS, GOAL_NAMES, type DailyGoal } from "../hooks/useDailyGoal";
 import { LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 
 const styles = stylex.create({
+  wrapChoice: {
+    flexWrap: "wrap",
+    maxWidth: "100%",
+  },
   todayCard: {
     padding: "var(--spacing-3)",
   },
@@ -50,6 +54,7 @@ export function WelcomeCard({
             <Text as="p">What is your English level?</Text>
             <SegmentedControl
               label="English level"
+              xstyle={styles.wrapChoice}
               value={levelFilter}
               onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
             >
@@ -74,6 +79,7 @@ export function WelcomeCard({
             </Text>
             <ToggleButtonGroup
               label="Daily goal"
+              xstyle={styles.wrapChoice}
               value={dailyGoal}
               onChange={(nextGoal) => {
                 if (nextGoal) {
