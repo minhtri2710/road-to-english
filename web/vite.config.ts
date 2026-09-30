@@ -22,6 +22,8 @@ export default defineConfig(({ command, mode, isPreview }) => {
       environment: "happy-dom",
       setupFiles: "./src/test/setup.ts",
       include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
+      // Pin the API origin so web/.env and the shell cannot prefix request URLs in tests; client.test.ts stubs its own.
+      env: { VITE_API_URL: "" },
       // Full StrictMode App renders in React dev under happy-dom take ~0.2-0.5 s alone but reached 16.7 s under 3 concurrent runs on 8 cores.
       testTimeout: 30000,
     },

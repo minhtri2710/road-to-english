@@ -77,3 +77,26 @@ describe("request", () => {
     expect(error.code).toBe("too many requests");
   });
 });
+
+describe("request URL", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it.each([
+    ["is empty", "", "/lessons"],
+    ["has no trailing slash", "http://localhost:8080", "http://localhost:8080/lessons"],
+    ["has one trailing slash", "http://localhost:8080/", "http://localhost:8080/lessons"],
+    ["has two trailing slashes", "http://localhost:8080//", "http://localhost:8080//lessons"],
+  ])("prefixes the path when VITE_API_URL %s", async (_name, apiUrl, expected) => {
+    vi.stubEnv("VITE_API_URL", apiUrl);
+    vi.resetModules();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { request } = await import("./client");
+    await request("/lessons");
+    expect(fetchMock).toHaveBeenCalledWith(expected);
+  });
+});
