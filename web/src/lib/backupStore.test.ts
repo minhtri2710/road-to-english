@@ -1,5 +1,5 @@
 import { IDBFactory } from "fake-indexeddb";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { exportData, importData } from "./backup";
 import { claimOwner, exportAll, exportBackupData, mergeInto, replaceAll } from "./backupStore";
@@ -16,6 +16,42 @@ import { card, userLesson } from "../test/fixtures";
 
 const now = new Date("2026-01-05T00:00:00.000Z");
 const SYNC_EPOCH = "epoch-1";
+
+async function expectConsistentExport<T extends { cards: { id: string }[]; practiceDays: { date: string }[] }>(
+  exportSnapshot: () => Promise<T>,
+): Promise<void> {
+  const transaction = IDBDatabase.prototype.transaction;
+  let writeQueued = false;
+  let writeComplete: Promise<void> | undefined;
+  const openTransaction = vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+    this: IDBDatabase,
+    ...args
+  ) {
+    const tx = transaction.apply(this, args);
+    if (!writeQueued && args[1] === "readonly") {
+      writeQueued = true;
+      const writer = transaction.call(this, ["cards", "practiceDays"], "readwrite");
+      writer.objectStore("cards").put({ ...card("snapshot", now), dirty: true });
+      writer.objectStore("practiceDays").put({ date: "2026-01-06" });
+      writeComplete = new Promise((resolve, reject) => {
+        writer.addEventListener("complete", () => resolve(), { once: true });
+        writer.addEventListener("abort", () => reject(writer.error), { once: true });
+      });
+    }
+    return tx;
+  });
+
+  try {
+    const exported = await exportSnapshot();
+    await writeComplete;
+    expect(writeQueued).toBe(true);
+    expect(exported.practiceDays.some(({ date }) => date === "2026-01-06")).toBe(
+      exported.cards.some(({ id }) => id === "lesson-1:snapshot"),
+    );
+  } finally {
+    openTransaction.mockRestore();
+  }
+}
 
 describe("backup store", () => {
   it("round-trips all stores and keeps imported dates usable", async () => {
@@ -110,6 +146,14 @@ describe("backup store", () => {
 
     expect(Object.keys(await exportAll()).sort()).toEqual(["cards", "lessonCompletion", "practiceDays"]);
     expect((await exportBackupData()).userLessons).toEqual([userLesson]);
+  });
+
+  it("exportAll reads a consistent snapshot during a concurrent write", async () => {
+    await expectConsistentExport(exportAll);
+  });
+
+  it("exportBackupData reads a consistent snapshot during a concurrent write", async () => {
+    await expectConsistentExport(exportBackupData);
   });
 });
 

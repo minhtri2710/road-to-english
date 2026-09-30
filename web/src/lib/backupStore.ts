@@ -7,23 +7,30 @@ import type { BackupData, SyncReply, SyncRequest } from "./backup";
 // The /sync payload: never includes userLessons.
 export async function exportAll(): Promise<SyncRequest> {
   return withDb(async (db) => {
+    const tx = db.transaction(["cards", "practiceDays", "lessonCompletion"], "readonly");
     const [cards, practiceDays, lessonCompletion] = await Promise.all([
-      db.getAll("cards"),
-      db.getAll("practiceDays"),
-      db.getAll("lessonCompletion"),
+      tx.objectStore("cards").getAll(),
+      tx.objectStore("practiceDays").getAll(),
+      tx.objectStore("lessonCompletion").getAll(),
     ]);
+    await tx.done;
     return { cards, practiceDays, lessonCompletion };
   });
 }
 
 export async function exportBackupData(): Promise<BackupData> {
   return withDb(async (db) => {
+    const tx = db.transaction(
+      ["cards", "practiceDays", "lessonCompletion", "userLessons"],
+      "readonly",
+    );
     const [cards, practiceDays, lessonCompletion, userLessons] = await Promise.all([
-      db.getAll("cards"),
-      db.getAll("practiceDays"),
-      db.getAll("lessonCompletion"),
-      db.getAll("userLessons"),
+      tx.objectStore("cards").getAll(),
+      tx.objectStore("practiceDays").getAll(),
+      tx.objectStore("lessonCompletion").getAll(),
+      tx.objectStore("userLessons").getAll(),
     ]);
+    await tx.done;
     return { cards: cards.map(plainCard), practiceDays, lessonCompletion, userLessons };
   });
 }
