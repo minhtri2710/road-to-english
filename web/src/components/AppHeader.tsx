@@ -72,6 +72,7 @@ const styles = stylex.create({
   status: {
     display: "flex",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: "var(--spacing-2)",
     maxWidth: "100%",
     marginInlineStart: "auto",
@@ -85,6 +86,7 @@ const styles = stylex.create({
     minWidth: 0,
   },
   storageText: {
+    flex: "1 1 8rem",
     minWidth: 0,
     overflowWrap: "anywhere",
   },

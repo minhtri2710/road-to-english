@@ -1121,6 +1121,20 @@ for (const width of [320, 360]) {
   });
 }
 
+for (const width of [320, 360]) {
+  test(`storage chip stays compact with 200% text at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 740 });
+    await showStorageBanner(page);
+    await page.addStyleTag({ content: "html { font-size: 200%; }" });
+    const text = await page.locator("header").getByText(STORAGE_BANNER).boundingBox();
+    const button = await page.locator("header").getByRole("button", { name: "Back up" }).boundingBox();
+    const chip = await page.locator("header").getByText(STORAGE_BANNER).locator("..").boundingBox();
+    expect(chip!.height, "chip height").toBeLessThanOrEqual(128);
+    expect(text!.width, "text column").toBeGreaterThan(chip!.width / 2);
+    expect(button!.x + button!.width, "Back up inside the chip").toBeLessThanOrEqual(chip!.x + chip!.width);
+  });
+}
+
 test.describe("streak text at 320px with 200% text", () => {
   test.use({ viewport: { width: 320, height: 740 } });
 
