@@ -18,7 +18,7 @@ import { GoalRing } from "./GoalRing";
 
 const styles = stylex.create({
   todayCard: {
-    padding: "var(--spacing-2)",
+    padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-2)" },
   },
   todayContent: {
     gap: "var(--spacing-0-5)",

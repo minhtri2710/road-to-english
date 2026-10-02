@@ -36,8 +36,6 @@ import "@astryxdesign/core/astryx.css";
 const appStyles = stylex.create({
   page: {
     minHeight: "100vh",
-    // Narrow screens give the spacing back to the first screen of lessons.
-    padding: { default: "var(--spacing-8)", "@media (max-width: 480px)": "var(--spacing-4)" },
     backgroundColor: "var(--color-background-body)",
     color: "var(--color-text-primary)",
   },
@@ -45,6 +43,15 @@ const appStyles = stylex.create({
     width: "100%",
     maxWidth: "48rem",
     marginInline: "auto",
+    // Narrow screens give the spacing back to the first screen of lessons.
+    padding: {
+      default: "var(--spacing-6) var(--spacing-6) var(--spacing-12)",
+      "@media (max-width: 480px)": "var(--spacing-2) var(--spacing-4) var(--spacing-8)",
+    },
+  },
+  // The library lays its lessons out in columns, so it takes the header's full width.
+  wide: {
+    maxWidth: "72rem",
   },
   reviewDue: {
     alignSelf: "start",
@@ -142,109 +149,107 @@ function AppViews() {
 
   return (
     <div className={stylex.props(appStyles.page).className}>
-      <div className={stylex.props(appStyles.content).className}>
-        <VStack gap={1}>
-          <AppHeader
-            goalAnnounced={goalAnnounced}
-            storageKept={storageKept}
-            storageError={storageError}
-            backupError={backupError}
-            syncLine={syncLine}
-            auth={auth}
-            view={appView}
-            due={due}
-            onNavigate={navigate}
-          />
-          <VStack as="main" gap={2}>
-            {(view === "review" || view === "library" || view === "manage") && (
-              <VStack gap={1}>
-                <ViewHeading takeFocus={takeHeadingFocus}>
-                  {view === "library" ? "Lesson library" : view === "review" ? "Review deck" : "Manage lessons and data"}
-                </ViewHeading>
-                <Text type="large">
-                  {view === "library"
-                    ? "Choose a lesson to practise reading and speaking."
-                    : view === "review" ? "Review saved sentences with spaced repetition." : "Create lessons, import text, and manage your data."}
-                </Text>
-              </VStack>
-            )}
-            {view === "review" ? (
+      <AppHeader
+        goalAnnounced={goalAnnounced}
+        storageKept={storageKept}
+        storageError={storageError}
+        backupError={backupError}
+        syncLine={syncLine}
+        auth={auth}
+        view={appView}
+        due={due}
+        onNavigate={navigate}
+      />
+      <div className={stylex.props(appStyles.content, view === "library" && appStyles.wide).className}>
+        <VStack as="main" gap={2}>
+          {(view === "review" || view === "library" || view === "manage") && (
+            <VStack gap={1}>
+              <ViewHeading takeFocus={takeHeadingFocus}>
+                {view === "library" ? "Lesson library" : view === "review" ? "Review deck" : "Manage lessons and data"}
+              </ViewHeading>
+              <Text type="large">
+                {view === "library"
+                  ? "Choose a lesson to practise reading and speaking."
+                  : view === "review" ? "Review saved sentences with spaced repetition." : "Create lessons, import text, and manage your data."}
+              </Text>
+            </VStack>
+          )}
+          {view === "review" ? (
+            <VStack gap={2}>
+              <Badge label={`${reviewDeck.length} due`} variant="info" xstyle={appStyles.reviewDue} />
+              <ReviewDeck
+                due={reviewDeck}
+                hiddenNew={deck.due.length - reviewDeck.length}
+                nextDueInMinutes={deck.nextDueInMinutes}
+                hasCards={deck.savedCardIds.size > 0}
+                loading={deck.loading}
+                loadFailed={deck.error !== null}
+                review={deck.review}
+                recordPractice={recordPractice}
+                onGoToLibrary={() => navigate({ view: "library" })}
+              />
+            </VStack>
+          ) : view === "library" ? (
+            <VStack gap={4}>
+              <LessonList
+                onSelect={(id) => navigate({ view: "lesson", id })}
+                completedLessons={progress.completedLessons}
+                takeFocus={takeReturnFocus}
+                focusHeading={focusHeading}
+                onSettled={onLibrarySettled}
+                levelFilter={levelFilter}
+                chooseLevelFilter={chooseLevelFilter}
+                lastLesson={lastLesson}
+                ownLessons={Array.isArray(userLessons) ? userLessons : []}
+                onContinue={() => lastLesson && navigate(lastLesson)}
+                today={{
+                  due,
+                  actionsToday: progress.actionsToday,
+                  dailyGoal,
+                  goalMet,
+                  chooseGoal,
+                  streak: progress.streak,
+                  freezes: progress.freezes,
+                  xp: progress.xp,
+                  week: progress.week,
+                  onReview: () => navigate({ view: "review" }),
+                }}
+              />
               <VStack gap={2}>
-                <Badge label={`${reviewDeck.length} due`} variant="info" xstyle={appStyles.reviewDue} />
-                <ReviewDeck
-                  due={reviewDeck}
-                  hiddenNew={deck.due.length - reviewDeck.length}
-                  nextDueInMinutes={deck.nextDueInMinutes}
-                  hasCards={deck.savedCardIds.size > 0}
-                  loading={deck.loading}
-                  loadFailed={deck.error !== null}
-                  review={deck.review}
-                  recordPractice={recordPractice}
-                  onGoToLibrary={() => navigate({ view: "library" })}
-                />
-              </VStack>
-            ) : view === "library" ? (
-              <VStack gap={4}>
-                <LessonList
-                  onSelect={(id) => navigate({ view: "lesson", id })}
+                <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
+                <UserLessonList
+                  lessons={userLessons}
+                  onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
+                  onDelete={(lesson) => void deleteLesson(lesson)}
+                  deleteFailedId={deleteFailedId}
                   completedLessons={progress.completedLessons}
                   takeFocus={takeReturnFocus}
-                  focusHeading={focusHeading}
-                  onSettled={onLibrarySettled}
-                  levelFilter={levelFilter}
-                  chooseLevelFilter={chooseLevelFilter}
-                  lastLesson={lastLesson}
-                  ownLessons={Array.isArray(userLessons) ? userLessons : []}
-                  onContinue={() => lastLesson && navigate(lastLesson)}
-                  today={{
-                    due,
-                    actionsToday: progress.actionsToday,
-                    dailyGoal,
-                    goalMet,
-                    chooseGoal,
-                    streak: progress.streak,
-                    freezes: progress.freezes,
-                    xp: progress.xp,
-                    week: progress.week,
-                    onReview: () => navigate({ view: "review" }),
-                  }}
-                />
-                <VStack gap={2}>
-                  <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
-                  <UserLessonList
-                    lessons={userLessons}
-                    onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
-                    onDelete={(lesson) => void deleteLesson(lesson)}
-                    deleteFailedId={deleteFailedId}
-                    completedLessons={progress.completedLessons}
-                    takeFocus={takeReturnFocus}
-                    onCreateLesson={() => navigate({ view: "manage" }, IMPORT_TITLE)}
-                  />
-                </VStack>
-              </VStack>
-            ) : view === "manage" ? (
-              <VStack gap={4}>
-                <ImportTextForm
-                  onCreate={createLesson}
-                  levelFilter={levelFilter}
-                  takeReturnFocus={takeReturnFocus}
-                />
-                <YourData
-                  storageKept={storageKept}
-                  signedIn={auth.user !== null}
-                  setError={setBackupError}
-                  onImported={reloadAfterImport}
-                  takeReturnFocus={takeReturnFocus}
+                  onCreateLesson={() => navigate({ view: "manage" }, IMPORT_TITLE)}
                 />
               </VStack>
-            ) : route.view === "lesson" ? (
-              <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
-            ) : userLesson ? (
-              <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
-            ) : (
-              <Text as="p">Loading lesson...</Text>
-            )}
-          </VStack>
+            </VStack>
+          ) : view === "manage" ? (
+            <VStack gap={4}>
+              <ImportTextForm
+                onCreate={createLesson}
+                levelFilter={levelFilter}
+                takeReturnFocus={takeReturnFocus}
+              />
+              <YourData
+                storageKept={storageKept}
+                signedIn={auth.user !== null}
+                setError={setBackupError}
+                onImported={reloadAfterImport}
+                takeReturnFocus={takeReturnFocus}
+              />
+            </VStack>
+          ) : route.view === "lesson" ? (
+            <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
+          ) : userLesson ? (
+            <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
+          ) : (
+            <Text as="p">Loading lesson...</Text>
+          )}
         </VStack>
       </div>
     </div>

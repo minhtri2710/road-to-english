@@ -30,6 +30,19 @@ const styles = stylex.create({
     justifyContent: "space-between",
     gap: "var(--spacing-1)",
   },
+  // Cards fill the library's width in columns; one column once a card would be narrower than 20rem.
+  lessonGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 20rem), 1fr))",
+    gap: "var(--spacing-4)",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  lessonItem: {
+    display: "flex",
+    minWidth: 0,
+  },
   groupCount: {
     flex: "0 0 auto",
     fontVariantNumeric: "tabular-nums",
@@ -143,9 +156,9 @@ export function LessonList({
                   <Heading level={3} id={`library-level-${level}`}>{level}</Heading>
                   <Text type="supporting" xstyle={styles.groupCount}>{groupCompleted} of {lessons.length} completed</Text>
                 </div>
-                <VStack as="ul" gap={2} padding={0}>
+                <ul className={stylex.props(styles.lessonGrid).className}>
                   {lessons.map((lesson) => (
-                    <li key={lesson.id}>
+                    <li key={lesson.id} className={stylex.props(styles.lessonItem).className}>
                       <LessonCard
                         title={lesson.title}
                         level={lesson.level}
@@ -157,7 +170,7 @@ export function LessonList({
                       />
                     </li>
                   ))}
-                </VStack>
+                </ul>
               </VStack>
             </section>
           );

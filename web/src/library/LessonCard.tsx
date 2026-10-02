@@ -15,15 +15,16 @@ const styles = stylex.create({
     minWidth: 0,
     height: "auto",
     justifyContent: "space-between",
-    paddingBlock: "var(--spacing-2)",
-    paddingInline: "var(--spacing-3)",
+    // Narrow screens keep the first lesson inside the first screen.
+    paddingBlock: { default: "var(--spacing-4)", "@media (max-width: 480px)": "var(--spacing-2)" },
+    paddingInline: { default: "var(--spacing-4)", "@media (max-width: 480px)": "var(--spacing-3)" },
     textAlign: "start",
     whiteSpace: "normal",
     backgroundColor: "var(--color-background-surface)",
     color: "var(--color-text-primary)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-container)",
     boxShadow: "var(--shadow-low)",
-    borderInlineStartWidth: "4px",
-    borderInlineStartStyle: "solid",
     flexWrap: "wrap",
   },
   titleAndMeta: {
@@ -58,19 +59,15 @@ const styles = stylex.create({
 const levelStyles = stylex.create({
   A1: {
     color: "var(--rte-color-level-a1)",
-    borderInlineStartColor: "var(--rte-color-level-a1)",
   },
   A2: {
     color: "var(--rte-color-level-a2)",
-    borderInlineStartColor: "var(--rte-color-level-a2)",
   },
   B1: {
     color: "var(--rte-color-level-b1)",
-    borderInlineStartColor: "var(--rte-color-level-b1)",
   },
   B2: {
     color: "var(--rte-color-level-b2)",
-    borderInlineStartColor: "var(--rte-color-level-b2)",
   },
 });
 
