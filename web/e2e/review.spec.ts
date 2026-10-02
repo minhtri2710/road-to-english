@@ -131,16 +131,16 @@ test("the due badge does not stretch across its parent", async ({ page }) => {
 test("rating buttons carry their semantic colors in light and dark themes", async ({ page }) => {
   const expected = {
     light: {
-      Again: ["rgb(254, 228, 226)", "rgb(180, 35, 52)", "rgb(180, 35, 52)"],
-      Hard: ["rgb(254, 243, 199)", "rgb(133, 77, 14)", "rgb(133, 77, 14)"],
-      Good: ["rgb(22, 101, 52)", "rgb(255, 255, 255)"],
-      Easy: ["rgb(204, 251, 241)", "rgb(15, 118, 110)", "rgb(15, 118, 110)"],
+      Again: ["rgb(253, 231, 228)", "rgb(180, 35, 24)", "rgb(180, 35, 24)"],
+      Hard: ["rgb(251, 239, 214)", "rgb(133, 86, 0)", "rgb(133, 86, 0)"],
+      Good: ["rgb(29, 122, 59)", "rgb(255, 255, 255)"],
+      Easy: ["rgb(212, 236, 238)", "rgb(11, 110, 120)", "rgb(11, 110, 120)"],
     },
     dark: {
-      Again: ["rgb(74, 32, 37)", "rgb(255, 122, 132)", "rgb(255, 122, 132)"],
-      Hard: ["rgb(67, 53, 20)", "rgb(252, 211, 77)", "rgb(252, 211, 77)"],
-      Good: ["rgb(134, 239, 172)", "rgb(6, 53, 28)"],
-      Easy: ["rgb(22, 67, 61)", "rgb(94, 234, 212)", "rgb(94, 234, 212)"],
+      Again: ["rgb(69, 32, 28)", "rgb(255, 122, 110)", "rgb(255, 122, 110)"],
+      Hard: ["rgb(58, 46, 18)", "rgb(242, 193, 78)", "rgb(242, 193, 78)"],
+      Good: ["rgb(95, 211, 138)", "rgb(16, 19, 23)"],
+      Easy: ["rgb(18, 58, 62)", "rgb(79, 195, 204)", "rgb(79, 195, 204)"],
     },
   };
   await saveWords(page, ["morning"]);

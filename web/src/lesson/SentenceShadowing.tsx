@@ -46,7 +46,7 @@ function playReference(
 const MIN_RECORDING_MS = 1000;
 
 const recordingAnimation = stylex.keyframes({
-  "0%, 100%": { boxShadow: "0 0 0 0 color-mix(in srgb, var(--color-error) 42%, transparent)" },
+  "0%, 100%": { boxShadow: "0 0 0 0 color-mix(in srgb, var(--rte-color-speak) 42%, transparent)" },
   "50%": { boxShadow: "0 0 0 5px transparent" },
 });
 
@@ -65,7 +65,8 @@ const styles = stylex.create({
     visibility: "hidden",
   },
   recordingButton: {
-    outline: "2px solid var(--color-error)",
+    backgroundColor: "var(--rte-color-speak-muted)",
+    outline: "2px solid var(--rte-color-speak)",
     outlineOffset: 2,
     animationName: recordingAnimation,
     animationDuration: "var(--duration-slow)",

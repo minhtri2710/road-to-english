@@ -64,6 +64,14 @@ describe("project theme contrast", () => {
     }
   });
 
+  it("keeps the speak color legible on body, surface and its muted fill", () => {
+    for (const [name, background] of Object.entries(backgrounds)) {
+      expectContrast(themePalette.speak, background, 4.5, `speak text on ${name}`);
+    }
+    expectContrast(themePalette.speak, themePalette.speakMuted, 4.5, "speak text on speak muted");
+    expectContrast(themePalette.onAccent, themePalette.speak, 4.5, "count text on speak");
+  });
+
   it("keeps every level color legible on the level-card surface", () => {
     for (const [level, color] of Object.entries(themePalette.levels)) {
       expectContrast(color, themePalette.surface, 4.5, `${level} badge text on surface`);
