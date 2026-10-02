@@ -4,6 +4,9 @@ A web app for daily English practice, built for Vietnamese speakers.
 
 - Lesson library: shadow each sentence along with its video, with optional Vietnamese translation and a pronunciation check.
 - Dictation and fill-in-the-blank quizzes, plus guided shadowing.
+- Learn mode (Shadow Gate): in guided shadowing, each word you say is scored clear, close or missed, and the next sentence unlocks at 70 points, with three skips per lesson and keyboard shortcuts.
+- Video lessons caption the clip that played, with its Vietnamese translation.
+- A "How it works" page at `#/about`.
 - Import your own text as a lesson.
 - Save words and sentences as cards and review them with spaced repetition.
 - Everything is stored on your device. Sign in to sync with an account, or export a backup file.

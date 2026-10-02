@@ -30,14 +30,44 @@ import { speechSupported, stopSpeaking } from "../lib/speech";
 import { loadStressDict, type StressDict } from "../lib/stress";
 import type { NewCard, VocabCard } from "../lib/vocab";
 import { splitWords } from "../lib/words";
-import { GuidedShadowing } from "./GuidedShadowing";
+import { GuidedShadowing, SKIPS_PER_LESSON } from "./GuidedShadowing";
 import { SentenceCard, type LessonMode } from "./SentenceCard";
+import { ShadowGate } from "./ShadowGate";
 import { LessonSummary, type SummaryProps } from "./LessonSummary";
 
 const styles = stylex.create({
+  // The player and its caption strip share one dark frame.
+  player: {
+    overflow: "hidden",
+    borderRadius: "var(--radius-container)",
+    backgroundColor: "#0A0C0F",
+    boxShadow: "var(--shadow-low)",
+  },
   video: {
     width: "100%",
     aspectRatio: "16 / 9",
+  },
+  // Captions sit under the video, not over it, so they never cover the player's controls.
+  caption: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "var(--spacing-0-5)",
+    padding: "var(--spacing-3) var(--spacing-4)",
+    textAlign: "center",
+  },
+  captionEn: {
+    margin: 0,
+    color: "#FFFFFF",
+    fontSize: "1.375rem",
+    lineHeight: 1.45,
+    fontWeight: "var(--font-weight-medium)",
+  },
+  captionVi: {
+    margin: 0,
+    color: "#C9CED6",
+    fontSize: "1rem",
+    lineHeight: 1.5,
   },
   toolbar: {
     flexWrap: "wrap",
@@ -132,8 +162,16 @@ export function LessonDetail({
       else next.delete(sentenceId);
       return next;
     });
+  // The sentence whose video clip played last, captioned under the video.
+  const [clipSentenceId, setClipSentenceId] = useState<string | null>(null);
+  const clipSentence = data.sentences.find((sentence) => sentence.id === clipSentenceId) ?? null;
   // The sentence shown one at a time, or null for the full list; per visit.
   const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
+  // Learn mode (Shadow Gate) in the guided view: sentences passed or skipped, and skips used, this visit.
+  const [learn, setLearn] = useState(false);
+  const [passedIds, setPassedIds] = useState<ReadonlySet<string>>(new Set());
+  const [skipsUsed, setSkipsUsed] = useState(0);
+  const pass = (sentenceId: string) => setPassedIds((current) => new Set(current).add(sentenceId));
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayButtonRef = useRef<HTMLButtonElement>(null);
@@ -182,6 +220,9 @@ export function LessonDetail({
     }
   };
 
+  const learnAvailable = pronunciationSupported && pronunciationCheck;
+  const learnOn = learn && learnAvailable;
+
   // Props shared by every sentence's card, in the list and the guided view.
   const cardProps = {
     lesson: data,
@@ -199,7 +240,8 @@ export function LessonDetail({
     setSpokenWord,
     loopingSentenceId,
     setLoopingSentenceId,
-    pronunciationCheck: pronunciationSupported && pronunciationCheck,
+    // Learn mode's Shadow Gate takes over the check, so the card does not offer a second one.
+    pronunciationCheck: pronunciationSupported && pronunciationCheck && !(learn && guidedIndex !== null),
     practice,
     shadowPractice,
     miss,
@@ -208,7 +250,9 @@ export function LessonDetail({
     addCard,
     removeCard,
     undoRemove,
+    onPlayClip: setClipSentenceId,
   };
+  const activeSentenceId = spokenWord?.sentenceId ?? loopingSentenceId ?? clipSentenceId;
 
   useEffect(() => {
     return () => {
@@ -233,7 +277,18 @@ export function LessonDetail({
       </VStack>
       {data.videoId && (
         <VStack gap={1}>
-          <div ref={video.containerRef} className={stylex.props(styles.video).className} />
+          <div className={stylex.props(styles.player).className}>
+            <div ref={video.containerRef} className={stylex.props(styles.video).className} />
+            {/* Hidden text stays hidden in the caption too. */}
+            {clipSentence && showTranscript && !hiddenText.has(clipSentence.id) && (
+              <div data-testid="video-caption" className={stylex.props(styles.caption).className}>
+                <p className={stylex.props(styles.captionEn).className}>{clipSentence.text}</p>
+                {showVietnamese && clipSentence.vi && (
+                  <p lang="vi" className={stylex.props(styles.captionVi).className}>{clipSentence.vi}</p>
+                )}
+              </div>
+            )}
+          </div>
           <Status>
             {video.status === "loading" && (
               <Text as="p" type="supporting">
@@ -403,14 +458,40 @@ export function LessonDetail({
             stopMedia();
             setGuidedIndex(index);
           }}
+          gate={{
+            available: learnAvailable,
+            on: learnOn,
+            setOn: setLearn,
+            passed: passedIds.has(data.sentences[guidedIndex].id),
+            skipsLeft: SKIPS_PER_LESSON - skipsUsed,
+            skip: () => {
+              setSkipsUsed((used) => used + 1);
+              pass(data.sentences[guidedIndex].id);
+            },
+          }}
         >
           {/* Keyed so a step to another sentence starts its practice afresh. */}
           <SentenceCard
             key={data.sentences[guidedIndex].id}
             sentence={data.sentences[guidedIndex]}
             textHidden={hiddenText.has(data.sentences[guidedIndex].id)}
+            active={activeSentenceId === data.sentences[guidedIndex].id}
             {...cardProps}
           />
+          {learnOn && (
+            <ShadowGate
+              key={`gate-${data.sentences[guidedIndex].id}`}
+              text={data.sentences[guidedIndex].text}
+              targetWpm={data.targetWpm}
+              passed={passedIds.has(data.sentences[guidedIndex].id)}
+              stopMedia={stopMedia}
+              onChecked={(result) => {
+                const { id } = data.sentences[guidedIndex];
+                shadowPractice(id, "check");
+                if (result.passed) pass(id);
+              }}
+            />
+          )}
         </GuidedShadowing>
       ) : (
         <VStack as="ol" gap={2} padding={0}>
@@ -420,6 +501,7 @@ export function LessonDetail({
                 key={sentence.id}
                 sentence={sentence}
                 textHidden={hiddenText.has(sentence.id)}
+                active={activeSentenceId === sentence.id}
                 {...cardProps}
               />
             </li>

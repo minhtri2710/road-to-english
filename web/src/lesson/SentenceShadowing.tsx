@@ -219,6 +219,7 @@ export function SentenceShadowing({
         <Button
           label="Listen"
           variant="primary"
+          data-shortcut="listen"
           isDisabled={!canSpeak || listening}
           onClick={() => {
             stopMedia();
@@ -245,6 +246,7 @@ export function SentenceShadowing({
         <div data-testid="recording-control" className={stylex.props(styles.recordingControl).className}>
           <Button
             label={recorder.state === "recording" ? "Stop" : "Record"}
+            data-shortcut="record"
             xstyle={recorder.state === "recording" ? styles.recordingButton : undefined}
             variant="secondary"
             children={(

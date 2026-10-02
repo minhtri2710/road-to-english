@@ -3,6 +3,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
 import { sharedStyles } from "../components/styles";
@@ -16,6 +17,13 @@ import { cardWord } from "../lib/words";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation } from "./SentenceQuiz";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
+
+const styles = stylex.create({
+  // The sentence now playing, from Listen, Loop or its video clip.
+  active: {
+    boxShadow: "0 0 0 2px var(--color-accent)",
+  },
+});
 
 const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
 
@@ -51,6 +59,8 @@ interface SentenceCardProps {
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
+  active: boolean;
+  onPlayClip: (sentenceId: string) => void;
 }
 
 // One sentence's card, shared by the list and the guided view.
@@ -81,10 +91,12 @@ export function SentenceCard({
   addCard,
   removeCard,
   undoRemove,
+  active,
+  onPlayClip,
 }: SentenceCardProps) {
   const showText = showTranscript && !textHidden;
   return (
-    <Card padding={3} xstyle={sharedStyles.sentence}>
+    <Card padding={3} xstyle={[sharedStyles.sentence, active && styles.active]} data-active={active || undefined}>
       {sentence.cue && (
         <Button
           label="Play clip"
@@ -95,6 +107,7 @@ export function SentenceCard({
             if (!cue) return;
             stopMedia({ keepVideo: true });
             video.playClip(cue, Number(speed));
+            onPlayClip(sentence.id);
           }}
         />
       )}

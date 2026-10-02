@@ -26,7 +26,7 @@ export function Alert({ children }: { children: ReactNode }) {
   );
 }
 
-const APP_TITLE = "Road to English";
+export const APP_TITLE = "Road to English";
 
 // The page's one h1 names the current view and the document title, and takes focus when the user changes view.
 export function ViewHeading({ children, takeFocus }: { children: string; takeFocus: () => boolean }) {

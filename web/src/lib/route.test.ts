@@ -11,6 +11,7 @@ describe("routes", () => {
     { view: "library" },
     { view: "review" },
     { view: "manage" },
+    { view: "about" },
     { view: "lesson", id: "greetings-basics" },
     { view: "my", id: "user-00000000-0000-4000-8000-000000000001" },
     { view: "lesson", id: "a/b c#?%" },

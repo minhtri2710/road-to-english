@@ -8,6 +8,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "./api/lessons";
+import { AppFooter } from "./components/AppFooter";
 import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary, ViewHeading } from "./components/feedback";
 import { YourData } from "./components/YourData";
@@ -28,6 +29,7 @@ import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
 import { IMPORT_TITLE, ImportTextForm } from "./library/ImportTextForm";
 import { LessonList } from "./library/LessonList";
 import { UserLessonList } from "./library/UserLessonList";
+import { Landing } from "./landing/Landing";
 import { ReviewDeck } from "./review/ReviewDeck";
 
 import "@astryxdesign/core/reset.css";
@@ -160,7 +162,7 @@ function AppViews() {
         due={due}
         onNavigate={navigate}
       />
-      <div className={stylex.props(appStyles.content, view === "library" && appStyles.wide).className}>
+      <div className={stylex.props(appStyles.content, (view === "library" || view === "about") && appStyles.wide).className}>
         <VStack as="main" gap={2}>
           {(view === "review" || view === "library" || view === "manage") && (
             <VStack gap={1}>
@@ -174,7 +176,13 @@ function AppViews() {
               </Text>
             </VStack>
           )}
-          {view === "review" ? (
+          {view === "about" ? (
+            <Landing
+              takeHeadingFocus={takeHeadingFocus}
+              onStart={() => navigate({ view: "library" })}
+              onOpenLesson={(id) => navigate({ view: "lesson", id })}
+            />
+          ) : view === "review" ? (
             <VStack gap={2}>
               <Badge label={`${reviewDeck.length} due`} variant="info" xstyle={appStyles.reviewDue} />
               <ReviewDeck
@@ -252,6 +260,7 @@ function AppViews() {
           )}
         </VStack>
       </div>
+      <AppFooter onNavigate={navigate} />
     </div>
   );
 }
