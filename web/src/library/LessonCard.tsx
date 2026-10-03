@@ -41,10 +41,12 @@ const styles = stylex.create({
     backgroundColor: "var(--color-background-surface)",
     boxShadow: "var(--shadow-low)",
   },
+  // Values no other button uses: StyleX shares one class per declaration, and these override
+  // classes rank above component styles, so a common value like "none" would also win elsewhere.
   videoButton: {
-    border: 0,
-    borderRadius: 0,
-    boxShadow: "none",
+    borderColor: "transparent",
+    borderRadius: "0 0 var(--radius-container) var(--radius-container)",
+    boxShadow: "0 0 0 0 transparent",
   },
   thumbnail: {
     position: "relative",
