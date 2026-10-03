@@ -136,6 +136,40 @@
     ]
   },
   {
+    "id": "how-i-feel",
+    "title": "How I Feel",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "how-i-feel-1", "text": "I feel happy today.", "vi": "Hôm nay tôi thấy vui.", "viStatus": "draft" },
+      { "id": "how-i-feel-2", "text": "I am a little tired.", "vi": "Tôi hơi mệt.", "viStatus": "draft", "notes": "\"a little\": link the two words, \"a-little\"" },
+      { "id": "how-i-feel-3", "text": "My head hurts.", "vi": "Tôi bị đau đầu.", "viStatus": "draft", "notes": "say the final /ts/ in \"hurts\"" },
+      { "id": "how-i-feel-4", "text": "I am hungry, so I want to eat.", "vi": "Tôi đói, nên tôi muốn ăn.", "viStatus": "draft" },
+      { "id": "how-i-feel-5", "text": "Are you okay?", "vi": "Bạn có ổn không?", "viStatus": "draft", "notes": "a yes/no question: your voice goes up at the end" },
+      { "id": "how-i-feel-6", "text": "Yes, I am fine, thank you.", "vi": "Vâng, tôi ổn, cảm ơn bạn.", "viStatus": "draft", "notes": "\"thank\": put your tongue between your teeth for /θ/" },
+      { "id": "how-i-feel-7", "text": "She is sad because her cat is sick.", "vi": "Cô ấy buồn vì con mèo của cô ấy bị ốm.", "viStatus": "draft" },
+      { "id": "how-i-feel-8", "text": "We are excited about the trip.", "vi": "Chúng tôi háo hức về chuyến đi.", "viStatus": "draft", "notes": "stress \"ex-CI-ted\"" },
+      { "id": "how-i-feel-9", "text": "I feel better after a good sleep.", "vi": "Tôi thấy khỏe hơn sau một giấc ngủ ngon.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "my-town",
+    "title": "My Town",
+    "level": "A1",
+    "targetWpm": 80,
+    "sentences": [
+      { "id": "my-town-1", "text": "I live in a small town.", "vi": "Tôi sống ở một thị trấn nhỏ.", "viStatus": "draft" },
+      { "id": "my-town-2", "text": "There is a market near my house.", "vi": "Có một cái chợ gần nhà tôi.", "viStatus": "draft", "notes": "\"There is\" for one thing, \"There are\" for many" },
+      { "id": "my-town-3", "text": "The school is next to the park.", "vi": "Trường học ở cạnh công viên.", "viStatus": "draft" },
+      { "id": "my-town-4", "text": "There are two cafes on my street.", "vi": "Có hai quán cà phê trên phố của tôi.", "viStatus": "draft", "notes": "say the final /z/ in \"cafes\"" },
+      { "id": "my-town-5", "text": "The post office opens at eight.", "vi": "Bưu điện mở cửa lúc tám giờ.", "viStatus": "draft" },
+      { "id": "my-town-6", "text": "I walk to the bus stop every morning.", "vi": "Sáng nào tôi cũng đi bộ ra trạm xe buýt.", "viStatus": "draft", "notes": "\"walk\": the l is silent" },
+      { "id": "my-town-7", "text": "My town has a beautiful river.", "vi": "Thị trấn của tôi có một con sông đẹp.", "viStatus": "draft" },
+      { "id": "my-town-8", "text": "It is quiet at night.", "vi": "Buổi tối ở đây yên tĩnh.", "viStatus": "draft", "notes": "\"quiet\" has two syllables: \"QUI-et\"" },
+      { "id": "my-town-9", "text": "I love my town.", "vi": "Tôi yêu thị trấn của mình.", "viStatus": "draft" }
+    ]
+  },
+  {
     "id": "greetings-basics",
     "title": "Greetings & Basics",
     "level": "A2",
@@ -289,6 +323,40 @@
     ]
   },
   {
+    "id": "at-the-restaurant",
+    "title": "At the Restaurant",
+    "level": "A2",
+    "targetWpm": 95,
+    "sentences": [
+      { "id": "at-the-restaurant-1", "text": "Good evening, a table for two, please.", "vi": "Chào buổi tối, cho tôi một bàn hai người.", "viStatus": "draft" },
+      { "id": "at-the-restaurant-2", "text": "Could we see the menu, please?", "vi": "Cho chúng tôi xem thực đơn được không?", "viStatus": "draft", "notes": "\"Could we\": a polite question, softer than \"Can we\"" },
+      { "id": "at-the-restaurant-3", "text": "I'd like the chicken soup to start.", "vi": "Món khai vị tôi muốn súp gà.", "viStatus": "draft", "notes": "\"I'd like\": say the /d/ softly, \"I'd\" sounds like \"eyed\"" },
+      { "id": "at-the-restaurant-4", "text": "What do you recommend?", "vi": "Bạn gợi ý món gì?", "viStatus": "draft", "notes": "stress \"re-com-MEND\"" },
+      { "id": "at-the-restaurant-5", "text": "Is this dish spicy?", "vi": "Món này có cay không?", "viStatus": "draft" },
+      { "id": "at-the-restaurant-6", "text": "Can I have some water, please?", "vi": "Cho tôi xin ít nước được không?", "viStatus": "draft" },
+      { "id": "at-the-restaurant-7", "text": "Everything was delicious.", "vi": "Mọi thứ đều rất ngon.", "viStatus": "draft", "notes": "stress \"de-LI-cious\"" },
+      { "id": "at-the-restaurant-8", "text": "Could we have the bill, please?", "vi": "Cho chúng tôi xin hóa đơn.", "viStatus": "draft" },
+      { "id": "at-the-restaurant-9", "text": "Can I pay by card?", "vi": "Tôi trả bằng thẻ được không?", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "at-the-hotel",
+    "title": "At the Hotel",
+    "level": "A2",
+    "targetWpm": 95,
+    "sentences": [
+      { "id": "at-the-hotel-1", "text": "Hello, I have a reservation under Nguyen.", "vi": "Xin chào, tôi đã đặt phòng tên Nguyễn.", "viStatus": "draft" },
+      { "id": "at-the-hotel-2", "text": "I'd like to check in, please.", "vi": "Tôi muốn nhận phòng.", "viStatus": "draft", "notes": "link \"check in\": \"che-kin\"" },
+      { "id": "at-the-hotel-3", "text": "How many nights are you staying?", "vi": "Bạn ở bao nhiêu đêm?", "viStatus": "draft" },
+      { "id": "at-the-hotel-4", "text": "We are staying for three nights.", "vi": "Chúng tôi ở ba đêm.", "viStatus": "draft", "notes": "\"three\": tongue between your teeth, then /r/" },
+      { "id": "at-the-hotel-5", "text": "Is breakfast included?", "vi": "Có bao gồm bữa sáng không?", "viStatus": "draft", "notes": "say the final /d/ in \"included\"" },
+      { "id": "at-the-hotel-6", "text": "What time is check-out?", "vi": "Mấy giờ phải trả phòng?", "viStatus": "draft" },
+      { "id": "at-the-hotel-7", "text": "The air conditioner in my room doesn't work.", "vi": "Máy lạnh trong phòng tôi không chạy.", "viStatus": "draft" },
+      { "id": "at-the-hotel-8", "text": "Could I have an extra towel?", "vi": "Cho tôi thêm một cái khăn tắm được không?", "viStatus": "draft", "notes": "link \"an extra\": \"a-nextra\"" },
+      { "id": "at-the-hotel-9", "text": "Can you call a taxi for me?", "vi": "Bạn gọi giúp tôi một chiếc taxi được không?", "viStatus": "draft" }
+    ]
+  },
+  {
     "id": "stress-pairs-nouns-verbs",
     "title": "Stress Pairs: Nouns and Verbs",
     "level": "B1",
@@ -425,6 +493,40 @@
     ]
   },
   {
+    "id": "returning-a-product",
+    "title": "Returning a Product",
+    "level": "B1",
+    "targetWpm": 115,
+    "sentences": [
+      { "id": "returning-a-product-1", "text": "I bought these headphones here last week.", "vi": "Tuần trước tôi đã mua cặp tai nghe này ở đây.", "viStatus": "draft", "notes": "\"bought\" rhymes with \"caught\"; the gh is silent" },
+      { "id": "returning-a-product-2", "text": "Unfortunately, the left side has stopped working.", "vi": "Tiếc là bên trái đã ngừng hoạt động.", "viStatus": "draft", "notes": "\"stopped\": the -ed sounds like /t/" },
+      { "id": "returning-a-product-3", "text": "I'd like to return them, please.", "vi": "Tôi muốn trả lại hàng.", "viStatus": "draft" },
+      { "id": "returning-a-product-4", "text": "Do you have the receipt?", "vi": "Bạn có hóa đơn không?", "viStatus": "draft", "notes": "\"receipt\": the p is silent, \"re-SEET\"" },
+      { "id": "returning-a-product-5", "text": "Yes, here it is, and here is the original box.", "vi": "Có, đây ạ, và đây là hộp đựng ban đầu.", "viStatus": "draft" },
+      { "id": "returning-a-product-6", "text": "Would you prefer a refund or an exchange?", "vi": "Bạn muốn hoàn tiền hay đổi hàng?", "viStatus": "draft", "notes": "a choice question: up on \"refund\", down on \"exchange\"" },
+      { "id": "returning-a-product-7", "text": "I'd rather exchange them for a new pair.", "vi": "Tôi muốn đổi lấy một cặp mới hơn.", "viStatus": "draft", "notes": "\"I'd rather\" = I would prefer" },
+      { "id": "returning-a-product-8", "text": "How long does a refund usually take?", "vi": "Hoàn tiền thường mất bao lâu?", "viStatus": "draft" },
+      { "id": "returning-a-product-9", "text": "Thanks for sorting this out so quickly.", "vi": "Cảm ơn bạn đã giải quyết nhanh như vậy.", "viStatus": "draft", "notes": "\"sort out\" = solve a problem" }
+    ]
+  },
+  {
+    "id": "keeping-fit",
+    "title": "Keeping Fit",
+    "level": "B1",
+    "targetWpm": 115,
+    "sentences": [
+      { "id": "keeping-fit-1", "text": "I've started running three times a week.", "vi": "Tôi đã bắt đầu chạy bộ ba lần một tuần.", "viStatus": "draft", "notes": "\"I've started\": the present perfect for a new habit that continues now" },
+      { "id": "keeping-fit-2", "text": "At first, I could only run for ten minutes.", "vi": "Lúc đầu, tôi chỉ chạy được mười phút.", "viStatus": "draft" },
+      { "id": "keeping-fit-3", "text": "Now I can run five kilometres without stopping.", "vi": "Bây giờ tôi có thể chạy năm ki-lô-mét không nghỉ.", "viStatus": "draft", "notes": "stress \"KI-lo-me-tres\" (British) or \"ki-LO-me-ters\" (American)" },
+      { "id": "keeping-fit-4", "text": "Stretching before exercise helps prevent injuries.", "vi": "Giãn cơ trước khi tập giúp tránh chấn thương.", "viStatus": "draft" },
+      { "id": "keeping-fit-5", "text": "I try to drink plenty of water during the day.", "vi": "Tôi cố uống nhiều nước trong ngày.", "viStatus": "draft" },
+      { "id": "keeping-fit-6", "text": "My friend prefers yoga because it's more relaxing.", "vi": "Bạn tôi thích yoga hơn vì nó thư giãn hơn.", "viStatus": "draft", "notes": "\"prefers\": the final /z/ matters" },
+      { "id": "keeping-fit-7", "text": "Getting enough sleep is just as important as training.", "vi": "Ngủ đủ giấc cũng quan trọng không kém việc tập luyện.", "viStatus": "draft", "notes": "\"just as important as\": compare two things that are equal" },
+      { "id": "keeping-fit-8", "text": "I feel much more energetic than I used to.", "vi": "Tôi thấy tràn đầy năng lượng hơn trước nhiều.", "viStatus": "draft", "notes": "\"used to\" sounds like \"yoos-tuh\"" },
+      { "id": "keeping-fit-9", "text": "Would you like to join me for a run on Saturday?", "vi": "Thứ Bảy bạn có muốn chạy bộ cùng tôi không?", "viStatus": "draft", "notes": "\"Would you\" often sounds like \"wou-joo\"" }
+    ]
+  },
+  {
     "id": "careful-decisions",
     "title": "Careful Decisions",
     "level": "B2",
@@ -541,6 +643,40 @@
       { "id": "news-and-media-7", "text": "The report was based on a survey of two thousand people.", "vi": "Bản tin dựa trên một cuộc khảo sát hai nghìn người.", "viStatus": "draft", "notes": "\"based\" ends in /t/" },
       { "id": "news-and-media-8", "text": "Some channels focus more on opinion than on facts.", "vi": "Một số kênh tập trung vào quan điểm nhiều hơn là dữ kiện.", "viStatus": "draft" },
       { "id": "news-and-media-9", "text": "I try to read at least two points of view on every issue.", "vi": "Tôi cố gắng đọc ít nhất hai quan điểm về mỗi vấn đề.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "presenting-an-idea",
+    "title": "Presenting an Idea",
+    "level": "B2",
+    "targetWpm": 140,
+    "sentences": [
+      { "id": "presenting-an-idea-1", "text": "Thank you all for coming this morning.", "vi": "Cảm ơn mọi người đã đến buổi sáng hôm nay.", "viStatus": "draft" },
+      { "id": "presenting-an-idea-2", "text": "Today I'd like to propose a new way of onboarding customers.", "vi": "Hôm nay tôi muốn đề xuất một cách mới để đón khách hàng mới.", "viStatus": "draft", "notes": "stress \"pro-POSE\" and \"ON-board-ing\"" },
+      { "id": "presenting-an-idea-3", "text": "At the moment, almost a third of new users leave within a week.", "vi": "Hiện nay, gần một phần ba người dùng mới rời đi trong vòng một tuần.", "viStatus": "draft", "notes": "\"third\": /θ/ then /ɜːr/" },
+      { "id": "presenting-an-idea-4", "text": "Our research suggests that the first step is too complicated.", "vi": "Nghiên cứu của chúng tôi cho thấy bước đầu tiên quá phức tạp.", "viStatus": "draft", "notes": "\"suggests\": say both /s/ sounds, \"sug-JESTS\"" },
+      { "id": "presenting-an-idea-5", "text": "So we've designed a shorter, guided setup.", "vi": "Vì vậy chúng tôi đã thiết kế một bước cài đặt ngắn hơn, có hướng dẫn.", "viStatus": "draft" },
+      { "id": "presenting-an-idea-6", "text": "In a small trial, completion rose from sixty to eighty-five percent.", "vi": "Trong một thử nghiệm nhỏ, tỉ lệ hoàn thành tăng từ sáu mươi lên tám mươi lăm phần trăm.", "viStatus": "draft", "notes": "\"sixty\" stresses the first syllable; \"sixteen\" stresses the second" },
+      { "id": "presenting-an-idea-7", "text": "The main risk is that some advanced users may find it too basic.", "vi": "Rủi ro chính là một số người dùng thành thạo có thể thấy nó quá đơn giản.", "viStatus": "draft" },
+      { "id": "presenting-an-idea-8", "text": "To address that, they'll be able to skip straight to the full settings.", "vi": "Để giải quyết điều đó, họ có thể bỏ qua và vào thẳng phần cài đặt đầy đủ.", "viStatus": "draft" },
+      { "id": "presenting-an-idea-9", "text": "I'm happy to take any questions now.", "vi": "Bây giờ tôi xin trả lời các câu hỏi.", "viStatus": "draft" }
+    ]
+  },
+  {
+    "id": "networking-small-talk",
+    "title": "Small Talk at Events",
+    "level": "B2",
+    "targetWpm": 140,
+    "sentences": [
+      { "id": "networking-small-talk-1", "text": "Hi, I don't think we've met. I'm Linh.", "vi": "Chào bạn, hình như chúng ta chưa gặp nhau. Tôi là Linh.", "viStatus": "draft", "notes": "\"don't think\": the t of \"don't\" is barely heard" },
+      { "id": "networking-small-talk-2", "text": "Nice to meet you. What brings you to the conference?", "vi": "Rất vui được gặp bạn. Điều gì đưa bạn đến hội nghị này?", "viStatus": "draft" },
+      { "id": "networking-small-talk-3", "text": "I'm mainly here for the talks on design.", "vi": "Tôi đến chủ yếu để nghe các bài nói về thiết kế.", "viStatus": "draft" },
+      { "id": "networking-small-talk-4", "text": "That keynote this morning was really thought-provoking.", "vi": "Bài phát biểu chính sáng nay thật sự gợi nhiều suy nghĩ.", "viStatus": "draft", "notes": "\"thought\": /θ/ at the start, the gh is silent" },
+      { "id": "networking-small-talk-5", "text": "How long have you been working in the industry?", "vi": "Bạn làm trong ngành được bao lâu rồi?", "viStatus": "draft", "notes": "\"How long have you been\": the present perfect continuous" },
+      { "id": "networking-small-talk-6", "text": "I switched from engineering to product about two years ago.", "vi": "Tôi chuyển từ kỹ thuật sang sản phẩm khoảng hai năm trước.", "viStatus": "draft" },
+      { "id": "networking-small-talk-7", "text": "That must have been quite a change.", "vi": "Chắc hẳn đó là một thay đổi lớn.", "viStatus": "draft", "notes": "\"must have been\" often sounds like \"must-uv-bin\"" },
+      { "id": "networking-small-talk-8", "text": "Do you have a card, or shall we connect online?", "vi": "Bạn có danh thiếp không, hay mình kết nối trên mạng nhé?", "viStatus": "draft" },
+      { "id": "networking-small-talk-9", "text": "It was great talking to you. Enjoy the rest of the event.", "vi": "Rất vui được nói chuyện với bạn. Chúc bạn tận hưởng phần còn lại của sự kiện.", "viStatus": "draft" }
     ]
   }
 ]
