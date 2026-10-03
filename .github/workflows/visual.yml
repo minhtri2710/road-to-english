@@ -1,0 +1,98 @@
+name: Visual
+
+# Screenshot comparisons against the chromium-darwin baselines in web/e2e/visual.spec.ts-snapshots, on a macOS
+# runner so they render as the baselines did. To regenerate the baselines after an intended change, add the
+# "update-visuals" label to the pull request, or run this workflow by hand with "update" ticked: it commits the
+# new screenshots to the branch and removes the label.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      update:
+        description: Regenerate the baselines and commit them to this branch
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: visual-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    name: Visual (macOS)
+    # Labelling with anything else must not re-run the comparison.
+    if: github.event.action != 'labeled' || github.event.label.name == 'update-visuals'
+    runs-on: macos-15
+    env:
+      UPDATE: ${{ (github.event_name == 'workflow_dispatch' && inputs.update) || contains(github.event.pull_request.labels.*.name, 'update-visuals') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The branch itself, so new baselines can be committed to it.
+          ref: ${{ github.head_ref || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      # macOS runners have no service containers: a throwaway Postgres on the port the e2e config uses.
+      - name: Postgres
+        run: |
+          brew install postgresql@17
+          PG="$(brew --prefix postgresql@17)/bin"
+          "$PG/initdb" -D "$RUNNER_TEMP/pg" -U rte --auth=trust
+          "$PG/pg_ctl" -D "$RUNNER_TEMP/pg" -o "-p 5435" -l "$RUNNER_TEMP/pg.log" -w start
+          "$PG/createdb" -h localhost -p 5435 -U rte rte
+      - run: pnpm -C web install --frozen-lockfile
+      - run: pnpm -C web exec playwright install chromium
+      - name: Compare screenshots
+        if: env.UPDATE != 'true'
+        working-directory: web
+        run: pnpm exec playwright test e2e/visual.spec.ts
+      - name: Regenerate screenshots
+        if: env.UPDATE == 'true'
+        working-directory: web
+        run: pnpm exec playwright test e2e/visual.spec.ts --update-snapshots
+      - name: Commit new baselines
+        if: env.UPDATE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add web/e2e/visual.spec.ts-snapshots
+          if git diff --cached --quiet; then
+            echo "Baselines already match."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test: update visual baselines from the macOS runner"
+            git push
+            # A GITHUB_TOKEN push starts no workflow, so start CI and the comparison on the new commit.
+            BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+            gh workflow run ci.yml --repo "${{ github.repository }}" --ref "$BRANCH"
+            gh workflow run visual.yml --repo "${{ github.repository }}" --ref "$BRANCH"
+          fi
+      - name: Remove the update-visuals label
+        if: env.UPDATE == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --remove-label update-visuals
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: visual-results
+          path: web/test-results
+          retention-days: 7

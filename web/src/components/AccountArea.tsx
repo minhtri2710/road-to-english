@@ -16,6 +16,12 @@ import { Alert } from "./feedback";
 import { sharedStyles } from "./styles";
 
 const styles = stylex.create({
+  // An outlined button, as the design's header sign-in. Values no other button uses: StyleX shares one class
+  // per declaration, and these override classes rank above component styles.
+  disclosure: {
+    backgroundColor: { default: "color-mix(in srgb, var(--color-background-surface) 100%, transparent)", ":hover": "color-mix(in srgb, var(--color-background-muted) 100%, transparent)" },
+    boxShadow: "inset 0 0 0 1px var(--color-text-secondary)",
+  },
   accountControls: {
     flexWrap: "wrap",
   },
@@ -83,7 +89,7 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
   const [password, setPassword] = useState("");
   const [passwordShown, setPasswordShown] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  // Signed out, the form sits behind an "Account" disclosure so the header stays short.
+  // Signed out, the form sits behind a "Log in" disclosure so the header stays short.
   const [open, setOpen] = useState(false);
   const notifyDisclosure = useRef(onDisclosureChange);
   useEffect(() => {
@@ -232,8 +238,9 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
             disclosure.current = element;
             takeFocus("signedOut")(element);
           }}
-          label={t("Account")}
+          label={t("Log in")}
           variant="secondary"
+          xstyle={styles.disclosure}
           aria-expanded={open}
           aria-controls={formRegionId}
           onClick={() => {

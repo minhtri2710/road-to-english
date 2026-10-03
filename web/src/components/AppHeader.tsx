@@ -140,6 +140,12 @@ const styles = stylex.create({
   accountArea: {
     minWidth: 0,
   },
+  // The primary action in the speak color: the button reads its fill from this token. Phones skip it, keeping
+  // the first screen for lessons.
+  speakButton: {
+    display: { default: "contents", "@media (max-width: 480px)": "none" },
+    "--color-accent": "var(--rte-color-speak)",
+  },
   // The account's error, such as an unreachable server, as a quiet banner under the bar.
   offline: {
     display: "flex",
@@ -166,6 +172,7 @@ export function AppHeader({
   auth,
   view,
   due,
+  cta,
   onNavigate,
 }: {
   goalAnnounced: boolean;
@@ -176,6 +183,8 @@ export function AppHeader({
   auth: AuthState;
   view: Route["view"] | null;
   due: number | null;
+  // The header's primary action, as the design's: back to practice. Null where it would lead to this page.
+  cta?: { label: string; onClick: () => void } | null;
   onNavigate: (route: Route, returnTo?: string) => void;
 }) {
   const t = useT();
@@ -257,6 +266,12 @@ export function AppHeader({
             <div className={stylex.props(styles.accountArea, accountOpen && styles.accountAreaOpen).className}>
               <AccountArea auth={auth} onDisclosureChange={setAccountOpen} />
             </div>
+            {/* The storage chip's Back up takes this place: the bar has no room for both at its widest. */}
+            {cta && !accountOpen && !storageNotice && (
+              <span className={stylex.props(styles.speakButton).className}>
+                <Button label={cta.label} variant="primary" onClick={cta.onClick} />
+              </span>
+            )}
           </div>
         </div>
         {!auth.user && !accountOpen && auth.error && (

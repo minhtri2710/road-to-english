@@ -203,6 +203,13 @@ function AppViews() {
         auth={auth}
         view={appView}
         due={due}
+        cta={
+          lastLesson && !(route.view === lastLesson.view && route.id === lastLesson.id)
+            ? { label: t("Continue practising"), onClick: () => navigate(lastLesson) }
+            : view !== "library" && !lastLesson
+              ? { label: t("Start practising"), onClick: () => navigate({ view: "library" }) }
+              : null
+        }
         onNavigate={navigate}
       />
       <div className={stylex.props(appStyles.content, view !== "review" && view !== "manage" && appStyles.wide).className}>

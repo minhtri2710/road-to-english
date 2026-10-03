@@ -1,5 +1,5 @@
-// Visual baselines target chromium-darwin; update intentionally with `pnpm -C web e2e --update-snapshots`.
-// When CI runs on another OS, generate that OS's baselines there and remove this darwin-only constraint.
+// Visual baselines target chromium-darwin and come from the macOS runner in .github/workflows/visual.yml:
+// label a pull request "update-visuals" to regenerate them after an intended change.
 
 import { expect, openLibraryLesson, test, viewLink } from "./fixtures";
 import type { Page } from "@playwright/test";

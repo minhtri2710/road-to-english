@@ -1,4 +1,4 @@
-import { createLesson, expect, test, TRANSCRIPT } from "./fixtures";
+import { createLesson, expect, test, TRANSCRIPT, viewLink } from "./fixtures";
 
 test("from tablet width up, body text is 16px and buttons are 44px; phones keep the compact sizes", async ({ page }) => {
   const sizes = async () =>
@@ -26,4 +26,28 @@ test("a video lesson's card shows its YouTube thumbnail", async ({ page }) => {
   // The thumbnail opens the lesson too (its play mark sits over the image's center).
   await thumbnail.locator("..").click();
   await expect(page.getByRole("heading", { level: 1, name: "Video card" })).toBeVisible();
+});
+
+test("the header's Continue practising reopens the last lesson, and phones skip it", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, "persist", { configurable: true, value: () => Promise.resolve(true) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const header = page.locator("header");
+  await expect(header.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+  // No lesson opened yet, and the library is where Start practising leads: no button.
+  await expect(header.getByRole("button", { name: /practising/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "About Me" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "About Me" })).toBeVisible();
+  // On the last lesson itself it would lead nowhere.
+  await expect(header.getByRole("button", { name: "Continue practising" })).toHaveCount(0);
+  await viewLink(page, "Library").click();
+  await header.getByRole("button", { name: "Continue practising" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "About Me" })).toBeVisible();
+
+  await viewLink(page, "Library").click();
+  await page.setViewportSize({ width: 375, height: 667 });
+  await expect(header.getByRole("button", { name: "Continue practising" })).toBeHidden();
 });

@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Started by visual.yml for the baselines it commits: a commit made with GITHUB_TOKEN starts no workflow itself.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -92,7 +94,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm -C web install --frozen-lockfile
       - run: pnpm -C web exec playwright install --with-deps chromium
-      # visual.spec.ts compares against macOS (chromium-darwin) baselines, so it runs on a Mac, not here.
+      # visual.spec.ts compares against macOS (chromium-darwin) baselines: visual.yml runs it on a macOS runner.
       - name: Playwright
         working-directory: web
         run: pnpm exec playwright test $(ls e2e/*.spec.ts | grep -v '/visual\.spec\.ts$')

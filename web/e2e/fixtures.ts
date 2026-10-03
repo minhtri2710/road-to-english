@@ -203,7 +203,7 @@ export async function openDisplayMenu(page: Page): Promise<void> {
   await expect(page.getByRole("menu", { name: "Display" })).toBeVisible();
 }
 
-export const accountDisclosure = (page: Page) => page.getByRole("button", { name: "Account", exact: true });
+export const accountDisclosure = (page: Page) => page.getByRole("button", { name: "Log in", exact: true });
 
 // Expands the signed-out account form if it is collapsed.
 export async function openAccountForm(page: Page): Promise<void> {
