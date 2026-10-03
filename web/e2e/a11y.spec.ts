@@ -1193,8 +1193,16 @@ for (const width of [320, 360, 1280]) {
           expect(button.x + button.width, `${title}: the row fills the space up to Delete`).toBeGreaterThanOrEqual(item.x + item.width - 1);
         }
       }
-      const [first, second] = boxes.sort((a, b) => a.row.y - b.row.y);
-      expect(first.button.y + first.button.height, "Delete ends above the next lesson").toBeLessThanOrEqual(second.row.y);
+      for (const { title, item, button } of boxes) {
+        expect(button.x + button.width, `${title}: Delete stays inside its own lesson`).toBeLessThanOrEqual(item.x + item.width + 1);
+      }
+      // Lessons in one column: each Delete ends above the next lesson. A wide screen sets them side by side.
+      const [first, second] = boxes.sort((a, b) => a.row.y - b.row.y || a.row.x - b.row.x);
+      if (Math.abs(first.item.x - second.item.x) < 1) {
+        expect(first.button.y + first.button.height, "Delete ends above the next lesson").toBeLessThanOrEqual(second.row.y);
+      } else {
+        expect(first.item.x + first.item.width, "the lessons sit side by side").toBeLessThanOrEqual(second.item.x);
+      }
     });
   }
 }

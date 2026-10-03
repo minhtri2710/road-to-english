@@ -11,9 +11,19 @@ import { useT } from "../i18n";
 import { LessonCard } from "./LessonCard";
 
 const styles = stylex.create({
+  // The same columns as the library's cards; one column on a narrow screen.
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 20rem), 1fr))",
+    gap: "var(--spacing-4)",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
   card: {
     flexGrow: 1,
     flexBasis: "8rem",
+    minWidth: 0,
   },
 });
 
@@ -55,31 +65,39 @@ export function UserLessonList({
   }
 
   return (
-    <VStack as="ul" gap={2} padding={0}>
-      {lessons.map((lesson) => (
-        <li key={lesson.id}>
-          <HStack gap={1} align="center" wrap="wrap">
-            <div className={stylex.props(styles.card).className}>
-              <LessonCard
-                title={lesson.title}
-                level={lesson.level}
-                sentenceCount={lesson.sentences.length}
-                targetWpm={lesson.targetWpm}
-                completed={completedLessons.has(lesson.id)}
-                onSelect={() => onSelect(lesson)}
-                takeFocus={() => takeFocus(lesson.id)}
+    <VStack gap={1}>
+      {lessons.some((lesson) => lesson.videoId) && (
+        <Text as="p" type="supporting">
+          {t("Video lessons show their thumbnail from YouTube.")}
+        </Text>
+      )}
+      <ul className={stylex.props(styles.grid).className}>
+        {lessons.map((lesson) => (
+          <li key={lesson.id}>
+            <HStack gap={1} align="center" wrap="wrap">
+              <div className={stylex.props(styles.card).className}>
+                <LessonCard
+                  videoId={lesson.videoId}
+                  title={lesson.title}
+                  level={lesson.level}
+                  sentenceCount={lesson.sentences.length}
+                  targetWpm={lesson.targetWpm}
+                  completed={completedLessons.has(lesson.id)}
+                  onSelect={() => onSelect(lesson)}
+                  takeFocus={() => takeFocus(lesson.id)}
+                />
+              </div>
+              <Button
+                label={t("Delete")}
+                aria-label={t("Delete {title}", { title: lesson.title })}
+                variant="ghost"
+                onClick={() => onDelete(lesson)}
               />
-            </div>
-            <Button
-              label={t("Delete")}
-              aria-label={t("Delete {title}", { title: lesson.title })}
-              variant="ghost"
-              onClick={() => onDelete(lesson)}
-            />
-          </HStack>
-          {deleteFailedId === lesson.id && <Alert>{t("Couldn't delete. Try again.")}</Alert>}
-        </li>
-      ))}
+            </HStack>
+            {deleteFailedId === lesson.id && <Alert>{t("Couldn't delete. Try again.")}</Alert>}
+          </li>
+        ))}
+      </ul>
     </VStack>
   );
 }
