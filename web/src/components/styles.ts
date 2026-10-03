@@ -17,6 +17,27 @@ export const sharedStyles = stylex.create({
   viewToggle: {
     alignSelf: "start",
   },
+  // A section's small uppercase label above its title, as on the design's sections. Phones skip it, keeping
+  // the first screen for lessons.
+  eyebrow: {
+    display: { default: "block", "@media (max-width: 480px)": "none" },
+    margin: 0,
+    color: "var(--color-accent)",
+    fontSize: "var(--text-supporting-size)",
+    lineHeight: "var(--text-supporting-leading)",
+    fontWeight: "var(--font-weight-bold)",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+  },
+  speakEyebrow: {
+    color: "var(--rte-color-speak)",
+  },
+  // From tablet width, a section title at the design's 32px.
+  sectionTitle: {
+    fontSize: { default: null, "@media (min-width: 481px)": "2rem" },
+    lineHeight: { default: null, "@media (min-width: 481px)": 1.25 },
+    letterSpacing: { default: null, "@media (min-width: 481px)": "-0.01em" },
+  },
   dictationInput: {
     width: "100%",
     minHeight: "var(--size-element-lg)",

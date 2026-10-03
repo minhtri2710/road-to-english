@@ -2,13 +2,14 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson, Level } from "../api/lessons";
-import { ErrorMessage } from "../components/feedback";
+import { ErrorMessage, OfflineIcon } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLessons } from "../hooks/lessons";
 import type { LessonRoute } from "../hooks/useLastLesson";
@@ -26,6 +27,14 @@ const styles = stylex.create({
     flexWrap: "wrap",
     alignSelf: "flex-start",
     maxWidth: "100%",
+  },
+  // The design's hero: the library's title and intro, with Today beside it from laptop width.
+  hero: {
+    display: "grid",
+    gridTemplateColumns: { default: "minmax(0, 1fr)", "@media (min-width: 960px)": "minmax(0, 1fr) minmax(0, 30rem)" },
+    alignItems: "center",
+    gap: { default: "var(--spacing-2)", "@media (min-width: 960px)": "var(--spacing-10)" },
+    paddingBlockEnd: { default: 0, "@media (min-width: 481px)": "var(--spacing-6)" },
   },
   // A failed load sits in a panel the size of a lesson card's row, so the page keeps its shape.
   errorPanel: {
@@ -83,6 +92,7 @@ const styles = stylex.create({
 });
 
 export function LessonList({
+  intro,
   onSelect,
   completedLessons,
   takeFocus,
@@ -106,6 +116,8 @@ export function LessonList({
   ownLessons: Lesson[];
   onContinue: () => void;
   today: Omit<Parameters<typeof TodayCard>[0], "suggestion" | "headingRef">;
+  // The view's title and intro, laid out beside Today.
+  intro: ReactNode;
 }) {
   const t = useT();
   const { welcomed, finishWelcome } = useWelcome();
@@ -134,6 +146,10 @@ export function LessonList({
   } else if (error) {
     content = (
       <VStack gap={1} xstyle={styles.errorPanel}>
+        <HStack gap={1} align="center">
+          <OfflineIcon />
+          <Text weight="semibold">{t("Library lessons need the server")}</Text>
+        </HStack>
         <ErrorMessage error={error} subject={t("lessons")} />
         <Text as="p" type="supporting">
           {t("Your own lessons below still work offline.")}
@@ -195,31 +211,37 @@ export function LessonList({
 
   return (
     <VStack gap={2}>
-      {welcomed ? (
-        <TodayCard
-          {...today}
-          suggestion={suggestion}
-          headingRef={(heading) => {
-            if (heading && focusToday.current) {
-              focusToday.current = false;
-              heading.focus();
-            }
-          }}
-        />
-      ) : (
-        <WelcomeCard
-          levelFilter={levelFilter}
-          chooseLevelFilter={chooseLevelFilter}
-          dailyGoal={today.dailyGoal}
-          chooseGoal={today.chooseGoal}
-          onFinish={() => {
-            focusToday.current = true;
-            finishWelcome();
-          }}
-        />
-      )}
+      <div className={stylex.props(styles.hero).className}>
+        {intro}
+        {welcomed ? (
+          <TodayCard
+            {...today}
+            suggestion={suggestion}
+            headingRef={(heading) => {
+              if (heading && focusToday.current) {
+                focusToday.current = false;
+                heading.focus();
+              }
+            }}
+          />
+        ) : (
+          <WelcomeCard
+            levelFilter={levelFilter}
+            chooseLevelFilter={chooseLevelFilter}
+            dailyGoal={today.dailyGoal}
+            chooseGoal={today.chooseGoal}
+            onFinish={() => {
+              focusToday.current = true;
+              finishWelcome();
+            }}
+          />
+        )}
+      </div>
       <VStack gap={1}>
-        <Heading level={2}>{t("Library lessons")}</Heading>
+        <VStack gap={0.5}>
+          <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow).className}>{t("Lessons")}</p>
+          <Heading level={2} xstyle={sharedStyles.sectionTitle}>{t("Library lessons")}</Heading>
+        </VStack>
         <SegmentedControl
           label={t("Library level")}
           xstyle={styles.levelFilter}

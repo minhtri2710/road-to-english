@@ -21,21 +21,8 @@ const styles = stylex.create({
   todayCard: {
     padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-2)" },
   },
-  // From tablet width the goal sits beside the streak and week, so a wide card isn't one sparse column.
   todayContent: {
-    display: "grid",
-    gridTemplateColumns: { default: "minmax(0, 1fr)", "@media (min-width: 768px)": "minmax(0, 1fr) minmax(0, 1fr)" },
-    alignItems: "center",
-    gap: { default: "var(--spacing-0-5)", "@media (min-width: 768px)": "var(--spacing-2) var(--spacing-6)" },
-  },
-  todayHeader: {
-    gridColumn: "1 / -1",
-  },
-  stats: {
-    display: "flex",
-    flexDirection: "column",
     gap: "var(--spacing-0-5)",
-    minWidth: 0,
   },
   // One line down to 320px: the longest streak text and the freezes fit at this size.
   // Larger text wraps rather than overflowing the card.
@@ -154,8 +141,8 @@ export function TodayCard({
   const today = week.at(-1)?.key;
   return (
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
-      <div className={stylex.props(styles.todayContent).className}>
-        <HStack gap={1} align="center" xstyle={[sharedStyles.shadowingControls, styles.todayHeader]}>
+      <VStack xstyle={styles.todayContent}>
+        <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
           <Heading level={2} tabIndex={-1} ref={headingRef}>{t("Today")}</Heading>
           {(dueText || suggestionText) && (
             <Text type="supporting">
@@ -198,41 +185,39 @@ export function TodayCard({
             </ToggleButtonGroup>
           </VStack>
         </div>
-        <div className={stylex.props(styles.stats).className}>
-          <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
-            <Text weight="semibold">{streak > 0 ? t("{streak}-day streak", { streak }) : t("Start a new streak today")}</Text>
-            <Text type="supporting">
-              <Tooltip
-                content={t(
-                  "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to {max}.",
-                  { max: MAX_FREEZES },
-                )}
-              >
-                {/* The focusable trigger keeps the 24px minimum target size. */}
-                <span tabIndex={0} className={stylex.props(styles.tooltipTarget).className}>
-                  {t("Freezes {freezes} of {max}", { freezes, max: MAX_FREEZES })}
-                </span>
-              </Tooltip>
-            </Text>
-            <Text type="supporting" xstyle={styles.xp}>{t("{xp} XP", { xp })}</Text>
-          </HStack>
-          <ul aria-label={t("This week")} className={stylex.props(styles.week).className}>
-            {week.map((day) => (
-              <li
-                key={day.key}
-                aria-current={day.key === today ? "date" : undefined}
-                className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
-              >
-                <span aria-hidden="true">{t(day.label.slice(0, 2))}</span>
-                <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
-                <VisuallyHidden>
-                  {t(day.practiced ? "{day} practised" : "{day} not practised", { day: t(WEEKDAY_NAMES[day.label]) })}
-                </VisuallyHidden>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+        <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
+          <Text weight="semibold">{streak > 0 ? t("{streak}-day streak", { streak }) : t("Start a new streak today")}</Text>
+          <Text type="supporting">
+            <Tooltip
+              content={t(
+                "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to {max}.",
+                { max: MAX_FREEZES },
+              )}
+            >
+              {/* The focusable trigger keeps the 24px minimum target size. */}
+              <span tabIndex={0} className={stylex.props(styles.tooltipTarget).className}>
+                {t("Freezes {freezes} of {max}", { freezes, max: MAX_FREEZES })}
+              </span>
+            </Tooltip>
+          </Text>
+          <Text type="supporting" xstyle={styles.xp}>{t("{xp} XP", { xp })}</Text>
+        </HStack>
+        <ul aria-label={t("This week")} className={stylex.props(styles.week).className}>
+          {week.map((day) => (
+            <li
+              key={day.key}
+              aria-current={day.key === today ? "date" : undefined}
+              className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
+            >
+              <span aria-hidden="true">{t(day.label.slice(0, 2))}</span>
+              <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
+              <VisuallyHidden>
+                {t(day.practiced ? "{day} practised" : "{day} not practised", { day: t(WEEKDAY_NAMES[day.label]) })}
+              </VisuallyHidden>
+            </li>
+          ))}
+        </ul>
+      </VStack>
     </Card>
   );
 }

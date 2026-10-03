@@ -315,7 +315,7 @@ export function SentenceShadowing({
           {t("Recording disabled: microphone recording is not supported in this browser.")}
         </Text>
       )}
-      {recorder.url && <RecordingWaveform url={recorder.url} />}
+      {recorder.url && <RecordingWaveform url={recorder.url} text={text} targetWpm={targetWpm} />}
       {recorder.url && (
         <audio
           ref={audioRef}

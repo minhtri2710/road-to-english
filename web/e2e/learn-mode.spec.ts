@@ -212,7 +212,7 @@ test.describe("How it works page", () => {
   });
 });
 
-test("a finished recording is drawn as a waveform beside its player", async ({ page }) => {
+test("a finished recording is drawn as a waveform beside its player, with a score from its sound", async ({ page }) => {
   await openLibraryLesson(page, LESSON);
   const card = page.getByRole("listitem").filter({ hasText: FIRST });
   await card.getByRole("button", { name: "Record" }).click();
@@ -221,4 +221,5 @@ test("a finished recording is drawn as a waveform beside its player", async ({ p
   await expect(card.getByRole("button", { name: "Record" })).toBeVisible();
   await expect(card.getByTestId("recording-waveform")).toBeVisible();
   await expect(card.getByTestId("recording-waveform").locator("span")).toHaveCount(48);
+  await expect(card.getByTestId("sound-score")).toContainText(/^Sound check \d+: \d+ WPM, target 90, (a little slow|on pace|a little fast)/);
 });

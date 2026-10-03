@@ -240,4 +240,10 @@ export const lesson: Record<string, string> = {
   "Reach {score} points on the sentence above to unlock this one": "Đạt {score} điểm ở câu trên để mở câu này",
   "Skips left:": "Lượt bỏ qua còn:",
   "Say it again": "Nói lại",
+  "Sound check {score}: {wpm} WPM, target {target}, {pace}": "Chấm theo âm thanh {score}: {wpm} từ/phút, mục tiêu {target}, {pace}",
+  "a little slow": "hơi chậm",
+  "on pace": "đúng nhịp",
+  "a little fast": "hơi nhanh",
+  "1 long pause": "1 lần ngắt dài",
+  "{count} long pauses": "{count} lần ngắt dài",
 };

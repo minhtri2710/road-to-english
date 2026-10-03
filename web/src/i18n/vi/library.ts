@@ -99,4 +99,6 @@ export const library: Record<string, string> = {
   "Unable to load your lessons": "Không tải được bài học của bạn",
   "VIDEO": "VIDEO",
   "Video lessons show their thumbnail from YouTube.": "Bài học video hiển thị ảnh thu nhỏ tải từ YouTube.",
+  "Library lessons need the server": "Bài học trong thư viện cần máy chủ",
+  Lessons: "Bài học",
 };
