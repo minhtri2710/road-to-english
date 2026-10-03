@@ -60,7 +60,7 @@ After a schema change, recreate the database with `docker compose -f api/compose
 
 ## Checks
 
-GitHub Actions runs these on every pull request and on `main` (`.github/workflows/ci.yml`), except the macOS-only `visual.spec.ts`. That one runs on a macOS runner (`.github/workflows/visual.yml`) and compares screenshots with the baselines in `web/e2e/visual.spec.ts-snapshots`. After an intended visual change, add the `update-visuals` label to the pull request: the workflow regenerates the baselines, commits them to the branch and removes the label. Push again (or re-run CI) afterwards, since a commit made by the workflow does not start other workflows.
+GitHub Actions runs these on every pull request and on `main` (`.github/workflows/ci.yml`), except the macOS-only `visual.spec.ts`. That one runs on a macOS runner (`.github/workflows/visual.yml`) and compares screenshots with the baselines in `web/e2e/visual.spec.ts-snapshots`. After an intended visual change, add the `update-visuals` label to the pull request: the workflow regenerates the baselines, commits them to the branch and removes the label. It then starts CI and the comparison on that commit itself, since a commit made by the workflow does not start workflows on its own.
 
 The api tests use the same database and need `DATABASE_URL` set.
 

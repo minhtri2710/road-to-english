@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Started by visual.yml for the baselines it commits: a commit made with GITHUB_TOKEN starts no workflow itself.
+  workflow_dispatch:
 
 permissions:
   contents: read

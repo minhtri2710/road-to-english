@@ -16,6 +16,7 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -68,6 +69,8 @@ jobs:
         run: pnpm exec playwright test e2e/visual.spec.ts --update-snapshots
       - name: Commit new baselines
         if: env.UPDATE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git add web/e2e/visual.spec.ts-snapshots
           if git diff --cached --quiet; then
@@ -77,6 +80,10 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "test: update visual baselines from the macOS runner"
             git push
+            # A GITHUB_TOKEN push starts no workflow, so start CI and the comparison on the new commit.
+            BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+            gh workflow run ci.yml --repo "${{ github.repository }}" --ref "$BRANCH"
+            gh workflow run visual.yml --repo "${{ github.repository }}" --ref "$BRANCH"
           fi
       - name: Remove the update-visuals label
         if: env.UPDATE == 'true' && github.event_name == 'pull_request'
