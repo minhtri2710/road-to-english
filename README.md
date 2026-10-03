@@ -27,7 +27,7 @@ With Docker only, start the database, API and web app together:
 docker compose up --build
 ```
 
-Open http://localhost:5173 (the API is on port 8080). This runs a production build without live reload; stop it with `docker compose down`, and add `-v` to wipe its data.
+Open http://localhost:5173 (the API is on port 8080). This runs a production build served by nginx (`web/nginx.conf`: hashed assets cached for a year, the app shell revalidated on every load, gzip and security headers), without live reload; stop it with `docker compose down`, and add `-v` to wipe its data.
 
 ## Run locally for development
 
