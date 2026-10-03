@@ -12,7 +12,7 @@ import type { SyncLine } from "../hooks/useSync";
 import { useT } from "../i18n";
 import { routeHash, type Route } from "../lib/route";
 import { YOUR_DATA } from "./YourData";
-import { AccountArea } from "./AccountArea";
+import { AccountArea, AccountError } from "./AccountArea";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { Alert, Status } from "./feedback";
 import { MilestoneMark } from "./MilestoneMark";
@@ -123,11 +123,12 @@ const styles = stylex.create({
   storageAction: {
     flexShrink: 0,
   },
-  // The language switch and the account disclosure share one row.
+  // Storage and sync status, the language switch and the account disclosure share the bar's end.
   account: {
     display: "flex",
     flexWrap: "wrap",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: { default: "flex-end", "@media (max-width: 480px)": "flex-start" },
     gap: "var(--spacing-1)",
     minWidth: 0,
     marginInlineStart: "auto",
@@ -227,25 +228,26 @@ export function AppHeader({
             ))}
           </nav>
           <div className={stylex.props(styles.account, accountOpen && styles.accountOpen).className}>
+            {storageNotice && (
+              <div className={stylex.props(styles.status).className}>
+                <Text as="span" type="supporting" xstyle={styles.storageText}>
+                  {t("Progress saved only in this browser")}
+                </Text>
+                <Button label={t("Back up")} variant="secondary" xstyle={styles.storageAction} onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
+              </div>
+            )}
+            {syncLine?.status === "synced" && (
+              <span className={stylex.props(styles.statusBadge).className}>
+                <Badge label={syncLine.text} variant="success" />
+              </span>
+            )}
             <LanguageSwitch />
             <div className={stylex.props(styles.accountArea, accountOpen && styles.accountAreaOpen).className}>
               <AccountArea auth={auth} onDisclosureChange={setAccountOpen} />
             </div>
           </div>
-          {storageNotice && (
-            <div className={stylex.props(styles.status).className}>
-              <Text as="span" type="supporting" xstyle={styles.storageText}>
-                {t("Progress saved only in this browser")}
-              </Text>
-              <Button label={t("Back up")} variant="secondary" xstyle={styles.storageAction} onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
-            </div>
-          )}
-          {syncLine?.status === "synced" && (
-            <span className={stylex.props(styles.statusBadge).className}>
-              <Badge label={syncLine.text} variant="success" />
-            </span>
-          )}
         </div>
+        {!auth.user && !accountOpen && auth.error && <AccountError error={auth.error} />}
         <Status>
           {goalAnnounced && (
             <Text type="supporting">

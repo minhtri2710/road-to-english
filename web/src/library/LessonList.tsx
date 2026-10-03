@@ -24,6 +24,18 @@ const LEVELS: Level[] = ["A1", "A2", "B1", "B2"];
 const styles = stylex.create({
   levelFilter: {
     flexWrap: "wrap",
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+  },
+  // A failed load sits in a panel the size of a lesson card's row, so the page keeps its shape.
+  errorPanel: {
+    alignItems: "flex-start",
+    padding: "var(--spacing-4)",
+    borderWidth: "1px",
+    borderStyle: "dashed",
+    borderColor: "var(--color-border)",
+    borderRadius: "var(--radius-container)",
+    backgroundColor: "var(--color-background-surface)",
   },
   groupHeading: {
     display: "flex",
@@ -121,7 +133,7 @@ export function LessonList({
     content = <Text as="p">{t("Loading lessons...")}</Text>;
   } else if (error) {
     content = (
-      <VStack gap={1}>
+      <VStack gap={1} xstyle={styles.errorPanel}>
         <ErrorMessage error={error} subject={t("lessons")} />
         <Text as="p" type="supporting">
           {t("Your own lessons below still work offline.")}
