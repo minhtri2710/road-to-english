@@ -138,7 +138,7 @@ describe("AccountArea", () => {
         (button) => (button.getAttribute("aria-label") ?? button.textContent) === name,
       );
     expect(named("Sign in")).toEqual([submitButton(container)]);
-    expect(named("Account")).toEqual([accountDisclosure(container)]);
+    expect(named("Log in")).toEqual([accountDisclosure(container)]);
     expect(modeButton(container, "Sign in").getAttribute("role")).toBe("radio");
 
     await chooseMode(container, "Create account");

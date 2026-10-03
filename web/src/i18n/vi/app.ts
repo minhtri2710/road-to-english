@@ -141,4 +141,6 @@ export const app: Record<string, string> = {
   "Sync is paused: this account has more completed lessons than sync can hold. Everything is still saved on this device.":
     "Đồng bộ tạm dừng: tài khoản này có nhiều bài học đã hoàn thành hơn mức đồng bộ cho phép. Mọi thứ vẫn được lưu trên thiết bị này.",
   "Your own": "Của bạn",
+  "Log in": "Đăng nhập",
+  "Continue practising": "Học tiếp",
 };
