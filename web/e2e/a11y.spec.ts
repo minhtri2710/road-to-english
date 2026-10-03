@@ -425,7 +425,7 @@ const STATES: [string, (page: Page, inspect: () => Promise<void>) => Promise<voi
     await page.getByRole("button", { name: "Save to review" }).first().click();
     await viewLink(page, "Review").click();
     await page.getByRole("button", { name: "Show answer" }).click();
-    await expect(page.locator('[lang="vi"]')).toBeVisible();
+    await expect(page.locator('main [lang="vi"]')).toBeVisible();
     await inspect();
   }],
   ["review recap with a card rated Again", async (page, inspect) => {

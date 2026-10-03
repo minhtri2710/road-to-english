@@ -183,5 +183,5 @@ test("a saved sentence card shows the sentence's Vietnamese on its back", async 
   await viewLink(page, "Review").click();
   await expect(page.getByText("Good morning, how are you today?")).toBeVisible();
   await page.getByRole("button", { name: "Show answer" }).click();
-  await expect(page.locator('[lang="vi"]')).toHaveText("Chào buổi sáng, hôm nay bạn thế nào?");
+  await expect(page.locator('main [lang="vi"]')).toHaveText("Chào buổi sáng, hôm nay bạn thế nào?");
 });
