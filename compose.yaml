@@ -1,0 +1,42 @@
+# The whole app with one command: `docker compose up --build`, then open http://localhost:5173.
+# Database, API and web app run together, so the library never starts without its server.
+# For development with live reload, run the API and `pnpm -C web dev` instead (see README).
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: rte
+      POSTGRES_PASSWORD: rte_dev_password
+      POSTGRES_DB: rte
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rte -d rte"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: ./api
+    environment:
+      PORT: "8080"
+      CORS_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgres://rte:rte_dev_password@db:5432/rte?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

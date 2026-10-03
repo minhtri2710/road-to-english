@@ -28,9 +28,9 @@ const styles = stylex.create({
     boxShadow: "var(--shadow-low)",
     flexWrap: "wrap",
   },
-  // A video card: the thumbnail on top and the lesson's button below it share one frame, as on the
-  // canvas's library cards.
-  videoCard: {
+  // A card: the cover on top and the lesson's button below it share one frame, as on the design's
+  // library cards.
+  card: {
     display: "flex",
     flexDirection: "column",
     width: "100%",
@@ -43,16 +43,17 @@ const styles = stylex.create({
   },
   // Values no other button uses: StyleX shares one class per declaration, and these override
   // classes rank above component styles, so a common value like "none" would also win elsewhere.
-  videoButton: {
+  framedButton: {
     borderColor: "transparent",
     borderRadius: "0 0 var(--radius-container) var(--radius-container)",
     boxShadow: "0 0 0 0 transparent",
   },
+  // Phones skip the cover, keeping the first lesson inside the first screen.
   thumbnail: {
     position: "relative",
-    display: "block",
+    display: { default: "block", "@media (max-width: 480px)": "none" },
     width: "100%",
-    aspectRatio: "16 / 9",
+    aspectRatio: "2 / 1",
     overflow: "hidden",
     backgroundColor: "#0A0C0F",
     cursor: "pointer",
@@ -87,6 +88,35 @@ const styles = stylex.create({
     borderRadius: "var(--radius-inner)",
     backgroundColor: "rgba(10, 12, 15, 0.72)",
     color: "#FFFFFF",
+    fontSize: "0.75rem",
+    fontWeight: "var(--font-weight-bold)",
+    letterSpacing: "0.04em",
+  },
+  // A text lesson's cover: a waveform drawn from its title, listening bars then speaking bars as in the mark.
+  bars: {
+    position: "absolute",
+    inset: "18% 10%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "3%",
+  },
+  bar: {
+    flex: "1 1 0",
+    maxWidth: "6px",
+    borderRadius: "var(--radius-full)",
+  },
+  listenBar: { backgroundColor: "#4FC3CC" },
+  speakBar: { backgroundColor: "#FF8A4C" },
+  coverTag: {
+    position: "absolute",
+    insetInlineStart: "var(--spacing-2)",
+    top: "var(--spacing-2)",
+    padding: "var(--spacing-0-5) var(--spacing-1-5)",
+    borderRadius: "var(--radius-inner)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    color: "#C9CED6",
+    fontFamily: "var(--rte-font-mono)",
     fontSize: "0.75rem",
     fontWeight: "var(--font-weight-bold)",
     letterSpacing: "0.04em",
@@ -162,6 +192,39 @@ function VideoThumbnail({ videoId, onSelect }: { videoId: string; onSelect: () =
   );
 }
 
+const BARS = 24;
+
+// Bar heights from 20% to 100%, fixed per title so each lesson keeps its own cover.
+export function coverBars(title: string): number[] {
+  let seed = 2166136261;
+  for (const char of title) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+  return Array.from({ length: BARS }, (_, index) => {
+    seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0;
+    seed = (seed + index * 2654435761) >>> 0;
+    // A gentle arch, as speech rises and falls, with the seed's variation on top.
+    const arch = Math.sin(((index + 0.5) / BARS) * Math.PI);
+    return Math.round(20 + 80 * (0.35 * arch + 0.65 * ((seed % 1000) / 1000)));
+  });
+}
+
+// Decorative, like the video thumbnail: the card's title names the lesson, and clicking the cover opens it too.
+function TextCover({ title, level, onSelect }: { title: string; level: Level; onSelect: () => void }) {
+  return (
+    <span aria-hidden="true" className={stylex.props(styles.thumbnail).className} onClick={onSelect}>
+      <span className={stylex.props(styles.bars).className}>
+        {coverBars(title).map((height, index) => (
+          <span
+            key={index}
+            className={stylex.props(styles.bar, index < BARS / 2 ? styles.listenBar : styles.speakBar).className}
+            style={{ height: `${height}%` }}
+          />
+        ))}
+      </span>
+      <span className={stylex.props(styles.coverTag).className}>{level}</span>
+    </span>
+  );
+}
+
 export function LessonCard({
   title,
   level,
@@ -195,7 +258,7 @@ export function LessonCard({
       aria-describedby={completed ? `${metaId} ${wpmId} ${completedId}` : `${metaId} ${wpmId}`}
       variant="secondary"
       width="100%"
-      xstyle={[styles.button, levelStyles[level], videoId !== undefined && styles.videoButton]}
+      xstyle={[styles.button, levelStyles[level], styles.framedButton]}
       endContent={(
         <HStack gap={1} align="center" xstyle={styles.badges}>
           <Badge label={t("{wpm} WPM", { wpm: targetWpm })} variant="info" id={wpmId} />
@@ -220,10 +283,13 @@ export function LessonCard({
       </VStack>
     </Button>
   );
-  if (videoId === undefined) return button;
   return (
-    <div className={stylex.props(styles.videoCard).className}>
-      <VideoThumbnail videoId={videoId} onSelect={onSelect} />
+    <div className={stylex.props(styles.card).className}>
+      {videoId === undefined ? (
+        <TextCover title={title} level={level} onSelect={onSelect} />
+      ) : (
+        <VideoThumbnail videoId={videoId} onSelect={onSelect} />
+      )}
       {button}
     </div>
   );

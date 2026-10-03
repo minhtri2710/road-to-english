@@ -12,6 +12,7 @@ import type { Lesson } from "./api/lessons";
 import { AppFooter } from "./components/AppFooter";
 import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary, ViewHeading } from "./components/feedback";
+import { sharedStyles } from "./components/styles";
 import { YourData } from "./components/YourData";
 import { useAuth } from "./hooks/auth";
 import { useUserLessons } from "./hooks/lessons";
@@ -60,17 +61,40 @@ const appStyles = stylex.create({
   reviewDue: {
     alignSelf: "start",
   },
-  // The view's title and intro, with the library's link to How it works at the row's end.
+  // The library's hero text, beside Today as on the design's hero.
   intro: {
     display: "flex",
-    flexWrap: "wrap",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: "var(--spacing-2) var(--spacing-4)",
-  },
-  introText: {
-    flex: "1 1 20rem",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: { default: "var(--spacing-1)", "@media (min-width: 481px)": "var(--spacing-4)" },
     minWidth: 0,
+  },
+  chips: {
+    display: { default: "flex", "@media (max-width: 480px)": "none" },
+    flexWrap: "wrap",
+    gap: "var(--spacing-2)",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  chip: {
+    padding: "var(--spacing-1) var(--spacing-3)",
+    borderRadius: "var(--radius-full)",
+    fontSize: "var(--text-supporting-size)",
+    fontWeight: "var(--font-weight-bold)",
+    letterSpacing: "0.04em",
+  },
+  listenChip: { backgroundColor: "var(--color-accent-muted)", color: "var(--color-accent)" },
+  speakChip: { backgroundColor: "var(--rte-color-speak-muted)", color: "var(--rte-color-speak)" },
+  unlockChip: { backgroundColor: "var(--color-background-muted)", color: "var(--color-text-secondary)" },
+  display: {
+    fontSize: { default: null, "@media (min-width: 481px)": "3rem" },
+    lineHeight: { default: null, "@media (min-width: 481px)": 1.1 },
+    letterSpacing: { default: null, "@media (min-width: 481px)": "-0.02em" },
+  },
+  lead: {
+    maxWidth: "32rem",
+    color: "var(--color-text-secondary)",
   },
   // Phones keep the first screen for lessons; the footer links How it works too.
   introLink: {
@@ -183,22 +207,15 @@ function AppViews() {
       />
       <div className={stylex.props(appStyles.content, view !== "review" && view !== "manage" && appStyles.wide).className}>
         <VStack as="main" gap={2}>
-          {(view === "review" || view === "library" || view === "manage") && (
-            <div className={stylex.props(appStyles.intro).className}>
-              <VStack gap={1} xstyle={appStyles.introText}>
-                <ViewHeading takeFocus={takeHeadingFocus}>
-                  {view === "library" ? t("Lesson library") : view === "review" ? t("Review deck") : t("Manage lessons and data")}
-                </ViewHeading>
-                <Text type="large">
-                  {view === "library"
-                    ? t("Choose a lesson to practise reading and speaking.")
-                    : view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
-                </Text>
-              </VStack>
-              {view === "library" && (
-                <Button label={t("How it works")} variant="ghost" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
-              )}
-            </div>
+          {(view === "review" || view === "manage") && (
+            <VStack gap={1}>
+              <ViewHeading takeFocus={takeHeadingFocus}>
+                {view === "review" ? t("Review deck") : t("Manage lessons and data")}
+              </ViewHeading>
+              <Text type="large">
+                {view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
+              </Text>
+            </VStack>
           )}
           {view === "about" ? (
             <Landing
@@ -224,6 +241,18 @@ function AppViews() {
           ) : view === "library" ? (
             <VStack gap={4}>
               <LessonList
+                intro={(
+                  <div className={stylex.props(appStyles.intro).className}>
+                    <ul aria-label={t("The practice loop")} className={stylex.props(appStyles.chips).className}>
+                      <li className={stylex.props(appStyles.chip, appStyles.listenChip).className}>{t("LISTEN")}</li>
+                      <li className={stylex.props(appStyles.chip, appStyles.speakChip).className}>{t("SAY IT BACK")}</li>
+                      <li className={stylex.props(appStyles.chip, appStyles.unlockChip).className}>{t("UNLOCK")}</li>
+                    </ul>
+                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={appStyles.display}>{t("Lesson library")}</ViewHeading>
+                    <Text type="large" xstyle={appStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
+                    <Button label={t("How it works")} variant="secondary" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
+                  </div>
+                )}
                 onSelect={(id) => navigate({ view: "lesson", id })}
                 completedLessons={progress.completedLessons}
                 takeFocus={takeReturnFocus}
@@ -248,7 +277,10 @@ function AppViews() {
                 }}
               />
               <VStack gap={2}>
-                <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>{t("Your lessons")}</Heading>
+                <VStack gap={0.5}>
+                  <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow, sharedStyles.speakEyebrow).className}>{t("Your own")}</p>
+                  <Heading level={2} ref={userLessonsHeading} tabIndex={-1} xstyle={sharedStyles.sectionTitle}>{t("Your lessons")}</Heading>
+                </VStack>
                 <UserLessonList
                   lessons={userLessons}
                   onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}

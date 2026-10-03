@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import type { StyleXStyles } from "@stylexjs/stylex";
 
 import { NotFoundError } from "../api/lessons";
 import { tr, useT } from "../i18n";
@@ -15,6 +16,16 @@ export function Status({ children }: { children: ReactNode }) {
     <VStack gap={1} role="status">
       {children}
     </VStack>
+  );
+}
+
+// A cloud with a slash: no connection to the server. Decorative beside the words that say so.
+export function OfflineIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 15.5h7.5a3.5 3.5 0 0 0 .9-6.9A5 5 0 0 0 5.2 7.4 4 4 0 0 0 6 15.5z" />
+      <path d="M3 3l14 14" />
+    </svg>
   );
 }
 
@@ -30,7 +41,7 @@ export function Alert({ children }: { children: ReactNode }) {
 export const APP_TITLE = "Road to English";
 
 // The page's one h1 names the current view and the document title, and takes focus when the user changes view.
-export function ViewHeading({ children, takeFocus }: { children: string; takeFocus: () => boolean }) {
+export function ViewHeading({ children, takeFocus, xstyle }: { children: string; takeFocus: () => boolean; xstyle?: StyleXStyles }) {
   useEffect(() => {
     document.title = `${children} · ${APP_TITLE}`;
     return () => {
@@ -42,6 +53,7 @@ export function ViewHeading({ children, takeFocus }: { children: string; takeFoc
     <Heading
       level={1}
       tabIndex={-1}
+      xstyle={xstyle}
       ref={(heading) => {
         if (heading && takeFocus()) {
           heading.focus();

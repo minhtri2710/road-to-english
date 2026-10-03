@@ -14,7 +14,7 @@ import { routeHash, type Route } from "../lib/route";
 import { YOUR_DATA } from "./YourData";
 import { AccountArea, AccountError } from "./AccountArea";
 import { LanguageSwitch } from "./LanguageSwitch";
-import { Alert, Status } from "./feedback";
+import { Alert, OfflineIcon, Status } from "./feedback";
 import { MilestoneMark } from "./MilestoneMark";
 import { sharedStyles } from "./styles";
 
@@ -140,6 +140,18 @@ const styles = stylex.create({
   accountArea: {
     minWidth: 0,
   },
+  // The account's error, such as an unreachable server, as a quiet banner under the bar.
+  offline: {
+    display: "flex",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: "var(--spacing-2)",
+    maxWidth: "100%",
+    padding: "var(--spacing-1) var(--spacing-3)",
+    borderRadius: { default: "var(--radius-full)", "@media (max-width: 480px)": "var(--radius-container)" },
+    backgroundColor: "var(--color-background-muted)",
+    color: "var(--color-text-secondary)",
+  },
   accountAreaOpen: {
     flexBasis: "100%",
   },
@@ -247,7 +259,12 @@ export function AppHeader({
             </div>
           </div>
         </div>
-        {!auth.user && !accountOpen && auth.error && <AccountError error={auth.error} />}
+        {!auth.user && !accountOpen && auth.error && (
+          <div className={stylex.props(styles.offline).className}>
+            <OfflineIcon />
+            <AccountError error={auth.error} />
+          </div>
+        )}
         <Status>
           {goalAnnounced && (
             <Text type="supporting">
