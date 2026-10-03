@@ -112,8 +112,8 @@ jobs:
         run: docker compose up --build --detach --wait --wait-timeout 180
       - name: The web app serves and the API answers it
         run: |
-          curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://localhost:5173/ | grep -q '<div id="root">'
-          curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 -H 'Origin: http://localhost:5173' http://localhost:8080/lessons | grep -q '"id"'
+          curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 2 http://localhost:5173/ | grep -q '<div id="root">'
+          curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 2 -H 'Origin: http://localhost:5173' http://localhost:8080/lessons | grep -q '"id"'
       - name: Logs on failure
         if: failure()
         run: docker compose logs
