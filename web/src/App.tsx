@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Theme } from "@astryxdesign/core/theme";
 import { Text } from "@astryxdesign/core/Text";
@@ -58,6 +59,22 @@ const appStyles = stylex.create({
   },
   reviewDue: {
     alignSelf: "start",
+  },
+  // The view's title and intro, with the library's link to How it works at the row's end.
+  intro: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2) var(--spacing-4)",
+  },
+  introText: {
+    flex: "1 1 20rem",
+    minWidth: 0,
+  },
+  // Phones keep the first screen for lessons; the footer links How it works too.
+  introLink: {
+    display: { default: "inline-flex", "@media (max-width: 480px)": "none" },
   },
 });
 
@@ -167,16 +184,21 @@ function AppViews() {
       <div className={stylex.props(appStyles.content, view !== "review" && view !== "manage" && appStyles.wide).className}>
         <VStack as="main" gap={2}>
           {(view === "review" || view === "library" || view === "manage") && (
-            <VStack gap={1}>
-              <ViewHeading takeFocus={takeHeadingFocus}>
-                {view === "library" ? t("Lesson library") : view === "review" ? t("Review deck") : t("Manage lessons and data")}
-              </ViewHeading>
-              <Text type="large">
-                {view === "library"
-                  ? t("Choose a lesson to practise reading and speaking.")
-                  : view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
-              </Text>
-            </VStack>
+            <div className={stylex.props(appStyles.intro).className}>
+              <VStack gap={1} xstyle={appStyles.introText}>
+                <ViewHeading takeFocus={takeHeadingFocus}>
+                  {view === "library" ? t("Lesson library") : view === "review" ? t("Review deck") : t("Manage lessons and data")}
+                </ViewHeading>
+                <Text type="large">
+                  {view === "library"
+                    ? t("Choose a lesson to practise reading and speaking.")
+                    : view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
+                </Text>
+              </VStack>
+              {view === "library" && (
+                <Button label={t("How it works")} variant="ghost" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
+              )}
+            </div>
           )}
           {view === "about" ? (
             <Landing

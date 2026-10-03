@@ -1,4 +1,4 @@
-import { getLang, tr } from "../i18n";
+import { tr } from "../i18n";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -16,16 +16,11 @@ export class ApiError extends Error {
   }
 }
 
-// fetch itself rejected: no response arrived. The original error is the cause. In English its message is kept;
-// in Vietnamese the browser's English message is replaced, as it would be the one English line on screen.
+// fetch itself rejected: no response arrived. The original error is the cause; the message is a plain line instead
+// of the browser's own wording ("Failed to fetch", "NetworkError when attempting to fetch resource.").
 export class NetworkError extends Error {
   constructor(cause: unknown) {
-    super(
-      getLang() === "vi"
-        ? tr("Couldn't reach the server. Check your connection and try again.")
-        : cause instanceof Error ? cause.message : String(cause),
-      { cause },
-    );
+    super(tr("Couldn't reach the server. Check your connection and try again."), { cause });
     this.name = "NetworkError";
   }
 }

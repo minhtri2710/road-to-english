@@ -22,7 +22,7 @@ describe("request", () => {
     expect(error).toBeInstanceOf(NetworkError);
     expect(error).not.toBeInstanceOf(ApiError);
     expect((error as NetworkError).cause).toBe(cause);
-    expect((error as NetworkError).message).toBe("Failed to fetch");
+    expect((error as NetworkError).message).toBe("Couldn't reach the server. Check your connection and try again.");
   });
 
   it("still throws an ApiError for a non-ok response", async () => {
@@ -103,7 +103,7 @@ describe("request URL", () => {
 });
 
 describe("NetworkError in Vietnamese", () => {
-  it("replaces the browser's English message", () => {
+  it("replaces the browser's message in the interface language", () => {
     setLang("vi");
     try {
       expect(new NetworkError(new TypeError("Failed to fetch")).message).toBe(
@@ -112,6 +112,8 @@ describe("NetworkError in Vietnamese", () => {
     } finally {
       setLang("en");
     }
-    expect(new NetworkError(new TypeError("Failed to fetch")).message).toBe("Failed to fetch");
+    expect(new NetworkError(new TypeError("Failed to fetch")).message).toBe(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
   });
 });

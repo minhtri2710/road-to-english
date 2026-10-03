@@ -52,7 +52,7 @@ function waitText(seconds: number): string {
   return seconds >= 60 ? tr("{n} min", { n: Math.ceil(seconds / 60) }) : tr("{n} s", { n: seconds });
 }
 
-function AccountError({ error }: { error: Error }) {
+export function AccountError({ error }: { error: Error }) {
   const t = useT();
   let message = t("Can't reach the server. You can keep practising on this device.");
   if (error instanceof ApiError) {
@@ -362,7 +362,8 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
           )}
         </VStack>
       )}
-      {formError && <AccountError error={formError} />}
+      {/* With the form closed, the header shows the error across its full width instead. */}
+      {formError && open && <AccountError error={formError} />}
     </VStack>
   );
 }
