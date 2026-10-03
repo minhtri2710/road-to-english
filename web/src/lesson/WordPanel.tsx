@@ -16,6 +16,7 @@ import { speechSupported } from "../lib/speech";
 import { intonation, wordStress, type StressDict } from "../lib/stress";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord, isCardWord, splitWords, wordIndexAtChar } from "../lib/words";
+import { tr, useT } from "../i18n";
 
 const styles = stylex.create({
   reading: {
@@ -56,9 +57,9 @@ const styles = stylex.create({
 // Without a word, only the Saved state needs a name beyond the visible label.
 function saveLabel(saved: boolean, word: string | undefined): string | undefined {
   if (word === undefined) {
-    return saved ? "Saved, remove from review deck" : undefined;
+    return saved ? tr("Saved, remove from review deck") : undefined;
   }
-  return saved ? `Saved “${word}”, remove from review deck` : `Save “${word}” to review`;
+  return saved ? tr("Saved “{word}”, remove from review deck", { word }) : tr("Save “{word}” to review", { word });
 }
 
 export function SaveToReview({
@@ -81,6 +82,7 @@ export function SaveToReview({
   removeCard: (id: string) => Promise<VocabCard>;
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
 }) {
+  const t = useT();
   const [isSaving, setIsSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   // Set by a save this visit, so the Saved state is announced; the Undo toast announces a removal.
@@ -94,10 +96,10 @@ export function SaveToReview({
     dismiss();
     try {
       if (!(await undoRemove(tombstone))) {
-        showToast({ body: "Couldn't undo: this card changed since it was removed." });
+        showToast({ body: tr("Couldn't undo: this card changed since it was removed.") });
       }
     } catch {
-      showToast({ body: "Couldn't undo. Try again." });
+      showToast({ body: tr("Couldn't undo. Try again.") });
     }
     // The dismissed toast took the focused Undo with it; the toggle it undid is the next target,
     // unless the user moved focus elsewhere during the await.
@@ -121,9 +123,9 @@ export function SaveToReview({
         const tombstone = await removeCard(cardId(card.source));
         // The toast stays until dismissed, so there is time to reach Undo.
         const dismiss = showToast({
-          body: "Removed from your review deck. Undo restores it.",
+          body: tr("Removed from your review deck. Undo restores it."),
           isAutoHide: false,
-          endContent: <Button label="Undo" variant="secondary" size="sm" onClick={(event) => void undo(tombstone, dismiss, event.currentTarget)} />,
+          endContent: <Button label={tr("Undo")} variant="secondary" size="sm" onClick={(event) => void undo(tombstone, dismiss, event.currentTarget)} />,
         });
       } else {
         await addCard(card);
@@ -141,18 +143,18 @@ export function SaveToReview({
     <>
       <Button
         ref={buttonRef}
-        label={saved ? "Saved" : label}
+        label={saved ? t("Saved") : label}
         aria-label={saveLabel(saved, word)}
         variant="ghost"
         xstyle={compact ? styles.compactSave : undefined}
         isDisabled={isSaving}
         // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-        tooltip={isSaving ? "Saving…" : saved ? "Remove from your review deck" : undefined}
+        tooltip={isSaving ? t("Saving…") : saved ? t("Remove from your review deck") : undefined}
         onClick={() => void toggle()}
       />
-      {failed && <Alert>Couldn't save. Try again.</Alert>}
+      {failed && <Alert>{t("Couldn't save. Try again.")}</Alert>}
       <VisuallyHidden>
-        <Status>{announced && saved && "Saved to your review deck."}</Status>
+        <Status>{announced && saved && t("Saved to your review deck.")}</Status>
       </VisuallyHidden>
     </>
   );
@@ -181,6 +183,7 @@ export function SentenceWords({
   onSelect: (text: string) => void;
   stressDict: StressDict | null;
 }) {
+  const t = useT();
   const summaryId = useId();
   const parts = splitWords(text);
   const stresses = parts.map((part) =>
@@ -189,8 +192,8 @@ export function SentenceWords({
   const tone = stressDict && intonation(text);
   const stressed = parts.filter((_, index) => stresses[index]);
   const summary = [
-    stressed.length > 0 && `Stressed: ${stressed.join(", ")}.`,
-    tone && `${tone === "falling" ? "Falling" : "Rising"} intonation.`,
+    stressed.length > 0 && t("Stressed: {words}.", { words: stressed.join(", ") }),
+    tone && (tone === "falling" ? t("Falling intonation.") : t("Rising intonation.")),
   ]
     .filter(Boolean)
     .join(" ");
@@ -242,7 +245,7 @@ export function SentenceWords({
           );
         })}
         {tone && (
-          <span role="img" aria-label={`${tone} intonation`}>
+          <span role="img" aria-label={tone === "falling" ? t("falling intonation") : t("rising intonation")}>
             {tone === "falling" ? " ↘" : " ↗"}
           </span>
         )}
@@ -271,6 +274,7 @@ export function WordPanel({
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
   hear: () => void;
 }) {
+  const t = useT();
   // Lookups keep an inner apostrophe ("don't") but drop quote marks and keep hyphens ("t-shirt"); the card id uses cardWord().
   const word = text.toLowerCase().normalize("NFC").replace(/’/g, "'").replace(/^'+|'+$/g, "");
   // The panel is keyed by word, so a late response for a previous word lands on an unmounted panel.
@@ -290,7 +294,7 @@ export function WordPanel({
       <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
         <Text weight="semibold">{text}</Text>
         <Button
-          label="Hear word"
+          label={t("Hear word")}
           variant="secondary"
           isDisabled={!speechSupported()}
           onClick={hear}
@@ -298,17 +302,17 @@ export function WordPanel({
         <SaveToReview
           key={card.source.word}
           card={card}
-          label="Save word"
+          label={t("Save word")}
           saved={savedCardIds.has(cardId(card.source))}
           addCard={addCard}
           removeCard={removeCard}
           undoRemove={undoRemove}
         />
         <Button
-          label="Define"
+          label={t("Define")}
           variant="secondary"
           isDisabled={lookup === "pending"}
-          tooltip={lookup === "pending" ? "Looking up…" : undefined}
+          tooltip={lookup === "pending" ? t("Looking up…") : undefined}
           onClick={() => void define()}
         />
         <Link
@@ -316,14 +320,14 @@ export function WordPanel({
           isExternalLink
           xstyle={styles.tapTarget}
         >
-          Hear it on YouGlish
+          {t("Hear it on YouGlish")}
         </Link>
       </HStack>
       <Status>
-        {lookup === "pending" && <Text as="p" type="supporting">Looking up…</Text>}
-        {lookup === null && <Text as="p" type="supporting">No definition</Text>}
+        {lookup === "pending" && <Text as="p" type="supporting">{t("Looking up…")}</Text>}
+        {lookup === null && <Text as="p" type="supporting">{t("No definition")}</Text>}
         {lookup === "unreachable" && (
-          <Text as="p" type="supporting">Couldn't reach the dictionary. Check your connection.</Text>
+          <Text as="p" type="supporting">{t("Couldn't reach the dictionary. Check your connection.")}</Text>
         )}
         {typeof lookup === "object" && lookup !== null && (
           <Text as="p">

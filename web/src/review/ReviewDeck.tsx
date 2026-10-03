@@ -12,6 +12,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import { Alert, Status } from "../components/feedback";
+import { tr, useT } from "../i18n";
 import { sharedStyles } from "../components/styles";
 import { useSayIt } from "../hooks/useSayIt";
 import { WordDiffResult } from "../lesson/SentenceQuiz";
@@ -155,6 +156,12 @@ const LISTEN_WPM = 110;
 
 const LISTEN_FIRST_KEY = "road-to-english.listenFirst";
 
+// formatInterval's English output ("<1 min", "3 d", "1.5 mo"), in the interface language.
+function localInterval(text: string): string {
+  const match = /^(\S+) (min|h|d|mo|y)$/.exec(text);
+  return match ? tr(`{n} ${match[2]}`, { n: match[1]! }) : tr(text);
+}
+
 function listen(text: string, onWord?: (charIndex: number) => void, onFinish?: () => void) {
   speak(text, LISTEN_WPM, 1, { onWord, onEnd: onFinish, onError: onFinish });
 }
@@ -229,6 +236,7 @@ export function ReviewDeck({
   recordPractice: (options: { newCard: boolean }) => Promise<void>;
   onGoToLibrary: () => void;
 }) {
+  const t = useT();
   // The card and rating turn the answer was revealed for: a rating changes updatedAt, so the next card,
   // or the same card back after Again, renders hidden from its first frame.
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
@@ -294,16 +302,16 @@ export function ReviewDeck({
   }, [showAnswer]);
 
   if (loading) {
-    return <Text as="p">Loading review deck...</Text>;
+    return <Text as="p">{t("Loading review deck...")}</Text>;
   }
 
   if (loadFailed) {
     return (
       <VStack gap={2}>
         <Text as="p" ref={promptRef} tabIndex={-1}>
-          Your review deck couldn't be loaded.
+          {t("Your review deck couldn't be loaded.")}
         </Text>
-        <Button label="Go to library" variant="secondary" xstyle={sharedStyles.viewToggle} onClick={onGoToLibrary} />
+        <Button label={t("Go to library")} variant="secondary" xstyle={sharedStyles.viewToggle} onClick={onGoToLibrary} />
       </VStack>
     );
   }
@@ -313,12 +321,17 @@ export function ReviewDeck({
   if (!card) {
     const recapTotal = GRADES.reduce((sum, grade) => sum + recap.counts[grade], 0);
     const endMessage = !hasCards
-      ? "Nothing to review yet. Save a sentence or a word from a lesson to build your deck."
+      ? t("Nothing to review yet. Save a sentence or a word from a lesson to build your deck.")
       : hiddenNew > 0
-        ? `Daily limit of ${NEW_CARDS_PER_DAY} new cards reached. ${hiddenNew} new card${hiddenNew === 1 ? " is" : "s are"} waiting.`
+        ? t(
+            hiddenNew === 1
+              ? "Daily limit of {limit} new cards reached. {count} new card is waiting."
+              : "Daily limit of {limit} new cards reached. {count} new cards are waiting.",
+            { limit: NEW_CARDS_PER_DAY, count: hiddenNew },
+          )
         : nextDueInMinutes !== null
-          ? `All caught up. Next card in ${nextDueInMinutes} min.`
-          : "All caught up. Come back later for your next review.";
+          ? t("All caught up. Next card in {minutes} min.", { minutes: nextDueInMinutes })
+          : t("All caught up. Come back later for your next review.");
     return (
       <VStack gap={2}>
         {rateErrorLine}
@@ -333,7 +346,7 @@ export function ReviewDeck({
                 {recapLine(recap)}
                 {endMessage}
               </Text>
-              <ul aria-label="Session rating breakdown" {...stylex.props(styles.breakdown)}>
+              <ul aria-label={t("Session rating breakdown")} {...stylex.props(styles.breakdown)}>
                 {GRADES.map((grade) => (
                   <li
                     key={grade}
@@ -342,7 +355,7 @@ export function ReviewDeck({
                       recap.counts[grade] === 0 ? styles.breakdownMuted : gradeBreakdownStyles[grade],
                     )}
                   >
-                    <span>{GRADE_NAMES[grade]}</span>{" "}
+                    <span>{t(GRADE_NAMES[grade])}</span>{" "}
                     <span>{recap.counts[grade]}</span>
                   </li>
                 ))}
@@ -351,7 +364,7 @@ export function ReviewDeck({
           </Card>
         )}
         {recap.again.length > 0 && (
-          <List header={<Heading level={2}>Rated Again</Heading>}>
+          <List header={<Heading level={2}>{t("Rated Again")}</Heading>}>
             {recap.again.map(({ id, front }) => {
               const surface = `recap:${id}`;
               const charIndex = spokenWord?.surface === surface ? spokenWord.charIndex : null;
@@ -360,14 +373,14 @@ export function ReviewDeck({
                   key={id}
                   label={<Text><SpokenText text={front} charIndex={charIndex} /></Text>}
                   endContent={
-                    canSpeak && <Button label={`Listen to ${front}`} variant="secondary" onClick={() => startListening(front, surface)}>Listen</Button>
+                    canSpeak && <Button label={t("Listen to {text}", { text: front })} variant="secondary" onClick={() => startListening(front, surface)}>{t("Listen")}</Button>
                   }
                 />
               );
             })}
           </List>
         )}
-        <Button label="Go to library" variant="secondary" xstyle={sharedStyles.viewToggle} onClick={onGoToLibrary} />
+        <Button label={t("Go to library")} variant="secondary" xstyle={sharedStyles.viewToggle} onClick={onGoToLibrary} />
       </VStack>
     );
   }
@@ -389,10 +402,10 @@ export function ReviewDeck({
         // Resolves even when the write fails; the header storage line reports it.
         await recordPractice({ newCard });
       } else {
-        setRateError("This card changed on another device. Showing the latest.");
+        setRateError(t("This card changed on another device. Showing the latest."));
       }
     } catch {
-      setRateError("Couldn't save. Try again.");
+      setRateError(t("Couldn't save. Try again."));
     } finally {
       isRatingRef.current = false;
       setIsRating(false);
@@ -438,7 +451,7 @@ export function ReviewDeck({
     <VStack gap={3}>
       <VStack gap={1}>
         <ToggleButton
-          label="Listen first"
+          label={t("Listen first")}
           isPressed={listenFirst}
           isDisabled={!canSpeak}
           xstyle={sharedStyles.viewToggle}
@@ -449,7 +462,7 @@ export function ReviewDeck({
         />
         {!canSpeak && (
           <Text as="p" type="supporting">
-            Listen first disabled: speech synthesis is not supported in this browser.
+            {t("Listen first disabled: speech synthesis is not supported in this browser.")}
           </Text>
         )}
       </VStack>
@@ -461,11 +474,11 @@ export function ReviewDeck({
       >
         <VStack gap={2}>
           <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>
-            {listenFirst && !showAnswer ? "Listen and recall the card." : <SpokenText text={card.front} charIndex={spokenWord?.surface === "card" && spokenWord.cardTurn === cardTurn ? spokenWord.charIndex : null} />}
+            {listenFirst && !showAnswer ? t("Listen and recall the card.") : <SpokenText text={card.front} charIndex={spokenWord?.surface === "card" && spokenWord.cardTurn === cardTurn ? spokenWord.charIndex : null} />}
           </Text>
           {canSpeak && (
             <HStack gap={1} vAlign="center">
-              <Button label="Listen" variant="secondary" aria-keyshortcuts="R" onClick={() => startListening(card.front, "card")} />
+              <Button label={t("Listen")} variant="secondary" aria-keyshortcuts="R" onClick={() => startListening(card.front, "card")} />
               {hint("r")}
             </HStack>
           )}
@@ -476,11 +489,11 @@ export function ReviewDeck({
             <VStack gap={1}>
               <Button
                 ref={sayItRef}
-                label={sayItState.status === "listening" ? "Listening…" : "Say it"}
+                label={sayItState.status === "listening" ? t("Listening…") : t("Say it")}
                 variant="secondary"
                 xstyle={sharedStyles.viewToggle}
                 isDisabled={sayItState.status === "listening"}
-                tooltip={sayItState.status === "listening" ? "Say the card" : undefined}
+                tooltip={sayItState.status === "listening" ? t("Say the card") : undefined}
                 onClick={startSayIt}
               />
               <Status>
@@ -502,13 +515,13 @@ export function ReviewDeck({
                 )}
               </Status>
               {(sayItState.status === "heard" || sayItState.status === "failed") && (
-                <Button label="Try again" variant="ghost" xstyle={sharedStyles.viewToggle} onClick={sayItAgain} />
+                <Button label={t("Try again")} variant="ghost" xstyle={sharedStyles.viewToggle} onClick={sayItAgain} />
               )}
             </VStack>
           )}
           {!showAnswer ? (
             <HStack gap={1} vAlign="center">
-              <Button label="Show answer" variant="primary" aria-keyshortcuts="Space Enter" onClick={reveal} />
+              <Button label={t("Show answer")} variant="primary" aria-keyshortcuts="Space Enter" onClick={reveal} />
               {hint("space")}
             </HStack>
           ) : (
@@ -517,7 +530,7 @@ export function ReviewDeck({
                 {GRADES.map((grade, index) => (
                   <VStack key={grade} gap={1} hAlign="center">
                     <Button
-                      label={GRADE_NAMES[grade]}
+                      label={t(GRADE_NAMES[grade])}
                       variant={grade === Rating.Good ? "primary" : "secondary"}
                       xstyle={[styles.rating, gradeRatingStyles[grade], isRating && styles.ratingDisabled]}
                       width="100%"
@@ -526,7 +539,7 @@ export function ReviewDeck({
                       aria-keyshortcuts={String(index + 1)}
                       endContent={
                         <span aria-hidden="true" id={`${intervalIds}-${grade}`}>
-                          {formatInterval(intervals![grade].getTime() - now)}
+                          {localInterval(formatInterval(intervals![grade].getTime() - now))}
                         </span>
                       }
                       onClick={() => void rate(grade)}

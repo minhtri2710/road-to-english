@@ -24,6 +24,7 @@ import { useLesson } from "../hooks/lessons";
 import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import type { PracticeMode } from "../lib/progress";
+import { LEARN_MODE_KEY, readLearnProgress, writeLearnProgress, type LearnProgress } from "../lib/learnProgress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
@@ -34,6 +35,7 @@ import { GuidedShadowing, SKIPS_PER_LESSON } from "./GuidedShadowing";
 import { SentenceCard, type LessonMode } from "./SentenceCard";
 import { ShadowGate } from "./ShadowGate";
 import { LessonSummary, type SummaryProps } from "./LessonSummary";
+import { useT } from "../i18n";
 
 const styles = stylex.create({
   // The player and its caption strip share one dark frame.
@@ -73,6 +75,11 @@ const styles = stylex.create({
     flexWrap: "wrap",
     alignItems: "center",
   },
+  // Enlarged text wraps the modes onto more rows instead of scrolling the page.
+  modeControl: {
+    flexWrap: "wrap",
+    maxWidth: "100%",
+  },
   displayMenu: {
     backgroundColor: "var(--color-background-popover)",
   },
@@ -108,21 +115,22 @@ interface LessonDetailProps extends SummaryProps {
 }
 
 export function LibraryLessonDetail({ id, ...props }: LessonDetailProps & { id: string }) {
+  const t = useT();
   const { data, loading, error } = useLesson(id);
 
   if (error) {
     return (
       <VStack gap={3}>
-        <ViewHeading takeFocus={props.takeHeadingFocus}>Lesson unavailable</ViewHeading>
+        <ViewHeading takeFocus={props.takeHeadingFocus}>{t("Lesson unavailable")}</ViewHeading>
         <ErrorMessage error={error} subject="lesson" />
-        <Button label="Back to lessons" variant="ghost" onClick={props.onBack} />
+        <Button label={t("Back to lessons")} variant="ghost" onClick={props.onBack} />
       </VStack>
     );
   }
 
   // useLesson starts loading for an id, so data is null only while loading.
   if (loading || !data) {
-    return <Text as="p">Loading lesson...</Text>;
+    return <Text as="p">{t("Loading lesson...")}</Text>;
   }
 
   return <LessonDetail lesson={data} {...props} />;
@@ -141,6 +149,7 @@ export function LessonDetail({
   takeHeadingFocus,
   ...summaryProps
 }: LessonDetailProps & { lesson: Lesson }) {
+  const t = useT();
   const completed = completedLessons.has(data.id);
   const [mode, setMode] = useState<LessonMode>("shadow");
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>("1");
@@ -167,11 +176,27 @@ export function LessonDetail({
   const clipSentence = data.sentences.find((sentence) => sentence.id === clipSentenceId) ?? null;
   // The sentence shown one at a time, or null for the full list; per visit.
   const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
-  // Learn mode (Shadow Gate) in the guided view: sentences passed or skipped, and skips used, this visit.
-  const [learn, setLearn] = useState(false);
-  const [passedIds, setPassedIds] = useState<ReadonlySet<string>>(new Set());
-  const [skipsUsed, setSkipsUsed] = useState(0);
-  const pass = (sentenceId: string) => setPassedIds((current) => new Set(current).add(sentenceId));
+  // Learn mode (Shadow Gate) in the guided view. The mode is a preference; the sentences passed or
+  // skipped and the skips used are kept per lesson on this device.
+  const [learn, setLearnState] = useState(() => readPref(LEARN_MODE_KEY) === "on");
+  const setLearn = (on: boolean) => {
+    writePref(LEARN_MODE_KEY, on ? "on" : null);
+    setLearnState(on);
+  };
+  const [learnProgress, setLearnProgressState] = useState(() => readLearnProgress(data.id));
+  const setLearnProgress = (update: (current: LearnProgress) => LearnProgress) =>
+    setLearnProgressState((current) => {
+      const next = update(current);
+      writeLearnProgress(data.id, next);
+      return next;
+    });
+  const passedIds = new Set(learnProgress.passed);
+  const skipsUsed = learnProgress.skipsUsed;
+  const pass = (sentenceId: string, skipped = false) =>
+    setLearnProgress((current) => ({
+      passed: current.passed.includes(sentenceId) ? current.passed : [...current.passed, sentenceId],
+      skipsUsed: current.skipsUsed + (skipped ? 1 : 0),
+    }));
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayButtonRef = useRef<HTMLButtonElement>(null);
@@ -264,16 +289,16 @@ export function LessonDetail({
 
   return (
     <VStack gap={4}>
-      <HStack justify="between" align="center">
-        <Button label="Back to lessons" variant="ghost" onClick={onBack} />
+      <HStack justify="between" align="center" wrap="wrap">
+        <Button label={t("Back to lessons")} variant="ghost" onClick={onBack} />
         <HStack gap={1} align="center">
-          <Badge label={`${data.targetWpm} WPM`} variant="info" />
-          {completed && <Badge label="Completed" variant="success" />}
+          <Badge label={t("{wpm} WPM", { wpm: data.targetWpm })} variant="info" />
+          {completed && <Badge label={t("Completed")} variant="success" />}
         </HStack>
       </HStack>
       <VStack gap={1}>
         <ViewHeading takeFocus={takeHeadingFocus}>{data.title}</ViewHeading>
-        <Text type="supporting">Level {data.level}</Text>
+        <Text type="supporting">{t("Level {level}", { level: data.level })}</Text>
       </VStack>
       {data.videoId && (
         <VStack gap={1}>
@@ -292,23 +317,24 @@ export function LessonDetail({
           <Status>
             {video.status === "loading" && (
               <Text as="p" type="supporting">
-                Loading video…
+                {t("Loading video…")}
               </Text>
             )}
             {video.status === "failed" && (
               <Text as="p" color="primary" xstyle={sharedStyles.error}>
-                The video couldn't load. You can keep practising with Listen.
+                {t("The video couldn't load. You can keep practising with Listen.")}
               </Text>
             )}
           </Status>
           <Text as="p" type="supporting">
-            Video from YouTube; playing it connects to YouTube.
+            {t("Video from YouTube; playing it connects to YouTube.")}
           </Text>
         </VStack>
       )}
       <HStack gap={1} xstyle={styles.toolbar}>
         <SegmentedControl
-          label="Lesson mode"
+          label={t("Lesson mode")}
+          xstyle={styles.modeControl}
           value={mode}
           onChange={(nextMode) => {
             setMode(nextMode as LessonMode);
@@ -316,12 +342,12 @@ export function LessonDetail({
             stopMedia({ keepVideo: true });
           }}
         >
-          <SegmentedControlItem value="shadow" label="Shadow" />
-          <SegmentedControlItem value="dictation" label="Dictation" />
-          <SegmentedControlItem value="blank" label="Fill the blank" />
+          <SegmentedControlItem value="shadow" label={t("Shadow")} />
+          <SegmentedControlItem value="dictation" label={t("Dictation")} />
+          <SegmentedControlItem value="blank" label={t("Fill the blank")} />
         </SegmentedControl>
         <DropdownMenu
-          button={{ label: "Display", variant: "secondary", ref: (element) => {
+          button={{ label: t("Display"), variant: "secondary", ref: (element) => {
             displayButtonRef.current = element;
           } }}
           isMenuOpen={displayOpen}
@@ -330,7 +356,7 @@ export function LessonDetail({
           xstyle={styles.displayMenu}
         >
           <DropdownMenuRadioGroup
-            label="Playback speed"
+            label={t("Playback speed")}
             value={speed}
             onChange={(nextSpeed) => setSpeed(nextSpeed as (typeof SPEEDS)[number])}
           >
@@ -342,17 +368,17 @@ export function LessonDetail({
             <>
               <DropdownMenuDivider />
               <DropdownMenuCheckboxItem
-                label="Transcript"
+                label={t("Transcript")}
                 value={showTranscript}
                 onChange={setShowTranscript}
               />
               <DropdownMenuCheckboxItem
-                label="Vietnamese"
+                label={t("Vietnamese")}
                 value={showVietnamese}
                 onChange={setShowVietnamese}
               />
               <DropdownMenuCheckboxItem
-                label="Stress"
+                label={t("Stress")}
                 value={showStress}
                 onChange={(pressed) => {
                   setShowStress(pressed);
@@ -363,7 +389,7 @@ export function LessonDetail({
                 }}
               />
               <DropdownMenuCheckboxItem
-                label="One at a time"
+                label={t("One at a time")}
                 value={guidedIndex !== null}
                 onChange={(pressed) => {
                   stopMedia({ keepVideo: true });
@@ -371,7 +397,7 @@ export function LessonDetail({
                 }}
               />
               <DropdownMenuCheckboxItem
-                label="Pronunciation check"
+                label={t("Pronunciation check")}
                 value={pronunciationSupported && pronunciationCheck}
                 isDisabled={!pronunciationSupported}
                 hasCloseOnSelect
@@ -387,7 +413,7 @@ export function LessonDetail({
                 }}
               />
               <DropdownMenuCheckboxItem
-                label={<span {...stylex.props(styles.autoHideLabel)}>Hide each sentence after I practise it</span>}
+                label={<span {...stylex.props(styles.autoHideLabel)}>{t("Hide each sentence after I practise it")}</span>}
                 value={autoHideText}
                 onChange={(checked) => {
                   writePref(AUTO_HIDE_TEXT_KEY, checked ? "on" : null);
@@ -402,34 +428,35 @@ export function LessonDetail({
         <Status>
           {showStress && stressDict === "failed" && (
             <Text as="p" color="primary" xstyle={sharedStyles.error}>
-              Stress marks could not be loaded.
+              {t("Stress marks could not be loaded.")}
             </Text>
           )}
         </Status>
       )}
       {mode === "shadow" && showStress && loadedStressDict && (
         <Text as="p" type="supporting">
-          Stress and intonation marks are auto-generated from a pronunciation dictionary and simple rules. They may
-          be wrong.
+          {t(
+            "Stress and intonation marks are auto-generated from a pronunciation dictionary and simple rules. They may be wrong.",
+          )}
         </Text>
       )}
       {mode === "shadow" && !pronunciationSupported && (
         <Text as="p" type="supporting">
-          Pronunciation check disabled: speech recognition is not supported in this browser.
+          {t("Pronunciation check disabled: speech recognition is not supported in this browser.")}
         </Text>
       )}
       {mode === "shadow" && disclosureOpen && (
         <Card padding={3} xstyle={sharedStyles.sentence}>
           <VStack gap={1}>
             <Text as="p">
-              Pronunciation check uses your browser's speech recognition. In Chrome, your
-              voice may be sent to Google's servers to be transcribed unless the browser
-              recognises it on this device. Nothing is sent to road-to-english.
+              {t(
+                "Pronunciation check uses your browser's speech recognition. In Chrome, your voice may be sent to Google's servers to be transcribed unless the browser recognises it on this device. Nothing is sent to road-to-english.",
+              )}
             </Text>
             <HStack gap={1}>
               <Button
                 ref={takeDisclosureFocus("enable")}
-                label="Enable"
+                label={t("Enable")}
                 variant="primary"
                 onClick={() => {
                   writePref(PRONUNCIATION_CHECK_KEY, "on");
@@ -439,7 +466,7 @@ export function LessonDetail({
                 }}
               />
               <Button
-                label="Cancel"
+                label={t("Cancel")}
                 variant="ghost"
                 onClick={() => {
                   disclosureFocus.current = "display";
@@ -464,10 +491,9 @@ export function LessonDetail({
             setOn: setLearn,
             passed: passedIds.has(data.sentences[guidedIndex].id),
             skipsLeft: SKIPS_PER_LESSON - skipsUsed,
-            skip: () => {
-              setSkipsUsed((used) => used + 1);
-              pass(data.sentences[guidedIndex].id);
-            },
+            skip: () => pass(data.sentences[guidedIndex].id, true),
+            progressCount: learnProgress.passed.length,
+            startOver: () => setLearnProgress(() => ({ passed: [], skipsUsed: 0 })),
           }}
         >
           {/* Keyed so a step to another sentence starts its practice afresh. */}
@@ -525,7 +551,7 @@ export function LessonDetail({
       )}
       {/* Only a stored completion is announced; a failed save announces through its Alert. */}
       <VisuallyHidden>
-        <Status>{allAttempted && completed && "Lesson complete."}</Status>
+        <Status>{allAttempted && completed && t("Lesson complete.")}</Status>
       </VisuallyHidden>
     </VStack>
   );

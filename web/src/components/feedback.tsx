@@ -6,6 +6,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 
 import { NotFoundError } from "../api/lessons";
+import { tr, useT } from "../i18n";
 import { sharedStyles } from "./styles";
 
 // A polite region mounted before its content, so screen readers announce each result once.
@@ -53,11 +54,12 @@ export function ViewHeading({ children, takeFocus }: { children: string; takeFoc
 }
 
 export function ErrorMessage({ error, subject }: { error: Error; subject: string }) {
-  const message = error instanceof NotFoundError ? "not found" : error.message;
+  const t = useT();
+  const message = error instanceof NotFoundError ? t("not found") : error.message;
 
   return (
     <Alert>
-      Unable to load {subject}: {message}
+      {t("Unable to load {subject}: {message}", { subject: t(subject), message })}
     </Alert>
   );
 }
@@ -76,9 +78,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
     }
     return (
       <VStack gap={1}>
-        <Heading level={1}>Something went wrong</Heading>
-        <Text as="p">Your progress on this device is kept.</Text>
-        <Button label="Reload" onClick={() => window.location.reload()} />
+        <Heading level={1}>{tr("Something went wrong")}</Heading>
+        <Text as="p">{tr("Your progress on this device is kept.")}</Text>
+        <Button label={tr("Reload")} onClick={() => window.location.reload()} />
       </VStack>
     );
   }

@@ -13,10 +13,12 @@ import { Status } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { registerRecordingAudio, type StopMedia } from "../hooks/usePracticeMedia";
 import { recordingSupported, useRecorder } from "../hooks/useRecorder";
+import { RecordingWaveform } from "./RecordingWaveform";
 import type { PracticeMode } from "../lib/progress";
 import { recognizeOnce } from "../lib/recognition";
 import { speak, speechSupported, stopSpeaking } from "../lib/speech";
 import { WordDiffResult } from "./SentenceQuiz";
+import { useT } from "../i18n";
 
 // Reference speech highlights the spoken word of its sentence. Any start, end or
 // error clears the highlight; speak's current-utterance guard drops superseded events.
@@ -117,6 +119,7 @@ export function SentenceShadowing({
   pronunciationCheck: boolean;
   stopMedia: StopMedia;
 }) {
+  const t = useT();
   const recorder = useRecorder();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playBlocked, setPlayBlocked] = useState(false);
@@ -217,7 +220,7 @@ export function SentenceShadowing({
     <VStack gap={1}>
       <HStack gap={1} xstyle={sharedStyles.shadowingControls}>
         <Button
-          label="Listen"
+          label={t("Listen")}
           variant="primary"
           data-shortcut="listen"
           isDisabled={!canSpeak || listening}
@@ -230,7 +233,7 @@ export function SentenceShadowing({
           }}
         />
         <ToggleButton
-          label="Loop"
+          label={t("Loop")}
           isPressed={looping}
           isDisabled={!canSpeak || listening}
           onClick={() => {
@@ -245,20 +248,20 @@ export function SentenceShadowing({
         />
         <div data-testid="recording-control" className={stylex.props(styles.recordingControl).className}>
           <Button
-            label={recorder.state === "recording" ? "Stop" : "Record"}
+            label={recorder.state === "recording" ? t("Stop") : t("Record")}
             data-shortcut="record"
             xstyle={recorder.state === "recording" ? styles.recordingButton : undefined}
             variant="secondary"
             children={(
               <span className={stylex.props(styles.recordingLabel).className}>
-                <span className={stylex.props(styles.recordingLabelText).className}>{recorder.state === "recording" ? "Stop" : "Record"}</span>
-                <span aria-hidden="true" className={stylex.props(styles.recordingLabelText, styles.recordingLabelHidden).className}>Record</span>
+                <span className={stylex.props(styles.recordingLabelText).className}>{recorder.state === "recording" ? t("Stop") : t("Record")}</span>
+                <span aria-hidden="true" className={stylex.props(styles.recordingLabelText, styles.recordingLabelHidden).className}>{t("Record")}</span>
               </span>
             )}
             isDisabled={!canRecord || recorder.state === "requesting"}
             isLoading={recorder.state === "requesting"}
             // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-            tooltip={recorder.state === "requesting" ? "Starting the microphone…" : undefined}
+            tooltip={recorder.state === "requesting" ? t("Starting the microphone…") : undefined}
             onClick={() => {
               if (recorder.state === "recording") {
                 recorder.stopRecording();
@@ -275,7 +278,7 @@ export function SentenceShadowing({
           )}
         </div>
         <Button
-          label="Compare"
+          label={t("Compare")}
           variant="ghost"
           isDisabled={!canSpeak || listening || !recorder.url}
           onClick={() => {
@@ -294,28 +297,29 @@ export function SentenceShadowing({
         {pronunciationCheck && (
           <Button
             ref={checkButtonRef}
-            label={listening ? "Listening…" : "Check pronunciation"}
+            label={listening ? t("Listening…") : t("Check pronunciation")}
             variant="ghost"
             isDisabled={listening}
-            tooltip={listening ? "Say the sentence" : undefined}
+            tooltip={listening ? t("Say the sentence") : undefined}
             onClick={checkPronunciation}
           />
         )}
       </HStack>
       {!canSpeak && (
         <Text as="p" type="supporting">
-          Listen disabled: speech synthesis is not supported in this browser.
+          {t("Listen disabled: speech synthesis is not supported in this browser.")}
         </Text>
       )}
       {!canRecord && (
         <Text as="p" type="supporting">
-          Recording disabled: microphone recording is not supported in this browser.
+          {t("Recording disabled: microphone recording is not supported in this browser.")}
         </Text>
       )}
+      {recorder.url && <RecordingWaveform url={recorder.url} />}
       {recorder.url && (
         <audio
           ref={audioRef}
-          aria-label="Your recording"
+          aria-label={t("Your recording")}
           controls
           src={recorder.url}
           onPlay={(event) => stopMedia({ keepAudio: event.currentTarget })}
@@ -324,14 +328,14 @@ export function SentenceShadowing({
       {/* Record becomes Stop and back; its own region, as a status region re-reads all of its text on any change. */}
       <VisuallyHidden>
         <Status>
-          {recorder.state === "recording" && "Recording."}
-          {recorder.state === "ready" && "Recording stopped."}
+          {recorder.state === "recording" && t("Recording.")}
+          {recorder.state === "ready" && t("Recording stopped.")}
         </Status>
       </VisuallyHidden>
       <Status>
         {speechFailed && (
           <Text as="p" type="supporting">
-            Couldn't play the sentence. Check your browser's speech settings.
+            {t("Couldn't play the sentence. Check your browser's speech settings.")}
           </Text>
         )}
         {recorder.error && (
@@ -341,7 +345,7 @@ export function SentenceShadowing({
         )}
         {playBlocked && (
           <Text as="p" type="supporting">
-            Press play to hear your recording.
+            {t("Press play to hear your recording.")}
           </Text>
         )}
         {check.status === "heard" && (
@@ -362,7 +366,7 @@ export function SentenceShadowing({
         )}
       </Status>
       {(check.status === "heard" || check.status === "failed") && (
-        <Button label="Try again" variant="ghost" onClick={tryAgain} />
+        <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />
       )}
     </VStack>
   );

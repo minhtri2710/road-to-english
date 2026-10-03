@@ -6,6 +6,7 @@ import {
 import { Rating, State } from "ts-fsrs";
 import type { Card, Grade } from "ts-fsrs";
 
+import { tr } from "../i18n";
 import { cardWord, isCardWord } from "./words";
 
 export { Rating, State } from "ts-fsrs";
@@ -147,24 +148,25 @@ const MINUTE = 60_000;
 // A duration as short text: "<1 min", "N min", "N h", "N d", "N mo", "N y"; mo and y keep one decimal under 10.
 export function formatInterval(ms: number): string {
   if (ms < MINUTE) {
-    return "<1 min";
+    return tr("<1 min");
   }
   const minutes = Math.round(ms / MINUTE);
   if (minutes < 60) {
-    return `${minutes} min`;
+    return tr("{n} min", { n: minutes });
   }
   const hours = Math.round(ms / (60 * MINUTE));
   if (hours < 24) {
-    return `${hours} h`;
+    return tr("{n} h", { n: hours });
   }
   const days = Math.round(ms / (24 * 60 * MINUTE));
   if (days < 30) {
-    return `${days} d`;
+    return tr("{n} d", { n: days });
   }
   // Months that round to 12 read as a year, so "12 mo" never shows.
   const months = days / 30;
   const [value, unit] = Math.round(months) < 12 ? [months, "mo"] : [Math.max(1, days / 365), "y"];
-  return `${value < 10 ? Number(value.toFixed(1)) : Math.round(value)} ${unit}`;
+  const n = value < 10 ? Number(value.toFixed(1)) : Math.round(value);
+  return unit === "mo" ? tr("{n} mo", { n }) : tr("{n} y", { n });
 }
 
 export function deleteCard(card: VocabCard, now: Date): VocabCard {

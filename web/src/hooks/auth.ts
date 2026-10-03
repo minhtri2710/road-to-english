@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
+import { tr } from "../i18n";
 
 import {
   fetchMe,
@@ -60,7 +61,7 @@ export function useAuth(): AuthState {
             const nextError =
               requestError instanceof Error
                 ? requestError
-                : new Error("Unable to restore account session");
+                : new Error(tr("Unable to restore account session"));
             meError.current = nextError;
             setError(nextError);
           }
@@ -101,7 +102,7 @@ export function useAuth(): AuthState {
       const nextError =
         requestError instanceof Error
           ? requestError
-          : new Error("Unable to authenticate");
+          : new Error(tr("Unable to authenticate"));
       setError(nextError);
       throw nextError;
     }
@@ -121,7 +122,7 @@ export function useAuth(): AuthState {
       const nextError =
         requestError instanceof Error
           ? requestError
-          : new Error("Unable to sign out");
+          : new Error(tr("Unable to sign out"));
       setError(nextError);
       throw nextError;
     }

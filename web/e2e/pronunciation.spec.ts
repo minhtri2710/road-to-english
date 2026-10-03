@@ -10,6 +10,9 @@ test("pronunciation check: disclosure, enable, wrong word, persists on reload", 
   await page.getByRole("button", { name: "Enable" }).click();
   await expect(page.getByRole("button", { name: "Display" })).toBeFocused();
   await expect(await menuItem(page, "Pronunciation check")).toHaveAttribute("aria-checked", "true");
+  // Checking the item opened the Display menu, which covers the sentence controls until it closes.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Display" })).toHaveCount(0);
 
   await page.evaluate(() => {
     (window as unknown as { __speechTranscript: string }).__speechTranscript =

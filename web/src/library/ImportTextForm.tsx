@@ -12,6 +12,7 @@ import type { Lesson, Level } from "../api/lessons";
 import { Alert } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import type { LevelFilter } from "../hooks/useLevelFilter";
+import { useT } from "../i18n";
 import { createUserLesson, USER_LEVELS, USER_WPMS } from "../lib/userLessons";
 
 export const IMPORT_TITLE = "import-title";
@@ -38,6 +39,7 @@ export function ImportTextForm({
   levelFilter: LevelFilter;
   takeReturnFocus: (id: string) => boolean;
 }) {
+  const t = useT();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
@@ -64,7 +66,7 @@ export function ImportTextForm({
     try {
       await onCreate(createUserLesson({ title, text, level, targetWpm: Number(targetWpm), videoUrl: videoUrl.trim() }));
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Unable to create lesson.");
+      setError(createError instanceof Error ? createError.message : t("Unable to create lesson."));
     } finally {
       isCreatingRef.current = false;
     }
@@ -73,12 +75,12 @@ export function ImportTextForm({
   return (
     <form onSubmit={(event) => void submit(event)}>
       <VStack gap={1}>
-        <Heading level={2}>Import text</Heading>
+        <Heading level={2}>{t("Import text")}</Heading>
         <Text as="p" type="supporting">
-          Your lessons stay on this device; export a backup to move them.
+          {t("Your lessons stay on this device; export a backup to move them.")}
         </Text>
         <label htmlFor="import-title">
-          <Text as="span" type="supporting">Title</Text>
+          <Text as="span" type="supporting">{t("Title")}</Text>
         </label>
         <input
           id={IMPORT_TITLE}
@@ -92,7 +94,7 @@ export function ImportTextForm({
           onChange={(event) => setTitle(event.target.value)}
         />
         <label htmlFor="import-video">
-          <Text as="span" type="supporting">YouTube URL</Text>
+          <Text as="span" type="supporting">{t("YouTube URL")}</Text>
         </label>
         <input
           id="import-video"
@@ -102,10 +104,10 @@ export function ImportTextForm({
           onChange={(event) => setVideoUrl(event.target.value)}
         />
         <label htmlFor="import-text">
-          <Text as="span" type="supporting">Text</Text>
+          <Text as="span" type="supporting">{t("Text")}</Text>
         </label>
         <Text as="p" type="supporting" id="import-text-hint">
-          Paste the transcript from YouTube's Show transcript panel (timestamps included).
+          {t("Paste the transcript from YouTube's Show transcript panel (timestamps included).")}
         </Text>
         <textarea
           id="import-text"
@@ -116,7 +118,7 @@ export function ImportTextForm({
         />
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
           <ToggleButtonGroup
-            label="Lesson level"
+            label={t("Lesson level")}
             value={level}
             onChange={(nextLevel) => {
               if (nextLevel) {
@@ -129,7 +131,7 @@ export function ImportTextForm({
             ))}
           </ToggleButtonGroup>
           <ToggleButtonGroup
-            label="Target WPM"
+            label={t("Target WPM")}
             value={targetWpm}
             xstyle={sharedStyles.shadowingControls}
             onChange={(nextWpm) => {
@@ -139,11 +141,11 @@ export function ImportTextForm({
             }}
           >
             {USER_WPMS.map((value) => (
-              <ToggleButton key={value} value={value} label={`${value} WPM`} />
+              <ToggleButton key={value} value={value} label={t("{wpm} WPM", { wpm: value })} />
             ))}
           </ToggleButtonGroup>
         </HStack>
-        <Button label="Create" variant="primary" type="submit" />
+        <Button label={t("Create")} variant="primary" type="submit" />
         {error && <Alert>{error}</Alert>}
       </VStack>
     </form>

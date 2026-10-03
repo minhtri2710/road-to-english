@@ -5,6 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { APP_TITLE } from "../components/feedback";
 import { useLessons } from "../hooks/lessons";
+import { useT } from "../i18n";
 import { ScoreRing, ScoredWords } from "../lesson/ShadowGate";
 import { LessonCard } from "../library/LessonCard";
 import { FAIR_SCORE, GOOD_SCORE, PASS_SCORE, scoreShadow } from "../lib/shadowScore";
@@ -365,7 +366,8 @@ const STEPS = [
   },
   {
     title: "Unlock",
-    text: `In Learn mode the next sentence opens at ${PASS_SCORE} points. Stuck? Listen slowly, try again, or use one of ${SKIPS_PER_LESSON} skips.`,
+    // Holes filled at render: {score} is PASS_SCORE, {skips} is SKIPS_PER_LESSON.
+    text: "In Learn mode the next sentence opens at {score} points. Stuck? Listen slowly, try again, or use one of {skips} skips.",
     icon: UNLOCK,
     style: "unlock" as const,
   },
@@ -474,15 +476,17 @@ export function Landing({
   onStart: () => void;
   onOpenLesson: (id: string) => void;
 }) {
+  const t = useT();
   const { data: lessons } = useLessons();
   const preview = lessons?.slice(0, 3) ?? [];
 
+  const pageTitle = t("How it works");
   useEffect(() => {
-    document.title = `How it works · ${APP_TITLE}`;
+    document.title = `${pageTitle} · ${APP_TITLE}`;
     return () => {
       document.title = APP_TITLE;
     };
-  }, []);
+  }, [pageTitle]);
 
   // In-page links would change the hash route, so "How it works" scrolls with a button instead.
   const showLoop = () => {
@@ -495,10 +499,10 @@ export function Landing({
     <div className={stylex.props(styles.page).className}>
       <section aria-labelledby="landing-title" className={stylex.props(styles.hero).className}>
         <div className={stylex.props(styles.heroText).className}>
-          <ul aria-label="The practice loop" className={stylex.props(styles.chips).className}>
-            <li className={stylex.props(styles.chip, styles.listenChip).className}>LISTEN</li>
-            <li className={stylex.props(styles.chip, styles.speakChip).className}>SAY IT BACK</li>
-            <li className={stylex.props(styles.chip, styles.unlockChip).className}>UNLOCK</li>
+          <ul aria-label={t("The practice loop")} className={stylex.props(styles.chips).className}>
+            <li className={stylex.props(styles.chip, styles.listenChip).className}>{t("LISTEN")}</li>
+            <li className={stylex.props(styles.chip, styles.speakChip).className}>{t("SAY IT BACK")}</li>
+            <li className={stylex.props(styles.chip, styles.unlockChip).className}>{t("UNLOCK")}</li>
           </ul>
           <h1
             id="landing-title"
@@ -508,26 +512,28 @@ export function Landing({
               if (heading && takeHeadingFocus()) heading.focus();
             }}
           >
-            Listen. Say it back. <span className={stylex.props(styles.speakText).className}>Level up.</span>
+            {t("Listen. Say it back.")}{" "}
+            <span className={stylex.props(styles.speakText).className}>{t("Level up.")}</span>
           </h1>
           <p className={stylex.props(styles.lead).className}>
-            Daily English practice for Vietnamese speakers. You don't just read along: you say every sentence back,
-            and in Learn mode the next one opens only when you say this one clearly.
+            {t(
+              "Daily English practice for Vietnamese speakers. You don't just read along: you say every sentence back, and in Learn mode the next one opens only when you say this one clearly.",
+            )}
           </p>
           <div className={stylex.props(styles.actions).className}>
             <span className={stylex.props(styles.speakButton).className}>
-              <Button label="Start practising" size="lg" variant="primary" onClick={onStart} />
+              <Button label={t("Start practising")} size="lg" variant="primary" onClick={onStart} />
             </span>
-            <Button label="See how it works" size="lg" variant="secondary" onClick={showLoop} />
+            <Button label={t("See how it works")} size="lg" variant="secondary" onClick={showLoop} />
           </div>
-          <p className={stylex.props(styles.muted).className}>Free. No account needed to start.</p>
+          <p className={stylex.props(styles.muted).className}>{t("Free. No account needed to start.")}</p>
         </div>
 
-        <figure aria-label="Example: one sentence scored in Learn mode" className={stylex.props(styles.example).className} style={{ margin: 0 }}>
+        <figure aria-label={t("Example: one sentence scored in Learn mode")} className={stylex.props(styles.example).className} style={{ margin: 0 }}>
           <div className={stylex.props(styles.frame).className}>
             <div className={stylex.props(styles.frameTop).className}>
-              <span className={stylex.props(styles.frameTag).className}>VIDEO LESSON</span>
-              <span className={stylex.props(styles.frameTag).className}>LEARN MODE</span>
+              <span className={stylex.props(styles.frameTag).className}>{t("VIDEO LESSON")}</span>
+              <span className={stylex.props(styles.frameTag).className}>{t("LEARN MODE")}</span>
             </div>
             <div className={stylex.props(styles.caption).className}>
               <p className={stylex.props(styles.captionEn).className}>{EXAMPLE_SENTENCE}</p>
@@ -539,14 +545,14 @@ export function Landing({
               <ScoreRing score={EXAMPLE.score} />
               <div>
                 <p className={stylex.props(styles.eyebrow, EXAMPLE.passed ? styles.listenEyebrow : styles.speakEyebrow).className}>
-                  {EXAMPLE.passed ? `Unlocked · ${EXAMPLE.score} points` : `Not yet · ${EXAMPLE.score} points`}
+                  {t(EXAMPLE.passed ? "Unlocked · {score} points" : "Not yet · {score} points", { score: EXAMPLE.score })}
                 </p>
-                <p className={stylex.props(styles.muted).className}>Words in brackets are what the browser heard.</p>
+                <p className={stylex.props(styles.muted).className}>{t("Words in brackets are what the browser heard.")}</p>
               </div>
             </div>
             <ScoredWords result={EXAMPLE} />
           </div>
-          <figcaption className={stylex.props(styles.muted).className}>An example result, as the app shows it.</figcaption>
+          <figcaption className={stylex.props(styles.muted).className}>{t("An example result, as the app shows it.")}</figcaption>
         </figure>
       </section>
 
@@ -557,12 +563,12 @@ export function Landing({
         className={stylex.props(styles.section, styles.band).className}
       >
         <div className={stylex.props(styles.sectionHead).className}>
-          <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>The practice loop</p>
+          <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>{t("The practice loop")}</p>
           <h2 id="landing-loop-title" className={stylex.props(styles.h2).className}>
-            No skimming. Every sentence gets said out loud.
+            {t("No skimming. Every sentence gets said out loud.")}
           </h2>
           <p className={stylex.props(styles.muted).className}>
-            Open a lesson, choose One at a time in Display, and switch to Learn. Each sentence waits for you.
+            {t("Open a lesson, choose One at a time in Display, and switch to Learn. Each sentence waits for you.")}
           </p>
         </div>
         <ol className={stylex.props(styles.grid).className}>
@@ -576,8 +582,8 @@ export function Landing({
                   {String(index + 1).padStart(2, "0")}
                 </span>
               </div>
-              <h3 className={stylex.props(styles.h3).className}>{step.title}</h3>
-              <p className={stylex.props(styles.muted).className}>{step.text}</p>
+              <h3 className={stylex.props(styles.h3).className}>{t(step.title)}</h3>
+              <p className={stylex.props(styles.muted).className}>{t(step.text, { score: PASS_SCORE, skips: SKIPS_PER_LESSON })}</p>
             </li>
           ))}
         </ol>
@@ -585,49 +591,53 @@ export function Landing({
 
       <section aria-labelledby="landing-scoring-title" className={stylex.props(styles.scoring).className}>
         <div className={stylex.props(styles.sectionHead).className}>
-          <p className={stylex.props(styles.eyebrow, styles.speakEyebrow).className}>Word-by-word scoring</p>
+          <p className={stylex.props(styles.eyebrow, styles.speakEyebrow).className}>{t("Word-by-word scoring")}</p>
           <h2 id="landing-scoring-title" className={stylex.props(styles.h2).className}>
-            See exactly which word to fix
+            {t("See exactly which word to fix")}
           </h2>
           <p className={stylex.props(styles.muted).className}>
-            No vague "good job". Each word gets its own mark, and a word the browser heard differently shows what
-            it heard. Each mark has its own underline, so it never depends on color alone.
+            {t(
+              'No vague "good job". Each word gets its own mark, and a word the browser heard differently shows what it heard. Each mark has its own underline, so it never depends on color alone.',
+            )}
           </p>
           <ul className={stylex.props(styles.legend).className}>
             <li className={stylex.props(styles.legendRow).className}>
               <span className={stylex.props(styles.legendWord, styles.good).className}>never</span>
-              <span className={stylex.props(styles.muted).className}>Clear: {GOOD_SCORE} or more, double underline</span>
+              <span className={stylex.props(styles.muted).className}>{t("Clear: {good} or more, double underline", { good: GOOD_SCORE })}</span>
             </li>
             <li className={stylex.props(styles.legendRow).className}>
               <span className={stylex.props(styles.legendWord, styles.fair).className}>seen</span>
               <span className={stylex.props(styles.muted).className}>
-                Close: {FAIR_SCORE} to {GOOD_SCORE - 1}, dotted underline
+                {t("Close: {fair} to {top}, dotted underline", { fair: FAIR_SCORE, top: GOOD_SCORE - 1 })}
               </span>
             </li>
             <li className={stylex.props(styles.legendRow).className}>
               <span className={stylex.props(styles.legendWord, styles.miss).className}>anything</span>
-              <span className={stylex.props(styles.muted).className}>Missed: under {FAIR_SCORE}, solid underline</span>
+              <span className={stylex.props(styles.muted).className}>{t("Missed: under {fair}, solid underline", { fair: FAIR_SCORE })}</span>
             </li>
           </ul>
         </div>
         <div className={stylex.props(styles.panel).className}>
-          <p className={stylex.props(styles.eyebrow).className}>How the score works</p>
+          <p className={stylex.props(styles.eyebrow).className}>{t("How the score works")}</p>
           <p className={stylex.props(styles.muted).className}>
-            A matched word scores 100. A word heard as something else scores how close the spelling is. A missing
-            word scores 0. The sentence score is the average, and {PASS_SCORE} unlocks the next sentence.
+            {t(
+              "A matched word scores 100. A word heard as something else scores how close the spelling is. A missing word scores 0. The sentence score is the average, and {score} unlocks the next sentence.",
+              { score: PASS_SCORE },
+            )}
           </p>
           <p className={stylex.props(styles.muted).className}>
-            Scoring uses your browser's speech recognition. In Chrome your voice may be sent to Google to be
-            transcribed; nothing is sent to Road to English.
+            {t(
+              "Scoring uses your browser's speech recognition. In Chrome your voice may be sent to Google to be transcribed; nothing is sent to Road to English.",
+            )}
           </p>
         </div>
       </section>
 
       <section aria-labelledby="landing-features-title" className={stylex.props(styles.section, styles.band).className}>
         <div className={stylex.props(styles.sectionHead).className}>
-          <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>Features</p>
+          <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>{t("Features")}</p>
           <h2 id="landing-features-title" className={stylex.props(styles.h2).className}>
-            Everything you need to practise from real sentences
+            {t("Everything you need to practise from real sentences")}
           </h2>
         </div>
         <ul className={stylex.props(styles.grid, styles.wideGrid).className}>
@@ -636,8 +646,8 @@ export function Landing({
               <span className={stylex.props(feature.tone === "listen" ? styles.listenIcon : styles.speakIcon).className}>
                 <Icon>{feature.icon}</Icon>
               </span>
-              <h3 className={stylex.props(styles.h3).className}>{feature.title}</h3>
-              <p className={stylex.props(styles.muted).className}>{feature.text}</p>
+              <h3 className={stylex.props(styles.h3).className}>{t(feature.title)}</h3>
+              <p className={stylex.props(styles.muted).className}>{t(feature.text)}</p>
             </li>
           ))}
           <li className={stylex.props(styles.feature).className}>
@@ -647,12 +657,12 @@ export function Landing({
                 <path d="M6 12h8" />
               </Icon>
             </span>
-            <h3 className={stylex.props(styles.h3).className}>Practise from the keyboard</h3>
-            <ul aria-label="Keyboard shortcuts in One at a time" className={stylex.props(styles.keys).className}>
+            <h3 className={stylex.props(styles.h3).className}>{t("Practise from the keyboard")}</h3>
+            <ul aria-label={t("Keyboard shortcuts in One at a time")} className={stylex.props(styles.keys).className}>
               {SHORTCUTS.map(([key, does]) => (
                 <li key={key}>
                   <kbd className={stylex.props(styles.kbd).className}>{key}</kbd>
-                  {does}
+                  {t(does)}
                 </li>
               ))}
             </ul>
@@ -664,12 +674,12 @@ export function Landing({
         <section aria-labelledby="landing-library-title" className={stylex.props(styles.section).className}>
           <div className={stylex.props(styles.libraryHead).className}>
             <div className={stylex.props(styles.sectionHead).className}>
-              <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>Lesson library</p>
+              <p className={stylex.props(styles.eyebrow, styles.listenEyebrow).className}>{t("Lesson library")}</p>
               <h2 id="landing-library-title" className={stylex.props(styles.h2).className}>
-                Start with a lesson at your level
+                {t("Start with a lesson at your level")}
               </h2>
             </div>
-            <Button label="See all lessons" variant="ghost" onClick={onStart} />
+            <Button label={t("See all lessons")} variant="ghost" onClick={onStart} />
           </div>
           <ul className={stylex.props(styles.grid, styles.wideGrid).className}>
             {preview.map((lesson) => (
@@ -692,16 +702,16 @@ export function Landing({
       <section aria-labelledby="landing-cta-title" className={stylex.props(styles.cta).className}>
         <div className={stylex.props(styles.ctaText).className}>
           <h2 id="landing-cta-title" className={stylex.props(styles.h2, styles.ctaTitle).className}>
-            Your first sentence is waiting.
+            {t("Your first sentence is waiting.")}
           </h2>
           <p className={stylex.props(styles.ctaLead).className}>
-            Free to use. Progress is saved on this device; sign in any time to sync it.
+            {t("Free to use. Progress is saved on this device; sign in any time to sync it.")}
           </p>
         </div>
         <div className={stylex.props(styles.ctaActions).className}>
           <Bars />
           <span className={stylex.props(styles.ctaButton).className}>
-            <Button label="Start practising" size="lg" variant="primary" onClick={onStart} />
+            <Button label={t("Start practising")} size="lg" variant="primary" onClick={onStart} />
           </span>
         </div>
       </section>

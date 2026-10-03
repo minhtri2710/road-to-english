@@ -8,6 +8,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Level } from "../api/lessons";
+import { useT } from "../i18n";
 
 const styles = stylex.create({
   button: {
@@ -88,6 +89,7 @@ export function LessonCard({
   onSelect: () => void;
   takeFocus: () => boolean;
 }) {
+  const t = useT();
   const metaId = useId();
   const wpmId = useId();
   const completedId = useId();
@@ -103,11 +105,11 @@ export function LessonCard({
       xstyle={[styles.button, levelStyles[level]]}
       endContent={(
         <HStack gap={1} align="center" xstyle={styles.badges}>
-          <Badge label={`${targetWpm} WPM`} variant="info" id={wpmId} />
+          <Badge label={t("{wpm} WPM", { wpm: targetWpm })} variant="info" id={wpmId} />
           {completed && (
             <HStack gap={0.5} align="center" xstyle={styles.completed}>
               <span aria-hidden="true" className={stylex.props(styles.check).className}>✓</span>
-              <Text type="supporting" weight="semibold" id={completedId}>Completed</Text>
+              <Text type="supporting" weight="semibold" id={completedId}>{t("Completed")}</Text>
             </HStack>
           )}
         </HStack>
@@ -119,7 +121,7 @@ export function LessonCard({
         <span id={metaId}>
           <HStack gap={1} align="center" xstyle={styles.sentenceMeta}>
             <Badge label={level} xstyle={[styles.levelBadge, levelStyles[level]]} />{" "}
-            <Text type="supporting">· {sentenceCount} sentences</Text>
+            <Text type="supporting">{t("· {count} sentences", { count: sentenceCount })}</Text>
           </HStack>
         </span>
       </VStack>

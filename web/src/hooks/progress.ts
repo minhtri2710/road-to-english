@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { tr } from "../i18n";
 import type { DailyCount } from "../lib/db";
 import { streakState, todayKey, weekView, xp } from "../lib/progress";
 import {
@@ -34,7 +35,7 @@ export function useProgress() {
       setAllCounts(counts);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError : new Error("Unable to load progress"));
+      setError(loadError instanceof Error ? loadError : new Error(tr("Unable to load progress")));
     }
   }, []);
 
@@ -49,7 +50,7 @@ export function useProgress() {
     try {
       committed = await savePractice(todayKey(new Date()), options);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError : new Error("Unable to save progress"));
+      setError(saveError instanceof Error ? saveError : new Error(tr("Unable to save progress")));
       return null;
     }
     await refresh();

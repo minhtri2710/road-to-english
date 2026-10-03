@@ -1,4 +1,5 @@
 import type { Lesson, Level } from "../api/lessons";
+import { tr } from "../i18n";
 import { withDb } from "./db";
 import { isRecord, isText } from "./vocab";
 import { cardWord, isCardWord, splitWords } from "./words";
@@ -35,22 +36,22 @@ export function createUserLesson(input: {
   videoUrl?: string;
 }): Lesson {
   if (!isText(input.title) || !isText(input.text)) {
-    throw new Error("Title and text must not contain NUL characters.");
+    throw new Error(tr("Title and text must not contain NUL characters."));
   }
   const title = input.title.trim();
   if (!isValidTitle(title)) {
-    throw new Error(`Title must be 1-${MAX_TITLE_LENGTH} characters.`);
+    throw new Error(tr("Title must be 1-{max} characters.", { max: MAX_TITLE_LENGTH }));
   }
   if (input.text.length > MAX_TEXT_LENGTH) {
-    throw new Error(`Text must be at most ${MAX_TEXT_LENGTH} characters.`);
+    throw new Error(tr("Text must be at most {max} characters.", { max: MAX_TEXT_LENGTH }));
   }
   const videoId = input.videoUrl ? parseYouTubeId(input.videoUrl) : null;
   if (input.videoUrl && !videoId) {
-    throw new Error("Enter a YouTube video URL.");
+    throw new Error(tr("Enter a YouTube video URL."));
   }
   const sentences = videoId ? parseTranscript(input.text) : segmentText(input.text).map((text) => ({ text }));
   if (sentences.length < 1 || sentences.length > MAX_SENTENCES) {
-    throw new Error(`Text must contain 1-${MAX_SENTENCES} sentences.`);
+    throw new Error(tr("Text must contain 1-{max} sentences.", { max: MAX_SENTENCES }));
   }
   return {
     id: `user-${crypto.randomUUID()}`,

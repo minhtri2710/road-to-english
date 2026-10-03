@@ -6,6 +6,7 @@ import {
   type Lesson,
   type LessonSummary,
 } from "../api/lessons";
+import { tr } from "../i18n";
 import { deleteUserLesson, listUserLessons, putUserLesson } from "../lib/userLessons";
 
 interface AsyncData<T> {
@@ -37,7 +38,7 @@ export function useLessons(): AsyncData<LessonSummary[]> & { retry: () => void }
           setError(
             requestError instanceof Error
               ? requestError
-              : new Error("Unable to load lessons"),
+              : new Error(tr("Unable to load lessons")),
           );
         }
       })
@@ -78,7 +79,7 @@ export function useLesson(id: string): AsyncData<Lesson> {
           setError(
             requestError instanceof Error
               ? requestError
-              : new Error("Unable to load lesson"),
+              : new Error(tr("Unable to load lesson")),
           );
         }
       })
@@ -102,7 +103,7 @@ export function useUserLessons() {
 
   const load = () =>
     listUserLessons().catch((loadError: unknown) =>
-      loadError instanceof Error ? loadError : new Error("Unable to load your lessons"),
+      loadError instanceof Error ? loadError : new Error(tr("Unable to load your lessons")),
     );
 
   const reload = async () => {

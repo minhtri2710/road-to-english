@@ -1,3 +1,4 @@
+import { tr } from "../i18n";
 import { ApiError, request } from "./client";
 
 export type Level = "A1" | "A2" | "B1" | "B2";
@@ -37,7 +38,7 @@ export class NotFoundError extends ApiError {
   constructor() {
     super(404, null);
     this.name = "NotFoundError";
-    this.message = "Lesson not found";
+    this.message = tr("Lesson not found");
   }
 }
 

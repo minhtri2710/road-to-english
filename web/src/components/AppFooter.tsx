@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 
+import { useT } from "../i18n";
 import { routeHash, type Route } from "../lib/route";
 
 const styles = stylex.create({
@@ -48,11 +49,12 @@ const LINKS: { label: string; route: Route }[] = [
 ];
 
 export function AppFooter({ onNavigate }: { onNavigate: (route: Route) => void }) {
+  const t = useT();
   return (
     <footer className={stylex.props(styles.footer).className}>
       <div className={stylex.props(styles.inner).className}>
         <span className={stylex.props(styles.name).className}>Road to English</span>
-        <nav aria-label="Site">
+        <nav aria-label={t("Site")}>
           <ul className={stylex.props(styles.links).className}>
             {LINKS.map(({ label, route }) => (
               <li key={label}>
@@ -65,13 +67,13 @@ export function AppFooter({ onNavigate }: { onNavigate: (route: Route) => void }
                     onNavigate(route);
                   }}
                 >
-                  {label}
+                  {t(label)}
                 </a>
               </li>
             ))}
           </ul>
         </nav>
-        <span>Pre-launch: data may be reset.</span>
+        <span>{t("Pre-launch: data may be reset.")}</span>
       </div>
     </footer>
   );

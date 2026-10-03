@@ -7,6 +7,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
 import { Alert, ErrorMessage } from "../components/feedback";
+import { useT } from "../i18n";
 import { LessonCard } from "./LessonCard";
 
 const styles = stylex.create({
@@ -33,21 +34,22 @@ export function UserLessonList({
   takeFocus: (id: string) => boolean;
   onCreateLesson: () => void;
 }) {
+  const t = useT();
   if (lessons === null) {
-    return <Text as="p">Loading your lessons...</Text>;
+    return <Text as="p">{t("Loading your lessons...")}</Text>;
   }
 
   if (lessons instanceof Error) {
-    return <ErrorMessage error={lessons} subject="your lessons" />;
+    return <ErrorMessage error={lessons} subject={t("your lessons")} />;
   }
 
   if (lessons.length === 0) {
     return (
       <EmptyState
-        title="No lessons of your own yet"
-        description="Paste a transcript or any English text to practise it as a lesson."
+        title={t("No lessons of your own yet")}
+        description={t("Paste a transcript or any English text to practise it as a lesson.")}
         isCompact
-        actions={<Button label="Create a lesson" variant="secondary" onClick={onCreateLesson} />}
+        actions={<Button label={t("Create a lesson")} variant="secondary" onClick={onCreateLesson} />}
       />
     );
   }
@@ -69,13 +71,13 @@ export function UserLessonList({
               />
             </div>
             <Button
-              label="Delete"
-              aria-label={`Delete ${lesson.title}`}
+              label={t("Delete")}
+              aria-label={t("Delete {title}", { title: lesson.title })}
               variant="ghost"
               onClick={() => onDelete(lesson)}
             />
           </HStack>
-          {deleteFailedId === lesson.id && <Alert>Couldn't delete. Try again.</Alert>}
+          {deleteFailedId === lesson.id && <Alert>{t("Couldn't delete. Try again.")}</Alert>}
         </li>
       ))}
     </VStack>

@@ -11,6 +11,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { Status } from "../components/feedback";
 import { PASS_SCORE } from "../lib/shadowScore";
+import { useT } from "../i18n";
 
 const STEPS = [
   "Listen to the sentence.",
@@ -23,7 +24,7 @@ const STEPS = [
 const LEARN_STEPS = [
   "Listen to the sentence.",
   "Say it back with the round speak button.",
-  `Reach ${PASS_SCORE} points to unlock the next sentence.`,
+  "Reach {score} points to unlock the next sentence.",
   "Not there yet? Listen slowly and try again, or use a skip.",
 ];
 
@@ -81,6 +82,9 @@ export interface GateState {
   passed: boolean;
   skipsLeft: number;
   skip: () => void;
+  // Sentences passed or skipped in this lesson so far, kept on this device.
+  progressCount: number;
+  startOver: () => void;
 }
 
 // One sentence at a time: its heading, a fixed step guide, the sentence's card and Previous/Next.
@@ -98,12 +102,13 @@ export function GuidedShadowing({
   gate: GateState;
   children: ReactNode;
 }) {
-  const position = `Sentence ${index + 1} of ${count}`;
+  const t = useT();
+  const position = t("Sentence {n} of {count}", { n: index + 1, count });
   const [announcement, setAnnouncement] = useState("");
   const headingFocus = useRef(false);
   const go = (next: number) => {
     headingFocus.current = true;
-    setAnnouncement(`Sentence ${next + 1} of ${count}`);
+    setAnnouncement(t("Sentence {n} of {count}", { n: next + 1, count }));
     step(next);
   };
   const last = index === count - 1;
@@ -143,55 +148,78 @@ export function GuidedShadowing({
         </Heading>
         <VStack gap={1}>
           <SegmentedControl
-            label="Practice mode"
+            label={t("Practice mode")}
             xstyle={styles.practiceMode}
             value={gate.on ? "learn" : "free"}
             isDisabled={!gate.available}
-            disabledMessage="Turn on Pronunciation check in Display to use Learn mode"
+            disabledMessage={t("Turn on Pronunciation check in Display to use Learn mode")}
             onChange={(value) => gate.setOn(value === "learn")}
           >
-            <SegmentedControlItem value="free" label="Free" />
-            <SegmentedControlItem value="learn" label="Learn" />
+            <SegmentedControlItem value="free" label={t("Free")} />
+            <SegmentedControlItem value="learn" label={t("Learn")} />
           </SegmentedControl>
+          {gate.on && (
+            <HStack gap={1} align="center" wrap="wrap">
+              <Text type="supporting">
+                {t("Unlocked {passed} of {count} sentences · {left} of {total} skips left. Saved on this device.", {
+                  passed: gate.progressCount,
+                  count,
+                  left: gate.skipsLeft,
+                  total: SKIPS_PER_LESSON,
+                })}
+              </Text>
+              {(gate.progressCount > 0 || gate.skipsLeft < SKIPS_PER_LESSON) && (
+                <Button
+                  label={t("Start over")}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (window.confirm(t("Lock every sentence again and get all skips back?"))) gate.startOver();
+                  }}
+                />
+              )}
+            </HStack>
+          )}
           {!gate.available && (
             <Text as="p" type="supporting">
-              Learn mode locks each next sentence until you say this one clearly. Turn on Pronunciation check in
-              Display to use it.
+              {t(
+                "Learn mode locks each next sentence until you say this one clearly. Turn on Pronunciation check in Display to use it.",
+              )}
             </Text>
           )}
         </VStack>
         <VStack as="ol" gap={0}>
           {(gate.on ? LEARN_STEPS : STEPS).map((text) => (
             <li key={text}>
-              <Text>{text}</Text>
+              <Text>{t(text, { score: PASS_SCORE })}</Text>
             </li>
           ))}
         </VStack>
         {children}
         <HStack gap={1} wrap="wrap" align="center">
           <Button
-            label="Previous"
+            label={t("Previous")}
             variant="secondary"
             data-shortcut="previous"
             isDisabled={index === 0}
             // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-            tooltip={index === 0 ? "This is the first sentence" : undefined}
+            tooltip={index === 0 ? t("This is the first sentence") : undefined}
             onClick={() => go(index - 1)}
           />
           <Button
-            label="Next"
+            label={t("Next")}
             variant={gate.on && gate.passed && !last ? "primary" : "secondary"}
             data-shortcut="next"
             isDisabled={last || locked}
-            tooltip={last ? "This is the last sentence" : locked ? `Reach ${PASS_SCORE} points or skip to unlock` : undefined}
+            tooltip={last ? t("This is the last sentence") : locked ? t("Reach {score} points or skip to unlock", { score: PASS_SCORE }) : undefined}
             onClick={() => go(index + 1)}
           />
           {gate.on && !last && !gate.passed && (
             <Button
-              label={`Skip (${gate.skipsLeft} of ${SKIPS_PER_LESSON} left)`}
+              label={t("Skip ({left} of {total} left)", { left: gate.skipsLeft, total: SKIPS_PER_LESSON })}
               variant="ghost"
               isDisabled={gate.skipsLeft === 0}
-              tooltip={gate.skipsLeft === 0 ? "No skips left in this lesson" : undefined}
+              tooltip={gate.skipsLeft === 0 ? t("No skips left in this lesson") : undefined}
               onClick={() => {
                 gate.skip();
                 go(index + 1);
@@ -201,14 +229,14 @@ export function GuidedShadowing({
         </HStack>
         <VStack gap={0.5}>
           <Text type="supporting" id="guided-shortcuts">
-            Keyboard, while you work in this sentence:
+            {t("Keyboard, while you work in this sentence:")}
           </Text>
           <ul aria-labelledby="guided-shortcuts" className={stylex.props(styles.kbdRow).className}>
             {SHORTCUTS.map((shortcut) => (
               <li key={shortcut.key}>
                 <Text type="supporting">
                   <kbd className={stylex.props(styles.kbd).className}>{shortcut.label}</kbd>
-                  {shortcut.does}
+                  {t(shortcut.does)}
                 </Text>
               </li>
             ))}

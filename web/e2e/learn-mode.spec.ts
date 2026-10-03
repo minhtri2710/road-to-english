@@ -84,6 +84,39 @@ test.describe("Learn mode", () => {
     await expect(next(page)).toBeDisabled();
   });
 
+  test("keeps Learn mode, unlocked sentences and skips after a reload, until Start over", async ({ page }) => {
+    await openGuided(page, { pronunciation: true });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await say(page, FIRST);
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(gate(page).getByText("Unlocked · 100 points")).toBeVisible();
+    await next(page).click();
+    await page.getByRole("button", { name: "Skip (3 of 3 left)" }).click();
+    await expect(page.getByText("Unlocked 2 of 9 sentences · 2 of 3 skips left. Saved on this device.")).toBeVisible();
+
+    await page.reload();
+    await openGuided(page, { pronunciation: false });
+    await expect(page.getByRole("radio", { name: "Learn" })).toBeChecked();
+    await expect(next(page)).toBeEnabled();
+    await expect(page.getByText("Unlocked 2 of 9 sentences · 2 of 3 skips left. Saved on this device.")).toBeVisible();
+
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Start over" }).click();
+    await expect(page.getByText("Unlocked 0 of 9 sentences · 3 of 3 skips left. Saved on this device.")).toBeVisible();
+    await expect(next(page)).toBeDisabled();
+  });
+
+  test("the Learn view fits a 320px screen at 200% text", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await openGuided(page, { pronunciation: true });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await say(page, "good morning");
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(gate(page).getByText("Not yet · 33 points")).toBeVisible();
+    await page.addStyleTag({ content: "html { font-size: 200%; }" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
+
   test("keyboard shortcuts act inside the guided view only", async ({ page }) => {
     await openGuided(page, { pronunciation: true });
     await page.getByRole("radio", { name: "Learn" }).click();
@@ -144,4 +177,15 @@ test.describe("How it works page", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
+});
+
+test("a finished recording is drawn as a waveform beside its player", async ({ page }) => {
+  await openLibraryLesson(page, LESSON);
+  const card = page.getByRole("listitem").filter({ hasText: FIRST });
+  await card.getByRole("button", { name: "Record" }).click();
+  await page.waitForTimeout(1500);
+  await card.getByRole("button", { name: "Stop" }).click();
+  await expect(card.getByRole("button", { name: "Record" })).toBeVisible();
+  await expect(card.getByTestId("recording-waveform")).toBeVisible();
+  await expect(card.getByTestId("recording-waveform").locator("span")).toHaveCount(48);
 });

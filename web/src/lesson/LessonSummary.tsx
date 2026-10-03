@@ -13,6 +13,7 @@ import { useLessons } from "../hooks/lessons";
 import { filterByLevel, type LevelFilter } from "../hooks/useLevelFilter";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
 import { SaveToReview } from "./WordPanel";
+import { useT } from "../i18n";
 
 // The list the learner came from: the library under its level filter, or their own lessons.
 export type LessonSource = { view: "lesson"; levelFilter: LevelFilter } | { view: "my"; lessons: Lesson[] };
@@ -54,20 +55,21 @@ export function LessonSummary({
   removeCard: (id: string) => Promise<VocabCard>;
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
 }) {
+  const t = useT();
   const heading = useRef<HTMLHeadingElement>(null);
   return (
     <VStack as="section" gap={2} aria-labelledby="lesson-summary">
       <Heading id="lesson-summary" level={2} ref={heading} tabIndex={-1}>
         <MilestoneMark />
-        Lesson complete
+        {t("Lesson complete")}
       </Heading>
-      <Text as="p">You practised all {sentenceCount} sentences.</Text>
+      <Text as="p">{t("You practised all {count} sentences.", { count: sentenceCount })}</Text>
       {saveFailed && (
         <VStack gap={1}>
-          <Alert>Couldn't save your progress.</Alert>
+          <Alert>{t("Couldn't save your progress.")}</Alert>
           {/* A successful retry removes Try again, so focus moves to the heading. */}
           <Button
-            label="Try again"
+            label={t("Try again")}
             variant="secondary"
             onClick={() => void retrySave().then((saved) => saved && heading.current?.focus())}
           />
@@ -76,7 +78,7 @@ export function LessonSummary({
       {missed.length > 0 && (
         <VStack gap={1}>
           <Heading id="missed-words" level={3}>
-            Missed words
+            {t("Missed words")}
           </Heading>
           <VStack as="ul" gap={1} aria-labelledby="missed-words">
             {missed.map((card) => (
@@ -85,7 +87,7 @@ export function LessonSummary({
                   <Text weight="semibold">{card.front}</Text>
                   <SaveToReview
                     card={card}
-                    label="Save"
+                    label={t("Save")}
                     word={card.front}
                     saved={savedCardIds.has(cardId(card.source))}
                     addCard={addCard}
@@ -101,9 +103,9 @@ export function LessonSummary({
       {due !== null && due > 0 && (
         <HStack gap={1} align="center">
           <Text as="p">
-            {due} {due === 1 ? "card" : "cards"} due now.
+            {due === 1 ? t("{due} card due now.", { due }) : t("{due} cards due now.", { due })}
           </Text>
-          <Button label="Review now" variant="secondary" onClick={onReview} />
+          <Button label={t("Review now")} variant="secondary" onClick={onReview} />
         </HStack>
       )}
       <HStack gap={1}>
@@ -112,7 +114,7 @@ export function LessonSummary({
         ) : (
           <NextLesson lessonId={lessonId} lessons={source.lessons} openLesson={openLesson} />
         )}
-        <Button label="Back to lessons" variant="ghost" onClick={onBack} />
+        <Button label={t("Back to lessons")} variant="ghost" onClick={onBack} />
       </HStack>
     </VStack>
   );
@@ -142,10 +144,11 @@ function NextLesson({
   lessons: { id: string; title: string }[];
   openLesson: (id: string) => void;
 }) {
+  const t = useT();
   const index = lessons.findIndex((lesson) => lesson.id === lessonId);
   const next = index === -1 ? undefined : lessons[index + 1];
   if (!next) {
     return null;
   }
-  return <Button label={`Next lesson: ${next.title}`} variant="primary" onClick={() => openLesson(next.id)} />;
+  return <Button label={t("Next lesson: {title}", { title: next.title })} variant="primary" onClick={() => openLesson(next.id)} />;
 }

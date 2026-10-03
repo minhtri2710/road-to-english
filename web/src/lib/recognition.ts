@@ -1,3 +1,5 @@
+import { tr } from "../i18n";
+
 // Minimal local typing: lib.dom does not declare the SpeechRecognition constructor.
 interface Recognition {
   lang: string;
@@ -29,20 +31,20 @@ export function recognitionSupported(): boolean {
 function errorMessage(code: string): string {
   switch (code) {
     case "language-not-supported":
-      return "On-device English recognition isn't available in this browser. Use Record and Compare to check yourself.";
+      return tr("On-device English recognition isn't available in this browser. Use Record and Compare to check yourself.");
     case "network":
-      return "Speech recognition couldn't reach its service. Check your connection, or use Record and Compare to check yourself.";
+      return tr("Speech recognition couldn't reach its service. Check your connection, or use Record and Compare to check yourself.");
     case "audio-capture":
-      return "No microphone was found. Connect a microphone and try again.";
+      return tr("No microphone was found. Connect a microphone and try again.");
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone or speech recognition access is blocked. Allow it in your browser's site settings and try again.";
+      return tr("Microphone or speech recognition access is blocked. Allow it in your browser's site settings and try again.");
     case "no-speech":
-      return "No speech detected. Press Check pronunciation, then say the sentence.";
+      return tr("No speech detected. Press Check pronunciation, then say the sentence.");
     case "aborted":
-      return "Speech recognition stopped before it heard you. Try again.";
+      return tr("Speech recognition stopped before it heard you. Try again.");
     default:
-      return `Speech recognition failed (${code}). Try again, or use Record and Compare to check yourself.`;
+      return tr("Speech recognition failed ({code}). Try again, or use Record and Compare to check yourself.", { code });
   }
 }
 
@@ -59,7 +61,7 @@ export function abortActiveRecognition(): void {
 export function recognizeOnce(): { result: Promise<string>; abort(): void } {
   const Constructor = recognitionConstructor();
   if (!Constructor) {
-    throw new Error("Speech recognition is not supported in this browser.");
+    throw new Error(tr("Speech recognition is not supported in this browser."));
   }
   active?.abort();
   const recognition = new Constructor();

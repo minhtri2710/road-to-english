@@ -13,6 +13,7 @@ import type { StopMedia } from "../hooks/usePracticeMedia";
 import { recognizeOnce } from "../lib/recognition";
 import { PASS_SCORE, scoreShadow, wordLevel, type ShadowScore, type WordLevel } from "../lib/shadowScore";
 import { speak, speechSupported } from "../lib/speech";
+import { useT } from "../i18n";
 
 export const SLOW_SPEED = 0.75;
 
@@ -100,6 +101,18 @@ const styles = stylex.create({
   word: {
     textUnderlineOffset: "6px",
   },
+  // Enlarged text wraps the label instead of pushing the button off a narrow screen.
+  wrapButton: {
+    maxWidth: "100%",
+    height: "auto",
+    minHeight: "var(--size-element-md)",
+    whiteSpace: "normal",
+    textAlign: "start",
+  },
+  wrapLabel: {
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+  },
   heard: {
     fontSize: "var(--text-supporting-size)",
     fontWeight: "normal",
@@ -123,9 +136,10 @@ const ringColors: Record<WordLevel, string> = {
 const LEVEL_NAMES: Record<WordLevel, string> = { good: "clear", fair: "close", miss: "missed" };
 
 export function ScoreRing({ score }: { score: number }) {
+  const t = useT();
   const color = ringColors[wordLevel(score)];
   return (
-    <div role="img" aria-label={`Score ${score} of 100`} className={stylex.props(styles.ring).className}>
+    <div role="img" aria-label={t("Score {score} of 100", { score })} className={stylex.props(styles.ring).className}>
       <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
         <circle cx="28" cy="28" r={RING_RADIUS} fill="none" stroke="var(--color-background-muted)" strokeWidth="5" />
         <circle
@@ -149,13 +163,19 @@ export function ScoreRing({ score }: { score: number }) {
 
 // Every reference word in its level's color and underline; a near or missed word shows what was heard.
 export function ScoredWords({ result }: { result: ShadowScore }) {
+  const t = useT();
   return (
     <p className={stylex.props(styles.words).className}>
       {result.words.map((word, index) => (
         <Fragment key={index}>
           <span className={stylex.props(styles.word, levelStyles[word.level]).className}>
             {word.word}
-            <VisuallyHidden> ({LEVEL_NAMES[word.level]}{word.heard ? `, heard "${word.heard}"` : ""})</VisuallyHidden>
+            <VisuallyHidden>
+              {" "}
+              {word.heard
+                ? t('({level}, heard "{heard}")', { level: t(LEVEL_NAMES[word.level]), heard: word.heard })
+                : t("({level})", { level: t(LEVEL_NAMES[word.level]) })}
+            </VisuallyHidden>
           </span>
           {word.heard && word.level !== "good" && (
             <span aria-hidden="true" className={stylex.props(styles.heard).className}>
@@ -198,6 +218,7 @@ export function ShadowGate({
   stopMedia: StopMedia;
   onChecked: (result: ShadowScore) => void;
 }) {
+  const t = useT();
   const [check, setCheck] = useState<Check>({ status: "idle" });
   const recognitionRef = useRef<ReturnType<typeof recognizeOnce> | null>(null);
   const sayItRef = useRef<HTMLButtonElement>(null);
@@ -245,24 +266,24 @@ export function ShadowGate({
   let label: { text: string; style: keyof typeof levelLabel };
   let hint: string;
   if (listening) {
-    label = { text: "Listening…", style: "speak" };
-    hint = "Say the sentence now.";
+    label = { text: t("Listening…"), style: "speak" };
+    hint = t("Say the sentence now.");
   } else if (result && result.passed) {
-    label = { text: `Unlocked · ${result.score} points`, style: "good" };
-    hint = "The next sentence is open.";
+    label = { text: t("Unlocked · {score} points", { score: result.score }), style: "good" };
+    hint = t("The next sentence is open.");
   } else if (result) {
-    label = { text: `Not yet · ${result.score} points`, style: result.score >= 50 ? "fair" : "miss" };
-    hint = `Reach ${PASS_SCORE} to open the next sentence. Listen slowly, then try again.`;
+    label = { text: t("Not yet · {score} points", { score: result.score }), style: result.score >= 50 ? "fair" : "miss" };
+    hint = t("Reach {score} to open the next sentence. Listen slowly, then try again.", { score: PASS_SCORE });
   } else if (passed) {
-    label = { text: "Unlocked", style: "good" };
-    hint = "Say it again any time to practise.";
+    label = { text: t("Unlocked"), style: "good" };
+    hint = t("Say it again any time to practise.");
   } else {
-    label = { text: "Your turn", style: "speak" };
-    hint = `Say the sentence. Reach ${PASS_SCORE} points to open the next one.`;
+    label = { text: t("Your turn"), style: "speak" };
+    hint = t("Say the sentence. Reach {score} points to open the next one.", { score: PASS_SCORE });
   }
 
   return (
-    <section aria-label="Shadow Gate" className={stylex.props(styles.gate).className}>
+    <section aria-label={t("Shadow Gate")} className={stylex.props(styles.gate).className}>
       <div className={stylex.props(styles.row).className}>
         {result ? (
           <ScoreRing score={result.score} />
@@ -270,7 +291,7 @@ export function ShadowGate({
           <button
             ref={sayItRef}
             type="button"
-            aria-label={listening ? "Listening" : "Say the sentence"}
+            aria-label={listening ? t("Listening") : t("Say the sentence")}
             data-shortcut="speak"
             disabled={listening}
             className={stylex.props(styles.sayIt).className}
@@ -284,11 +305,13 @@ export function ShadowGate({
           <Text type="supporting">{hint}</Text>
         </div>
         <HStack gap={1} wrap="wrap">
-          {result && <Button label="Try again" variant="secondary" data-shortcut="retry" onClick={tryAgain} />}
+          {result && <Button label={t("Try again")} variant="secondary" data-shortcut="retry" onClick={tryAgain} />}
           <Button
-            label={`Listen slowly ${SLOW_SPEED}×`}
+            label={t("Listen slowly {speed}×", { speed: SLOW_SPEED })}
             variant="ghost"
             data-shortcut="slow"
+            xstyle={styles.wrapButton}
+            children={<span className={stylex.props(styles.wrapLabel).className}>{t("Listen slowly {speed}×", { speed: SLOW_SPEED })}</span>}
             isDisabled={!canSpeak || listening}
             onClick={() => {
               stopMedia();
@@ -302,7 +325,9 @@ export function ShadowGate({
           <VStack gap={1}>
             <ScoredWords result={result} />
             <VisuallyHidden>
-              {result.passed ? `Score ${result.score}. Next sentence unlocked.` : `Score ${result.score}. Reach ${PASS_SCORE} to unlock the next sentence.`}
+              {result.passed
+                ? t("Score {score}. Next sentence unlocked.", { score: result.score })
+                : t("Score {score}. Reach {pass} to unlock the next sentence.", { score: result.score, pass: PASS_SCORE })}
             </VisuallyHidden>
           </VStack>
         )}
@@ -312,7 +337,7 @@ export function ShadowGate({
           </Text>
         )}
       </Status>
-      {check.status === "failed" && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
+      {check.status === "failed" && <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />}
     </section>
   );
 }

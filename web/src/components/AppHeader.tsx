@@ -9,9 +9,11 @@ import * as stylex from "@stylexjs/stylex";
 
 import type { AuthState } from "../hooks/auth";
 import type { SyncLine } from "../hooks/useSync";
+import { useT } from "../i18n";
 import { routeHash, type Route } from "../lib/route";
 import { YOUR_DATA } from "./YourData";
 import { AccountArea } from "./AccountArea";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { Alert, Status } from "./feedback";
 import { MilestoneMark } from "./MilestoneMark";
 import { sharedStyles } from "./styles";
@@ -121,12 +123,23 @@ const styles = stylex.create({
   storageAction: {
     flexShrink: 0,
   },
+  // The language switch and the account disclosure share one row.
   account: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: "var(--spacing-1)",
     minWidth: 0,
     marginInlineStart: "auto",
     flexBasis: { "@media (max-width: 480px)": "100%" },
   },
   accountOpen: {
+    flexBasis: "100%",
+  },
+  accountArea: {
+    minWidth: 0,
+  },
+  accountAreaOpen: {
     flexBasis: "100%",
   },
 });
@@ -152,6 +165,7 @@ export function AppHeader({
   due: number | null;
   onNavigate: (route: Route, returnTo?: string) => void;
 }) {
+  const t = useT();
   const [accountOpen, setAccountOpen] = useState(false);
   const goalWasAnnounced = useRef(goalAnnounced);
   const [goalEvent, setGoalEvent] = useState(0);
@@ -191,13 +205,13 @@ export function AppHeader({
             </span>
             Road to English
           </a>
-          <nav aria-label="Views" className={stylex.props(styles.nav).className}>
+          <nav aria-label={t("Views")} className={stylex.props(styles.nav).className}>
             {navLinks.map(({ label, route, selected }) => (
               <a
                 key={label}
                 href={routeHash(route)}
                 aria-current={selected ? "page" : undefined}
-                aria-label={label === "Review" && due !== null && due > 0 ? `${label}, ${due} due` : undefined}
+                aria-label={label === "Review" && due !== null && due > 0 ? t("Review, {count} due", { count: due }) : undefined}
                 className={stylex.props(styles.navLink, selected && styles.active).className}
                 onClick={(event) => {
                   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -205,7 +219,7 @@ export function AppHeader({
                   onNavigate(route);
                 }}
               >
-                {label}
+                {t(label)}
                 {label === "Review" && due !== null && due > 0 && (
                   <span aria-hidden="true" className={stylex.props(styles.due).className}>{due}</span>
                 )}
@@ -213,14 +227,17 @@ export function AppHeader({
             ))}
           </nav>
           <div className={stylex.props(styles.account, accountOpen && styles.accountOpen).className}>
-            <AccountArea auth={auth} onDisclosureChange={setAccountOpen} />
+            <LanguageSwitch />
+            <div className={stylex.props(styles.accountArea, accountOpen && styles.accountAreaOpen).className}>
+              <AccountArea auth={auth} onDisclosureChange={setAccountOpen} />
+            </div>
           </div>
           {storageNotice && (
             <div className={stylex.props(styles.status).className}>
               <Text as="span" type="supporting" xstyle={styles.storageText}>
-                Progress saved only in this browser
+                {t("Progress saved only in this browser")}
               </Text>
-              <Button label="Back up" variant="secondary" xstyle={styles.storageAction} onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
+              <Button label={t("Back up")} variant="secondary" xstyle={styles.storageAction} onClick={() => onNavigate({ view: "manage" }, YOUR_DATA)} />
             </div>
           )}
           {syncLine?.status === "synced" && (
@@ -233,23 +250,23 @@ export function AppHeader({
           {goalAnnounced && (
             <Text type="supporting">
               {goalEvent > 0 && <MilestoneMark key={goalEvent} />}
-              Daily goal met.
+              {t("Daily goal met.")}
             </Text>
           )}
         </Status>
         {storageError && (
           <Alert>
-            Your saved data couldn't be read or saved on this device: {storageError.message}. Reload to try again.
+            {t("Your saved data couldn't be read or saved on this device: {message}. Reload to try again.", { message: storageError.message })}
           </Alert>
         )}
-        {backupError && <Alert>Backup error: {backupError}</Alert>}
+        {backupError && <Alert>{t("Backup error: {error}", { error: backupError })}</Alert>}
         <Status>
           {syncError ? (
             <Text as="p" color="primary" xstyle={sharedStyles.error}>{syncLine.text}</Text>
           ) : (
             syncLine && syncLine.status !== "synced" && <Text as="p" type="supporting">{syncLine.text}</Text>
           )}
-          {syncLine?.recovered && <VisuallyHidden>Synced.</VisuallyHidden>}
+          {syncLine?.recovered && <VisuallyHidden>{t("Synced.")}</VisuallyHidden>}
         </Status>
       </VStack>
     </header>
