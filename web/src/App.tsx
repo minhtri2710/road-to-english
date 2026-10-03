@@ -72,6 +72,10 @@ const appStyles = stylex.create({
     flex: "1 1 20rem",
     minWidth: 0,
   },
+  // Phones keep the first screen for lessons; the footer links How it works too.
+  introLink: {
+    display: { default: "inline-flex", "@media (max-width: 480px)": "none" },
+  },
 });
 
 // The one Theme wraps the ErrorBoundary, so its fallback renders styled like the App.
@@ -192,7 +196,7 @@ function AppViews() {
                 </Text>
               </VStack>
               {view === "library" && (
-                <Button label={t("How it works")} variant="ghost" onClick={() => navigate({ view: "about" })} />
+                <Button label={t("How it works")} variant="ghost" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
               )}
             </div>
           )}
