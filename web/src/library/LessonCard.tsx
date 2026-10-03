@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -27,6 +27,67 @@ const styles = stylex.create({
     borderRadius: "var(--radius-container)",
     boxShadow: "var(--shadow-low)",
     flexWrap: "wrap",
+  },
+  // A video card: the thumbnail on top and the lesson's button below it share one frame, as on the
+  // canvas's library cards.
+  videoCard: {
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-container)",
+    backgroundColor: "var(--color-background-surface)",
+    boxShadow: "var(--shadow-low)",
+  },
+  videoButton: {
+    border: 0,
+    borderRadius: 0,
+    boxShadow: "none",
+  },
+  thumbnail: {
+    position: "relative",
+    display: "block",
+    width: "100%",
+    aspectRatio: "16 / 9",
+    overflow: "hidden",
+    backgroundColor: "#0A0C0F",
+    cursor: "pointer",
+  },
+  thumbnailImage: {
+    display: "block",
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  // A play mark and a "Video" tag on the thumbnail, as on the canvas's library cards.
+  play: {
+    position: "absolute",
+    insetInlineStart: "50%",
+    top: "50%",
+    width: "44px",
+    height: "44px",
+    marginInlineStart: "-22px",
+    marginTop: "-22px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "var(--radius-full)",
+    backgroundColor: "rgba(10, 12, 15, 0.72)",
+    color: "#FFFFFF",
+  },
+  videoTag: {
+    position: "absolute",
+    insetInlineEnd: "var(--spacing-2)",
+    bottom: "var(--spacing-2)",
+    padding: "var(--spacing-0-5) var(--spacing-1-5)",
+    borderRadius: "var(--radius-inner)",
+    backgroundColor: "rgba(10, 12, 15, 0.72)",
+    color: "#FFFFFF",
+    fontSize: "0.75rem",
+    fontWeight: "var(--font-weight-bold)",
+    letterSpacing: "0.04em",
   },
   titleAndMeta: {
     minWidth: 0,
@@ -72,6 +133,33 @@ const levelStyles = stylex.create({
   },
 });
 
+// Decorative: the card's title names the lesson. A thumbnail that fails to load leaves the dark frame.
+// Clicking it opens the lesson too; keyboard and screen reader users reach the lesson's button below it.
+function VideoThumbnail({ videoId, onSelect }: { videoId: string; onSelect: () => void }) {
+  const t = useT();
+  const [failed, setFailed] = useState(false);
+  return (
+    <span aria-hidden="true" className={stylex.props(styles.thumbnail).className} onClick={onSelect}>
+      {!failed && (
+        <img
+          src={`https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className={stylex.props(styles.thumbnailImage).className}
+          onError={() => setFailed(true)}
+        />
+      )}
+      <span className={stylex.props(styles.play).className}>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 4.5v11l9-5.5z" />
+        </svg>
+      </span>
+      <span className={stylex.props(styles.videoTag).className}>{t("VIDEO")}</span>
+    </span>
+  );
+}
+
 export function LessonCard({
   title,
   level,
@@ -80,7 +168,10 @@ export function LessonCard({
   completed,
   onSelect,
   takeFocus,
+  videoId,
 }: {
+  // A video lesson's YouTube id: the card shows the video's thumbnail, which loads from YouTube.
+  videoId?: string;
   title: string;
   level: Level;
   sentenceCount: number;
@@ -93,7 +184,7 @@ export function LessonCard({
   const metaId = useId();
   const wpmId = useId();
   const completedId = useId();
-  return (
+  const button = (
     <Button
       ref={(button) => {
         if (button && takeFocus()) button.focus();
@@ -102,7 +193,7 @@ export function LessonCard({
       aria-describedby={completed ? `${metaId} ${wpmId} ${completedId}` : `${metaId} ${wpmId}`}
       variant="secondary"
       width="100%"
-      xstyle={[styles.button, levelStyles[level]]}
+      xstyle={[styles.button, levelStyles[level], videoId !== undefined && styles.videoButton]}
       endContent={(
         <HStack gap={1} align="center" xstyle={styles.badges}>
           <Badge label={t("{wpm} WPM", { wpm: targetWpm })} variant="info" id={wpmId} />
@@ -126,5 +217,12 @@ export function LessonCard({
         </span>
       </VStack>
     </Button>
+  );
+  if (videoId === undefined) return button;
+  return (
+    <div className={stylex.props(styles.videoCard).className}>
+      <VideoThumbnail videoId={videoId} onSelect={onSelect} />
+      {button}
+    </div>
   );
 }

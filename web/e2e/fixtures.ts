@@ -68,6 +68,9 @@ function installBrowserFakes() {
   speechSynthesis.cancel = () => undefined;
 }
 
+// A 1x1 transparent PNG.
+const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 async function installContextSetup(context: BrowserContext, external: string[]): Promise<void> {
   await context.route("**/*", (route) => {
     const url = route.request().url();
@@ -77,6 +80,10 @@ async function installContextSetup(context: BrowserContext, external: string[]):
     }
     if (url === YT_API) {
       return route.fulfill({ contentType: "text/javascript", body: FAKE_YT_API });
+    }
+    // A video lesson's card shows its YouTube thumbnail: a stand-in image, so no test reaches YouTube.
+    if (hostname === "i.ytimg.com") {
+      return route.fulfill({ contentType: "image/png", body: Buffer.from(TINY_PNG, "base64") });
     }
     external.push(url);
     return route.abort();
