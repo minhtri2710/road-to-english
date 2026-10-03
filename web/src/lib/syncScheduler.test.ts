@@ -37,7 +37,7 @@ describe("sync scheduler", () => {
   it("keeps a newer local mutation when the in-flight server response is older", async () => {
     const initial = card("2026-01-02T00:00:00Z");
     const newer = { ...card("2026-01-04T00:00:00Z"), updatedAt: "2026-01-02T00:00:01.000Z" };
-    const olderResponse = { cards: [initial], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH };
+    const olderResponse = { cards: [initial], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH };
     const first = deferred<typeof olderResponse>();
     const second = deferred<typeof olderResponse>();
     let applied = 0;
@@ -71,7 +71,7 @@ describe("sync scheduler", () => {
 
   it("does not apply an in-flight reply or report status after stop", async () => {
     const remote = card("2026-01-02T00:00:00Z");
-    const held = deferred<{ cards: VocabCard[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
+    const held = deferred<{ cards: VocabCard[]; practiceDays: never[]; lessonCompletion: never[]; learnProgress: never[]; syncEpoch: string }>();
     syncMock.mockImplementationOnce(async () => held.promise);
     const onApplied = vi.fn(async () => undefined);
     const statuses: SyncStatus[] = [];
@@ -80,7 +80,7 @@ describe("sync scheduler", () => {
     await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
 
     scheduler.stop();
-    held.resolve({ cards: [remote], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    held.resolve({ cards: [remote], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(await getAllCards()).toEqual([]);
@@ -89,7 +89,7 @@ describe("sync scheduler", () => {
   });
 
   it("syncs a local mutation while signed in", async () => {
-    syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     const scheduler = createSyncScheduler("user-1", async () => undefined, () => undefined);
     setSyncTrigger(scheduler.trigger);
 
@@ -100,8 +100,8 @@ describe("sync scheduler", () => {
   });
 
   it("coalesces triggers during one request into one follow-up", async () => {
-    const first = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
-    const second = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; syncEpoch: string }>();
+    const first = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; learnProgress: never[]; syncEpoch: string }>();
+    const second = deferred<{ cards: never[]; practiceDays: never[]; lessonCompletion: never[]; learnProgress: never[]; syncEpoch: string }>();
     syncMock.mockImplementationOnce(async () => first.promise);
     syncMock.mockImplementationOnce(async () => second.promise);
     const statuses: SyncStatus[] = [];
@@ -113,10 +113,10 @@ describe("sync scheduler", () => {
     scheduler.trigger();
     expect(syncMock).toHaveBeenCalledTimes(1);
 
-    first.resolve({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    first.resolve({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(2));
 
-    second.resolve({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    second.resolve({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     await vi.waitFor(() => expect(statuses).toEqual(["synced", "synced"]));
     expect(syncMock).toHaveBeenCalledTimes(2);
     scheduler.stop();
@@ -129,7 +129,7 @@ describe("sync scheduler", () => {
     const { claimOwner } = await import("./backupStore");
     await claimOwner("another-user");
 
-    syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    syncMock.mockResolvedValue({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     const statuses: SyncStatus[] = [];
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
     scheduler.trigger();
@@ -144,7 +144,7 @@ describe("sync scheduler", () => {
     const statuses: SyncStatus[] = [];
     syncMock.mockRejectedValueOnce(new NetworkError(new TypeError("Failed to fetch")));
     syncMock.mockRejectedValueOnce(new ApiError(401, null));
-    syncMock.mockResolvedValueOnce({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH });
+    syncMock.mockResolvedValueOnce({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH });
     const scheduler = createSyncScheduler("user-1", async () => undefined, (status) => statuses.push(status));
 
     scheduler.trigger();
@@ -168,7 +168,7 @@ describe("sync scheduler", () => {
     scheduler.stop();
   });
 
-  const empty = { cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH };
+  const empty = { cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH };
   const tooLarge = () => new ApiError(413, null, "too many cards");
 
   it.each([
@@ -289,13 +289,13 @@ describe("sync scheduler failures", () => {
     ["merge", () => vi.spyOn(backupStore, "mergeInto").mockRejectedValue(new DOMException("write failed", "UnknownError"))],
   ])("reports an IndexedDB %s failure as local and retries it on the next unchanged trigger", async (_name, fail) => {
     const spy = fail();
-    const { statuses } = await twice(async () => json({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }));
+    const { statuses } = await twice(async () => json({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }));
     expect(statuses).toEqual(["local", "local"]);
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it("reports a failed reload after a merge as local", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH })));
+    vi.stubGlobal("fetch", vi.fn(async () => json({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH })));
     const statuses: SyncStatus[] = [];
     const scheduler = createSyncScheduler("user-1", async () => { throw new Error("reload failed"); }, (status) => statuses.push(status));
     scheduler.trigger();
@@ -323,7 +323,7 @@ describe("syncedAgo", () => {
 
 describe("sync scheduler settle step", () => {
   const storedCards = () => withDb((db) => db.getAll("cards"));
-  const reply = (cards: VocabCard[], syncEpoch = SYNC_EPOCH) => ({ cards, practiceDays: [], lessonCompletion: [], syncEpoch });
+  const reply = (cards: VocabCard[], syncEpoch = SYNC_EPOCH) => ({ cards, practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch });
   const sentCards = (call: number) => syncMock.mock.calls[call]![0].cards;
 
   beforeEach(() => {

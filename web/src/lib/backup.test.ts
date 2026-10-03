@@ -37,7 +37,7 @@ function backupState() {
   return {
     cards: [first, second, word],
     practiceDays: [{ date: "2026-01-05" }],
-    lessonCompletion: [{ lessonId: "lesson-1" }],
+    lessonCompletion: [{ lessonId: "lesson-1" }], learnProgress: [],
     userLessons: [userLesson],
   };
 }

@@ -1,4 +1,5 @@
 import { withDb, type StoredCard } from "./db";
+import { newerLearnProgress, notifyLearnProgressChanged } from "./learnProgress";
 import { mergeCard } from "./mergeCard";
 import { notifyLocalMutation } from "./syncEvents";
 import { plainCard, sameVersion } from "./vocabStore";
@@ -7,43 +8,46 @@ import type { BackupData, SyncReply, SyncRequest } from "./backup";
 // The /sync payload: never includes userLessons.
 export async function exportAll(): Promise<SyncRequest> {
   return withDb(async (db) => {
-    const tx = db.transaction(["cards", "practiceDays", "lessonCompletion"], "readonly");
-    const [cards, practiceDays, lessonCompletion] = await Promise.all([
+    const tx = db.transaction(["cards", "practiceDays", "lessonCompletion", "learnProgress"], "readonly");
+    const [cards, practiceDays, lessonCompletion, learnProgress] = await Promise.all([
       tx.objectStore("cards").getAll(),
       tx.objectStore("practiceDays").getAll(),
       tx.objectStore("lessonCompletion").getAll(),
+      tx.objectStore("learnProgress").getAll(),
     ]);
     await tx.done;
-    return { cards, practiceDays, lessonCompletion };
+    return { cards, practiceDays, lessonCompletion, learnProgress };
   });
 }
 
 export async function exportBackupData(): Promise<BackupData> {
   return withDb(async (db) => {
     const tx = db.transaction(
-      ["cards", "practiceDays", "lessonCompletion", "userLessons"],
+      ["cards", "practiceDays", "lessonCompletion", "learnProgress", "userLessons"],
       "readonly",
     );
-    const [cards, practiceDays, lessonCompletion, userLessons] = await Promise.all([
+    const [cards, practiceDays, lessonCompletion, learnProgress, userLessons] = await Promise.all([
       tx.objectStore("cards").getAll(),
       tx.objectStore("practiceDays").getAll(),
       tx.objectStore("lessonCompletion").getAll(),
+      tx.objectStore("learnProgress").getAll(),
       tx.objectStore("userLessons").getAll(),
     ]);
     await tx.done;
-    return { cards: cards.map(plainCard), practiceDays, lessonCompletion, userLessons };
+    return { cards: cards.map(plainCard), practiceDays, lessonCompletion, learnProgress, userLessons };
   });
 }
 
 export async function replaceAll(data: BackupData): Promise<void> {
   return withDb(async (db) => {
     const tx = db.transaction(
-      ["cards", "practiceDays", "lessonCompletion", "userLessons"],
+      ["cards", "practiceDays", "lessonCompletion", "learnProgress", "userLessons"],
       "readwrite",
     );
     tx.objectStore("cards").clear();
     tx.objectStore("practiceDays").clear();
     tx.objectStore("lessonCompletion").clear();
+    tx.objectStore("learnProgress").clear();
     tx.objectStore("userLessons").clear();
     // Every imported card is dirty, so the next sync pushes it, even one the server purged.
     data.cards.forEach((card) => tx.objectStore("cards").put({ ...card, dirty: true }));
@@ -53,8 +57,10 @@ export async function replaceAll(data: BackupData): Promise<void> {
     data.lessonCompletion.forEach((completion) =>
       tx.objectStore("lessonCompletion").put(completion),
     );
+    data.learnProgress.forEach((progress) => tx.objectStore("learnProgress").put(progress));
     data.userLessons.forEach((lesson) => tx.objectStore("userLessons").put(lesson));
     await tx.done;
+    notifyLearnProgressChanged();
     notifyLocalMutation();
   });
 }
@@ -80,7 +86,7 @@ export async function claimOwner(ownerId: string): Promise<boolean> {
 export async function mergeInto(data: SyncReply, sent: StoredCard[]): Promise<boolean> {
   return withDb(async (db) => {
     const tx = db.transaction(
-      ["cards", "practiceDays", "lessonCompletion", "meta"],
+      ["cards", "practiceDays", "lessonCompletion", "learnProgress", "meta"],
       "readwrite",
     );
     const cards = tx.objectStore("cards");
@@ -112,7 +118,18 @@ export async function mergeInto(data: SyncReply, sent: StoredCard[]): Promise<bo
     data.lessonCompletion.forEach((completion) =>
       tx.objectStore("lessonCompletion").put(completion),
     );
+    // Each lesson's newer Learn progress wins; a local copy the reply does not have is pushed by the next sync.
+    const progressStore = tx.objectStore("learnProgress");
+    const localProgress = new Map((await progressStore.getAll()).map((progress) => [progress.lessonId, progress]));
+    let progressChanged = false;
+    for (const remote of data.learnProgress) {
+      if (newerLearnProgress(localProgress.get(remote.lessonId), remote)) {
+        progressStore.put(remote);
+        progressChanged = true;
+      }
+    }
     await tx.done;
+    if (progressChanged) notifyLearnProgressChanged();
     return mismatch;
   });
 }

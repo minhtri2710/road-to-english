@@ -164,7 +164,7 @@ function AppViews() {
         due={due}
         onNavigate={navigate}
       />
-      <div className={stylex.props(appStyles.content, (view === "library" || view === "about") && appStyles.wide).className}>
+      <div className={stylex.props(appStyles.content, view !== "review" && view !== "manage" && appStyles.wide).className}>
         <VStack as="main" gap={2}>
           {(view === "review" || view === "library" || view === "manage") && (
             <VStack gap={1}>

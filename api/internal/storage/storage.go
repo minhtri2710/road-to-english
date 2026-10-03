@@ -33,6 +33,7 @@ var (
 	// ErrTooManyPracticeDays and ErrTooManyLessonCompletions are the same refusal for the other two lists.
 	ErrTooManyPracticeDays      = errors.New("too many practice days")
 	ErrTooManyLessonCompletions = errors.New("too many lesson completions")
+	ErrTooManyLearnProgress     = errors.New("too many learn progress entries")
 )
 
 // MaxCards caps an account's stored cards to one push's worth: a full-state sync body (4 MiB, api/sync.go)
@@ -44,6 +45,16 @@ const MaxPracticeDays = 190650
 
 // MaxLessonCompletions is one push's worth of the smallest completion, {"lessonId":"a"} (16 B plus a comma): 4,194,304 / 17.
 const MaxLessonCompletions = 246723
+
+// MaxLearnProgress is one push's worth of the smallest entry,
+// {"lessonId":"a","passed":[],"skipsUsed":0,"updatedAt":"2026-01-01T00:00:00Z"} (75 B plus a comma): 4,194,304 / 76.
+const MaxLearnProgress = 55188
+
+// MaxPassedSentences caps one lesson's passed sentence ids; a lesson has far fewer sentences.
+const MaxPassedSentences = 10000
+
+// MaxSkipsUsed caps a lesson's skip count; the web allows 3 per lesson.
+const MaxSkipsUsed = 1000
 
 // Card is the client-compatible persisted vocabulary card.
 type Card struct {
@@ -97,10 +108,20 @@ type LessonCompletion struct {
 	LessonID string `json:"lessonId"`
 }
 
+// LearnProgress is one lesson's Learn mode progress: the sentences passed or skipped and the skips used.
+type LearnProgress struct {
+	LessonID  string   `json:"lessonId"`
+	Passed    []string `json:"passed"`
+	SkipsUsed int      `json:"skipsUsed"`
+	UpdatedAt string   `json:"updatedAt"`
+}
+
 type State struct {
 	Cards            []Card             `json:"cards"`
 	PracticeDays     []PracticeDay      `json:"practiceDays"`
 	LessonCompletion []LessonCompletion `json:"lessonCompletion"`
+	// LearnProgress may be missing from a request, from a client that predates it; a response always carries it.
+	LearnProgress []LearnProgress `json:"learnProgress"`
 }
 
 // Synced is a sync's 200 body: the user's full state and the epoch of the server's copy of it.
@@ -310,6 +331,7 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (Sy
 	slices.SortFunc(in.Cards, func(a, b Card) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(in.PracticeDays, func(a, b PracticeDay) int { return strings.Compare(a.Date, b.Date) })
 	slices.SortFunc(in.LessonCompletion, func(a, b LessonCompletion) int { return strings.Compare(a.LessonID, b.LessonID) })
+	slices.SortFunc(in.LearnProgress, func(a, b LearnProgress) int { return strings.Compare(a.LessonID, b.LessonID) })
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return Synced{}, fmt.Errorf("begin sync transaction: %w", err)
@@ -341,6 +363,9 @@ func (r *Repository) SyncState(ctx context.Context, userID string, in State) (Sy
 	}
 	if len(out.LessonCompletion) > MaxLessonCompletions {
 		return Synced{}, ErrTooManyLessonCompletions
+	}
+	if len(out.LearnProgress) > MaxLearnProgress {
+		return Synced{}, ErrTooManyLearnProgress
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Synced{}, fmt.Errorf("commit sync transaction: %w", err)
@@ -415,6 +440,18 @@ func syncBatch(ctx context.Context, tx pgx.Tx, userID string, in State) error {
 			ON CONFLICT (user_id, lesson_id) DO NOTHING
 		`, userID, completion.LessonID)
 	}
+	// ponytail: LWW on device wall-clock updatedAt, as for cards; an equal time keeps the stored row.
+	for _, progress := range in.LearnProgress {
+		batch.Queue(`
+			INSERT INTO learn_progress (user_id, lesson_id, passed, skips_used, updated_at)
+			VALUES ($1, $2, $3, $4, $5::timestamptz)
+			ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+				passed = EXCLUDED.passed,
+				skips_used = EXCLUDED.skips_used,
+				updated_at = EXCLUDED.updated_at
+			WHERE EXCLUDED.updated_at > learn_progress.updated_at
+		`, userID, progress.LessonID, progress.Passed, progress.SkipsUsed, progress.UpdatedAt)
+	}
 	results := tx.SendBatch(ctx, batch)
 	defer results.Close()
 	for _, card := range in.Cards {
@@ -430,6 +467,11 @@ func syncBatch(ctx context.Context, tx pgx.Tx, userID string, in State) error {
 	for _, completion := range in.LessonCompletion {
 		if _, err := results.Exec(); err != nil {
 			return fmt.Errorf("sync lesson %q: %w", completion.LessonID, err)
+		}
+	}
+	for _, progress := range in.LearnProgress {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("sync learn progress %q: %w", progress.LessonID, err)
 		}
 	}
 	return results.Close()
@@ -448,10 +490,15 @@ func readState(ctx context.Context, tx pgx.Tx, userID string) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	learnProgress, err := readLearnProgress(ctx, tx, userID)
+	if err != nil {
+		return State{}, err
+	}
 	return State{
 		Cards:            cards,
 		PracticeDays:     practiceDays,
 		LessonCompletion: lessonCompletion,
+		LearnProgress:    learnProgress,
 	}, nil
 }
 
@@ -537,4 +584,31 @@ func readLessonCompletion(ctx context.Context, tx pgx.Tx, userID string) ([]Less
 		return nil, fmt.Errorf("scan completed lessons: %w", err)
 	}
 	return lessonCompletion, nil
+}
+
+func readLearnProgress(ctx context.Context, tx pgx.Tx, userID string) ([]LearnProgress, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT lesson_id, passed, skips_used, updated_at
+		FROM learn_progress
+		WHERE user_id = $1
+		ORDER BY lesson_id
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list learn progress: %w", err)
+	}
+
+	learnProgress, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (LearnProgress, error) {
+		var progress LearnProgress
+		var updatedAt time.Time
+		err := row.Scan(&progress.LessonID, &progress.Passed, &progress.SkipsUsed, &updatedAt)
+		if progress.Passed == nil {
+			progress.Passed = []string{}
+		}
+		progress.UpdatedAt = formatTimestamp(updatedAt)
+		return progress, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan learn progress: %w", err)
+	}
+	return learnProgress, nil
 }

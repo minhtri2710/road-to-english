@@ -8,12 +8,12 @@ const SYNC_EPOCH = "epoch-1";
 const local = {
   cards: [],
   practiceDays: [],
-  lessonCompletion: [],
+  lessonCompletion: [], learnProgress: [],
 };
 const response = {
   cards: [],
   practiceDays: [{ date: "2026-01-01" }],
-  lessonCompletion: [{ lessonId: "lesson-1" }],
+  lessonCompletion: [{ lessonId: "lesson-1" }], learnProgress: [],
   syncEpoch: SYNC_EPOCH,
 };
 

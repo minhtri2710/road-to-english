@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { exportData, importData } from "./backup";
 import { claimOwner, exportAll, exportBackupData, mergeInto, replaceAll } from "./backupStore";
+import { withDb } from "./db";
+import { onLearnProgressChanged } from "./learnProgress";
 import {
   getCompletedLessons,
   getPracticeDays,
@@ -115,7 +117,7 @@ describe("backup store", () => {
     const imported = {
       cards: [card("new", now)],
       practiceDays: [{ date: "2026-01-05" }],
-      lessonCompletion: [{ lessonId: "new-lesson" }],
+      lessonCompletion: [{ lessonId: "new-lesson" }], learnProgress: [],
       userLessons: [userLesson],
     };
     await replaceAll(imported);
@@ -128,11 +130,11 @@ describe("backup store", () => {
 
   it("keeps the owner through import replacement and excludes it from export", async () => {
     await claimOwner("user-1");
-    await replaceAll({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] });
+    await replaceAll({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], userLessons: [] });
 
     expect(await claimOwner("user-2")).toBe(false);
     expect(await claimOwner("user-1")).toBe(true);
-    expect(await exportAll()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [] });
+    expect(await exportAll()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [] });
   });
 
   it("merges sync state by updatedAt and unions progress rows", async () => {
@@ -143,7 +145,7 @@ describe("backup store", () => {
     await mergeInto({
       cards: [second],
       practiceDays: [{ date: "2026-01-06" }],
-      lessonCompletion: [{ lessonId: "lesson-2" }],
+      lessonCompletion: [{ lessonId: "lesson-2" }], learnProgress: [],
       syncEpoch: SYNC_EPOCH,
     }, []);
 
@@ -154,15 +156,54 @@ describe("backup store", () => {
 
   it("merges sync state without touching user lessons", async () => {
     await putUserLesson(userLesson);
-    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
 
     expect(await listUserLessons()).toEqual([userLesson]);
+  });
+
+  it("merges Learn progress from a sync reply: the newer copy of each lesson wins", async () => {
+    await withDb(async (db) => {
+      await db.put("learnProgress", { lessonId: "kept", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T12:00:00.000Z" });
+      await db.put("learnProgress", { lessonId: "replaced", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T10:00:00.000Z" });
+    });
+    let changed = 0;
+    const stop = onLearnProgressChanged(() => changed++);
+    await mergeInto(
+      {
+        cards: [],
+        practiceDays: [],
+        lessonCompletion: [],
+        learnProgress: [
+          { lessonId: "kept", passed: [], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
+          { lessonId: "replaced", passed: [], skipsUsed: 2, updatedAt: "2026-09-22T11:00:00.000Z" },
+          { lessonId: "new", passed: ["s9"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
+        ],
+        syncEpoch: "epoch",
+      },
+      [],
+    );
+    stop();
+    const stored = await withDb((db) => db.getAll("learnProgress"));
+    expect(Object.fromEntries(stored.map((progress) => [progress.lessonId, progress.passed]))).toEqual({
+      kept: ["s1"],
+      new: ["s9"],
+      replaced: [],
+    });
+    expect(changed).toBe(1);
+  });
+
+  it("puts Learn progress in the backup and replaces it on import", async () => {
+    await withDb((db) => db.put("learnProgress", { lessonId: "old", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T10:00:00.000Z" }));
+    expect((await exportBackupData()).learnProgress.map(({ lessonId }) => lessonId)).toEqual(["old"]);
+    const imported = { lessonId: "imported", passed: ["s2"], skipsUsed: 1, updatedAt: "2026-09-23T10:00:00.000Z" };
+    await replaceAll({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [imported], userLessons: [] });
+    expect(await withDb((db) => db.getAll("learnProgress"))).toEqual([imported]);
   });
 
   it("keeps user lessons out of the sync payload", async () => {
     await putUserLesson(userLesson);
 
-    expect(Object.keys(await exportAll()).sort()).toEqual(["cards", "lessonCompletion", "practiceDays"]);
+    expect(Object.keys(await exportAll()).sort()).toEqual(["cards", "learnProgress", "lessonCompletion", "practiceDays"]);
     expect((await exportBackupData()).userLessons).toEqual([userLesson]);
   });
 
@@ -184,7 +225,7 @@ describe("backup store", () => {
 describe("dirty flag on export", () => {
   it("exportAll carries dirty; exportBackupData and exportData do not", async () => {
     const synced = card("synced", now);
-    await mergeInto({ cards: [synced], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [synced], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
     await putCard(card("local", now));
 
     expect((await exportAll()).cards.map(({ id, dirty }) => [id, dirty])).toEqual([["lesson-1:local", true], ["lesson-1:synced", false]]);

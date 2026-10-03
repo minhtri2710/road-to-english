@@ -117,6 +117,39 @@ test.describe("Learn mode", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
 
+  test("shows the stage, the transcript with locked lines, and feedback for an unclear word", async ({ page }) => {
+    await openGuided(page, { pronunciation: true });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    const stage = page.getByRole("region", { name: "Sentence stage" });
+    await expect(stage).toContainText(FIRST);
+    await expect(stage.getByRole("button", { name: "0.75×" })).toHaveAttribute("aria-pressed", "false");
+    await stage.getByRole("button", { name: "0.75×" }).click();
+    await expect(stage.getByRole("button", { name: "0.75×" })).toHaveAttribute("aria-pressed", "true");
+
+    const transcript = page.getByRole("complementary", { name: "Transcript" });
+    await expect(transcript.getByRole("listitem")).toHaveCount(9);
+    await expect(transcript.getByText("Reach 70 points on the sentence above to unlock this one")).toBeVisible();
+    await expect(transcript.getByRole("img", { name: "Locked" })).toHaveCount(8);
+
+    await say(page, "good morning how our you");
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(page.getByTestId("feedback-card")).toContainText('"are" was not clear: the browser heard "our".');
+    await expect(transcript.getByRole("listitem").first()).toContainText("67");
+    expect(await axe(page)).toEqual([]);
+  });
+
+  test("typing the sentence instead unlocks it", async ({ page }) => {
+    await openGuided(page, { pronunciation: true });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await page.getByText("Can't speak right now? Type it instead").click();
+    await page.getByLabel("Type the sentence you heard. Getting every word right unlocks the next one.").fill(
+      "good morning how are you today",
+    );
+    await page.getByRole("button", { name: "Check typing" }).click();
+    await expect(gate(page).getByText("Unlocked", { exact: true })).toBeVisible();
+    await expect(next(page)).toBeEnabled();
+  });
+
   test("keyboard shortcuts act inside the guided view only", async ({ page }) => {
     await openGuided(page, { pronunciation: true });
     await page.getByRole("radio", { name: "Learn" }).click();

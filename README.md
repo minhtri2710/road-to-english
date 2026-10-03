@@ -49,6 +49,8 @@ After a schema change, recreate the database with `docker compose -f api/compose
 
 ## Checks
 
+GitHub Actions runs these on every pull request and on `main` (`.github/workflows/ci.yml`), except the macOS-only `visual.spec.ts`.
+
 The api tests use the same database and need `DATABASE_URL` set.
 
 On a fresh machine, install the e2e browser first with `pnpm -C web exec playwright install chromium`.

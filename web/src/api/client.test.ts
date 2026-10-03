@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { setLang } from "../i18n";
 import { ApiError, NetworkError, request } from "./client";
 
 async function failure(status: number, headers?: Record<string, string>, body: string | null = null): Promise<ApiError> {
@@ -98,5 +99,19 @@ describe("request URL", () => {
     const { request } = await import("./client");
     await request("/lessons");
     expect(fetchMock).toHaveBeenCalledWith(expected);
+  });
+});
+
+describe("NetworkError in Vietnamese", () => {
+  it("replaces the browser's English message", () => {
+    setLang("vi");
+    try {
+      expect(new NetworkError(new TypeError("Failed to fetch")).message).toBe(
+        "Không kết nối được máy chủ. Hãy kiểm tra kết nối mạng rồi thử lại.",
+      );
+    } finally {
+      setLang("en");
+    }
+    expect(new NetworkError(new TypeError("Failed to fetch")).message).toBe("Failed to fetch");
   });
 });

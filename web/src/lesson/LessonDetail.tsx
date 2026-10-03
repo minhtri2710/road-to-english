@@ -24,7 +24,14 @@ import { useLesson } from "../hooks/lessons";
 import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import type { PracticeMode } from "../lib/progress";
-import { LEARN_MODE_KEY, readLearnProgress, writeLearnProgress, type LearnProgress } from "../lib/learnProgress";
+import {
+  EMPTY_LEARN_PROGRESS,
+  LEARN_MODE_KEY,
+  onLearnProgressChanged,
+  readLearnProgress,
+  writeLearnProgress,
+  type LearnProgress,
+} from "../lib/learnProgress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
@@ -33,11 +40,28 @@ import type { NewCard, VocabCard } from "../lib/vocab";
 import { splitWords } from "../lib/words";
 import { GuidedShadowing, SKIPS_PER_LESSON } from "./GuidedShadowing";
 import { SentenceCard, type LessonMode } from "./SentenceCard";
-import { ShadowGate } from "./ShadowGate";
+import { LearnTranscript } from "./LearnView";
+import { LearnSentence } from "./LearnSentence";
 import { LessonSummary, type SummaryProps } from "./LessonSummary";
 import { useT } from "../i18n";
 
 const styles = stylex.create({
+  // A reading column; Learn mode one sentence at a time takes the full width for its transcript.
+  column: {
+    width: "100%",
+    maxWidth: "48rem",
+    marginInline: "auto",
+  },
+  wideColumn: {
+    maxWidth: "none",
+  },
+  // The stage and shadow bar, with the transcript beside them on wide screens and below on narrow ones.
+  learnLayout: {
+    display: "grid",
+    gridTemplateColumns: { default: "minmax(0, 1.6fr) minmax(0, 1fr)", "@media (max-width: 1023px)": "minmax(0, 1fr)" },
+    gap: "var(--spacing-6)",
+    alignItems: "start",
+  },
   // The player and its caption strip share one dark frame.
   player: {
     overflow: "hidden",
@@ -173,30 +197,49 @@ export function LessonDetail({
     });
   // The sentence whose video clip played last, captioned under the video.
   const [clipSentenceId, setClipSentenceId] = useState<string | null>(null);
-  const clipSentence = data.sentences.find((sentence) => sentence.id === clipSentenceId) ?? null;
+
   // The sentence shown one at a time, or null for the full list; per visit.
   const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
-  // Learn mode (Shadow Gate) in the guided view. The mode is a preference; the sentences passed or
-  // skipped and the skips used are kept per lesson on this device.
+  // Learn mode (Shadow Gate) in the guided view. The mode is a device preference; the sentences passed or
+  // skipped and the skips used are saved per lesson, backed up and synced.
   const [learn, setLearnState] = useState(() => readPref(LEARN_MODE_KEY) === "on");
   const setLearn = (on: boolean) => {
     writePref(LEARN_MODE_KEY, on ? "on" : null);
     setLearnState(on);
   };
-  const [learnProgress, setLearnProgressState] = useState(() => readLearnProgress(data.id));
-  const setLearnProgress = (update: (current: LearnProgress) => LearnProgress) =>
-    setLearnProgressState((current) => {
-      const next = update(current);
-      writeLearnProgress(data.id, next);
-      return next;
-    });
+  const [learnProgress, setLearnProgressState] = useState<LearnProgress>(EMPTY_LEARN_PROGRESS);
+  // Set once this visit changes the progress, so a slower read cannot overwrite the change.
+  const changedProgress = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = (fromElsewhere: boolean) => {
+      readLearnProgress(data.id).then(
+        (stored) => {
+          if (!cancelled && (fromElsewhere || !changedProgress.current)) setLearnProgressState(stored);
+        },
+        () => undefined,
+      );
+    };
+    load(false);
+    // A sync or a backup import may change it while the lesson is open.
+    const stop = onLearnProgressChanged(() => load(true));
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [data.id]);
+  const setLearnProgress = (next: LearnProgress) => {
+    changedProgress.current = true;
+    setLearnProgressState(next);
+    writeLearnProgress(data.id, next).catch(() => undefined);
+  };
   const passedIds = new Set(learnProgress.passed);
   const skipsUsed = learnProgress.skipsUsed;
   const pass = (sentenceId: string, skipped = false) =>
-    setLearnProgress((current) => ({
-      passed: current.passed.includes(sentenceId) ? current.passed : [...current.passed, sentenceId],
-      skipsUsed: current.skipsUsed + (skipped ? 1 : 0),
-    }));
+    setLearnProgress({
+      passed: learnProgress.passed.includes(sentenceId) ? learnProgress.passed : [...learnProgress.passed, sentenceId],
+      skipsUsed: learnProgress.skipsUsed + (skipped ? 1 : 0),
+    });
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayButtonRef = useRef<HTMLButtonElement>(null);
@@ -247,6 +290,13 @@ export function LessonDetail({
 
   const learnAvailable = pronunciationSupported && pronunciationCheck;
   const learnOn = learn && learnAvailable;
+  // Learn mode one sentence at a time: the stage and shadow bar, with the transcript beside them.
+  const learnGuided = learnOn && guidedIndex !== null;
+  // In Learn mode the video's caption follows the sentence being learned; elsewhere, the last clip played.
+  const captionId = learnGuided ? data.sentences[guidedIndex].id : clipSentenceId;
+  const clipSentence = data.sentences.find((sentence) => sentence.id === captionId) ?? null;
+  // This visit's best score per sentence, for the transcript.
+  const [scores, setScores] = useState<ReadonlyMap<string, number>>(new Map());
 
   // Props shared by every sentence's card, in the list and the guided view.
   const cardProps = {
@@ -288,7 +338,7 @@ export function LessonDetail({
   }, []);
 
   return (
-    <VStack gap={4}>
+    <VStack gap={4} xstyle={[styles.column, learnGuided && styles.wideColumn]}>
       <HStack justify="between" align="center" wrap="wrap">
         <Button label={t("Back to lessons")} variant="ghost" onClick={onBack} />
         <HStack gap={1} align="center">
@@ -478,47 +528,84 @@ export function LessonDetail({
         </Card>
       )}
       {guidedIndex !== null ? (
-        <GuidedShadowing
-          index={guidedIndex}
-          count={data.sentences.length}
-          step={(index) => {
-            stopMedia();
-            setGuidedIndex(index);
-          }}
-          gate={{
-            available: learnAvailable,
-            on: learnOn,
-            setOn: setLearn,
-            passed: passedIds.has(data.sentences[guidedIndex].id),
-            skipsLeft: SKIPS_PER_LESSON - skipsUsed,
-            skip: () => pass(data.sentences[guidedIndex].id, true),
-            progressCount: learnProgress.passed.length,
-            startOver: () => setLearnProgress(() => ({ passed: [], skipsUsed: 0 })),
-          }}
-        >
-          {/* Keyed so a step to another sentence starts its practice afresh. */}
-          <SentenceCard
-            key={data.sentences[guidedIndex].id}
-            sentence={data.sentences[guidedIndex]}
-            textHidden={hiddenText.has(data.sentences[guidedIndex].id)}
-            active={activeSentenceId === data.sentences[guidedIndex].id}
-            {...cardProps}
-          />
-          {learnOn && (
-            <ShadowGate
-              key={`gate-${data.sentences[guidedIndex].id}`}
-              text={data.sentences[guidedIndex].text}
-              targetWpm={data.targetWpm}
-              passed={passedIds.has(data.sentences[guidedIndex].id)}
-              stopMedia={stopMedia}
-              onChecked={(result) => {
-                const { id } = data.sentences[guidedIndex];
-                shadowPractice(id, "check");
-                if (result.passed) pass(id);
+        <div className={stylex.props(learnGuided && styles.learnLayout).className}>
+          <GuidedShadowing
+            index={guidedIndex}
+            count={data.sentences.length}
+            step={(index) => {
+              stopMedia();
+              setGuidedIndex(index);
+            }}
+            gate={{
+              available: learnAvailable,
+              on: learnOn,
+              setOn: setLearn,
+              skipsLeft: SKIPS_PER_LESSON - skipsUsed,
+              progressCount: learnProgress.passed.length,
+              startOver: () => setLearnProgress(EMPTY_LEARN_PROGRESS),
+            }}
+          >
+            {(go) =>
+              learnOn ? (
+                <LearnSentence
+                  key={data.sentences[guidedIndex].id}
+                  lesson={data}
+                  index={guidedIndex}
+                  go={go}
+                  speed={speed}
+                  setSpeed={(next) => setSpeed(next as (typeof SPEEDS)[number])}
+                  speeds={SPEEDS}
+                  passed={passedIds.has(data.sentences[guidedIndex].id)}
+                  skipsLeft={SKIPS_PER_LESSON - skipsUsed}
+                  showVietnamese={showVietnamese}
+                  stressDict={showStress ? loadedStressDict : null}
+                  stopMedia={stopMedia}
+                  onChecked={(result) => {
+                    const { id } = data.sentences[guidedIndex];
+                    shadowPractice(id, "check");
+                    setScores((current) => new Map(current).set(id, Math.max(result.score, current.get(id) ?? 0)));
+                    if (result.passed) pass(id);
+                  }}
+                  onTyped={() => {
+                    const { id } = data.sentences[guidedIndex];
+                    practice(id, "dictation");
+                    pass(id);
+                  }}
+                  onSkip={() => {
+                    pass(data.sentences[guidedIndex].id, true);
+                    go(guidedIndex + 1);
+                  }}
+                  savedCardIds={savedCardIds}
+                  addCard={addCard}
+                  removeCard={removeCard}
+                  undoRemove={undoRemove}
+                />
+              ) : (
+                // Keyed so a step to another sentence starts its practice afresh.
+                <SentenceCard
+                  key={data.sentences[guidedIndex].id}
+                  sentence={data.sentences[guidedIndex]}
+                  textHidden={hiddenText.has(data.sentences[guidedIndex].id)}
+                  active={activeSentenceId === data.sentences[guidedIndex].id}
+                  {...cardProps}
+                />
+              )
+            }
+          </GuidedShadowing>
+          {learnGuided && (
+            <LearnTranscript
+              sentences={data.sentences}
+              current={guidedIndex}
+              passed={passedIds}
+              scores={scores}
+              showVietnamese={showVietnamese}
+              onOpen={(index) => {
+                stopMedia();
+                setGuidedIndex(index);
               }}
             />
           )}
-        </GuidedShadowing>
+        </div>
       ) : (
         <VStack as="ol" gap={2} padding={0}>
           {data.sentences.map((sentence) => (

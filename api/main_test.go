@@ -116,7 +116,7 @@ func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
 	if expired.Code != http.StatusInternalServerError || compactJSON(t, expired.Body.Bytes()) != `{"error":"internal server error"}` {
 		t.Fatalf("expired sync = %d %s, want 500 internal server error", expired.Code, expired.Body.String())
 	}
-	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`
+	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
 	later := syncWithCookie(api.handler, empty, cookie)
 	if later.Code != http.StatusOK {
 		t.Fatalf("later sync = %d %s, want empty state", later.Code, later.Body.String())
@@ -479,7 +479,7 @@ func signupForSync(t *testing.T, api *testAPI, email string) *http.Cookie {
 	return responseCookie(t, signup)
 }
 
-const validSyncState = `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00.000Z","reps":1}}],"practiceDays":[{"date":"2026-09-22"}],"lessonCompletion":[{"lessonId":"lesson-1"}]}`
+const validSyncState = `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00.000Z","reps":1}}],"practiceDays":[{"date":"2026-09-22"}],"lessonCompletion":[{"lessonId":"lesson-1"}],"learnProgress":[{"lessonId":"lesson-1","passed":["sentence-1"],"skipsUsed":1,"updatedAt":"2026-09-22T10:00:00Z"}]}`
 
 func TestSyncRequiresSession(t *testing.T) {
 	api := newTestAPI(t)
@@ -537,6 +537,19 @@ func TestSyncMergesAndReturnsFullState(t *testing.T) {
 	}
 }
 
+// A client that predates Learn mode sync sends no learnProgress; it is accepted, and the reply still carries the list.
+func TestSyncAcceptsRequestWithoutLearnProgress(t *testing.T) {
+	api := newTestAPI(t)
+	cookie := signupForSync(t, api, "sync-legacy@example.com")
+	response := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("legacy sync status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if state, _ := stateJSON(t, response.Body.Bytes()); state != compactJSON(t, []byte(`{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`)) {
+		t.Fatalf("legacy sync state = %s, want empty lists including learnProgress", state)
+	}
+}
+
 func TestSyncIsolatesUsersOverHTTP(t *testing.T) {
 	api := newTestAPI(t)
 	cookieA := signupForSync(t, api, "sync-isolation-a@example.com")
@@ -547,7 +560,7 @@ func TestSyncIsolatesUsersOverHTTP(t *testing.T) {
 		t.Fatalf("user A sync status = %d, body = %s", first.Code, first.Body.String())
 	}
 
-	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`
+	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
 	responseB := syncWithCookie(api.handler, empty, cookieB)
 	if responseB.Code != http.StatusOK {
 		t.Fatalf("user B sync status = %d, body = %s", responseB.Code, responseB.Body.String())

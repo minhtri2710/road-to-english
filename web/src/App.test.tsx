@@ -552,7 +552,7 @@ describe("App", () => {
       // Another tab's practice lands in the store; the import reload picks it up with no practice here.
       await recordPractice(todayKey(new Date()), { newCard: false });
       await click(container, "Manage");
-      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], userLessons: [] }, new Date());
       const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
       await harnessAct(async () => {
         Object.defineProperty(file, "files", {
@@ -584,7 +584,7 @@ describe("App", () => {
       // Another tab's practice lands in the store; the import reload picks it up with no practice here.
       await recordPractice(todayKey(new Date()), { newCard: false });
       await click(container, "Manage");
-      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+      const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], userLessons: [] }, new Date());
       const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
       await harnessAct(async () => {
         Object.defineProperty(file, "files", {

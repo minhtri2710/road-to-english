@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The api tests and the e2e suite share one disposable Postgres, on the port the dev setup uses.
+env:
+  DATABASE_URL: postgres://rte:rte_dev_password@localhost:5435/rte?sslmode=disable
+
+jobs:
+  api:
+    name: API (Go)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: rte
+          POSTGRES_PASSWORD: rte_dev_password
+          POSTGRES_DB: rte
+        ports: ["5435:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rte -d rte"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l api)" || { gofmt -l api; exit 1; }
+      - run: go -C api vet ./...
+      - run: go -C api build ./...
+      - run: go -C api test ./...
+
+  web:
+    name: Web (lint, types, unit, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm -C web install --frozen-lockfile
+      - run: pnpm -C web lint
+      - run: pnpm -C web typecheck
+      - run: pnpm -C web test
+      - run: pnpm -C web build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: rte
+          POSTGRES_PASSWORD: rte_dev_password
+          POSTGRES_DB: rte
+        ports: ["5435:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rte -d rte"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm -C web install --frozen-lockfile
+      - run: pnpm -C web exec playwright install --with-deps chromium
+      # visual.spec.ts compares against macOS (chromium-darwin) baselines, so it runs on a Mac, not here.
+      - name: Playwright
+        working-directory: web
+        run: pnpm exec playwright test $(ls e2e/*.spec.ts | grep -v '/visual\.spec\.ts$')
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: web/test-results
+          retention-days: 7

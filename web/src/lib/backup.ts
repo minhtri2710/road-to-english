@@ -1,6 +1,6 @@
 import type { Lesson } from "../api/lessons";
 import { tr } from "../i18n";
-import type { StoredCard } from "./db";
+import type { StoredCard, StoredLearnProgress } from "./db";
 import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
 import type { Card } from "ts-fsrs";
@@ -12,7 +12,12 @@ export interface SyncState {
   cards: VocabCard[];
   practiceDays: { date: string }[];
   lessonCompletion: { lessonId: string }[];
+  learnProgress: StoredLearnProgress[];
 }
+
+// The api's caps on one lesson's Learn progress (api/internal/storage).
+const MAX_PASSED_SENTENCES = 10000;
+const MAX_SKIPS_USED = 1000;
 
 // The /sync request: every card carries its stored dirty flag.
 export interface SyncRequest extends Omit<SyncState, "cards"> {
@@ -48,6 +53,8 @@ interface SerializedState {
   cards: SerializedCard[];
   practiceDays: { date: string }[];
   lessonCompletion: { lessonId: string }[];
+  // Missing from a backup file written before Learn progress was saved.
+  learnProgress?: StoredLearnProgress[];
 }
 
 interface BackupEnvelope extends BackupData {
@@ -194,6 +201,36 @@ function validateSyncState(value: unknown): asserts value is SerializedState {
       throw new Error(tr("Invalid lesson completion at index {index}.", { index }));
     }
   });
+
+  if (value.learnProgress === undefined) return;
+  if (!Array.isArray(value.learnProgress)) {
+    throw new Error(tr("Invalid backup stores."));
+  }
+  const progressLessons = new Set<string>();
+  value.learnProgress.forEach((progress: unknown, index) => {
+    if (!isValidLearnProgress(progress) || progressLessons.has(progress.lessonId)) {
+      throw new Error(tr("Invalid Learn progress at index {index}.", { index }));
+    }
+    progressLessons.add(progress.lessonId);
+  });
+}
+
+function isValidLearnProgress(value: unknown): value is StoredLearnProgress {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyText(value.lessonId) ||
+    !isKeySize(value.lessonId) ||
+    !Array.isArray(value.passed) ||
+    value.passed.length > MAX_PASSED_SENTENCES ||
+    !Number.isInteger(value.skipsUsed) ||
+    (value.skipsUsed as number) < 0 ||
+    (value.skipsUsed as number) > MAX_SKIPS_USED ||
+    !isValidTimestamp(value.updatedAt)
+  ) {
+    return false;
+  }
+  const passed = value.passed as unknown[];
+  return passed.every((id) => isNonEmptyText(id) && isKeySize(id)) && new Set(passed).size === passed.length;
 }
 
 export function reviveSyncState(value: unknown): SyncState {
@@ -221,6 +258,7 @@ export function reviveSyncState(value: unknown): SyncState {
     })),
     practiceDays: value.practiceDays,
     lessonCompletion: value.lessonCompletion,
+    learnProgress: (value.learnProgress ?? []).map(({ lessonId, passed, skipsUsed, updatedAt }) => ({ lessonId, passed, skipsUsed, updatedAt })),
   };
 }
 
@@ -231,6 +269,7 @@ export function exportData(state: BackupData, now: Date): string {
     cards: state.cards,
     practiceDays: state.practiceDays,
     lessonCompletion: state.lessonCompletion,
+    learnProgress: state.learnProgress,
     userLessons: state.userLessons,
   };
   return JSON.stringify(backup);

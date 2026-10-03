@@ -21,12 +21,6 @@ const STEPS = [
   "Go to the next sentence.",
 ];
 
-const LEARN_STEPS = [
-  "Listen to the sentence.",
-  "Say it back with the round speak button.",
-  "Reach {score} points to unlock the next sentence.",
-  "Not there yet? Listen slowly and try again, or use a skip.",
-];
 
 // Keys that act while focus is inside the guided view, and the control each one presses.
 const SHORTCUTS: { key: string; label: string; does: string; target: string }[] = [
@@ -78,10 +72,7 @@ export interface GateState {
   available: boolean;
   on: boolean;
   setOn: (on: boolean) => void;
-  // The current sentence passed or was skipped this visit.
-  passed: boolean;
   skipsLeft: number;
-  skip: () => void;
   // Sentences passed or skipped in this lesson so far, kept on this device.
   progressCount: number;
   startOver: () => void;
@@ -100,7 +91,8 @@ export function GuidedShadowing({
   count: number;
   step: (index: number) => void;
   gate: GateState;
-  children: ReactNode;
+  // A function child receives go, for a Learn view that moves between sentences itself.
+  children: ReactNode | ((go: (index: number) => void) => ReactNode);
 }) {
   const t = useT();
   const position = t("Sentence {n} of {count}", { n: index + 1, count });
@@ -112,7 +104,6 @@ export function GuidedShadowing({
     step(next);
   };
   const last = index === count - 1;
-  const locked = gate.on && !gate.passed && !last;
 
   // Shortcuts press the matching enabled control in this view, so they do only what a click could.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -188,15 +179,18 @@ export function GuidedShadowing({
             </Text>
           )}
         </VStack>
-        <VStack as="ol" gap={0}>
-          {(gate.on ? LEARN_STEPS : STEPS).map((text) => (
-            <li key={text}>
-              <Text>{t(text, { score: PASS_SCORE })}</Text>
-            </li>
-          ))}
-        </VStack>
-        {children}
-        <HStack gap={1} wrap="wrap" align="center">
+        {/* Learn mode's shadow bar carries its own steps and Previous/Next. */}
+        {!gate.on && (
+          <VStack as="ol" gap={0}>
+            {STEPS.map((text) => (
+              <li key={text}>
+                <Text>{t(text, { score: PASS_SCORE })}</Text>
+              </li>
+            ))}
+          </VStack>
+        )}
+        {typeof children === "function" ? children(go) : children}
+        {!gate.on && <HStack gap={1} wrap="wrap" align="center">
           <Button
             label={t("Previous")}
             variant="secondary"
@@ -208,25 +202,13 @@ export function GuidedShadowing({
           />
           <Button
             label={t("Next")}
-            variant={gate.on && gate.passed && !last ? "primary" : "secondary"}
+            variant="secondary"
             data-shortcut="next"
-            isDisabled={last || locked}
-            tooltip={last ? t("This is the last sentence") : locked ? t("Reach {score} points or skip to unlock", { score: PASS_SCORE }) : undefined}
+            isDisabled={last}
+            tooltip={last ? t("This is the last sentence") : undefined}
             onClick={() => go(index + 1)}
           />
-          {gate.on && !last && !gate.passed && (
-            <Button
-              label={t("Skip ({left} of {total} left)", { left: gate.skipsLeft, total: SKIPS_PER_LESSON })}
-              variant="ghost"
-              isDisabled={gate.skipsLeft === 0}
-              tooltip={gate.skipsLeft === 0 ? t("No skips left in this lesson") : undefined}
-              onClick={() => {
-                gate.skip();
-                go(index + 1);
-              }}
-            />
-          )}
-        </HStack>
+        </HStack>}
         <VStack gap={0.5}>
           <Text type="supporting" id="guided-shortcuts">
             {t("Keyboard, while you work in this sentence:")}

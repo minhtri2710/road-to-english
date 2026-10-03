@@ -1,4 +1,5 @@
 export const app: Record<string, string> = {
+  "Couldn't reach the server. Check your connection and try again.": "Không kết nối được máy chủ. Hãy kiểm tra kết nối mạng rồi thử lại.",
   // App views
   'Delete "{title}"? Cards saved from it stay in your deck.':
     "Xoá “{title}”? Các thẻ đã lưu từ bài này vẫn còn trong bộ thẻ của bạn.",
@@ -103,6 +104,7 @@ export const app: Record<string, string> = {
   "Duplicate card at index {index}.": "Thẻ bị trùng ở vị trí {index}.",
   "Invalid practice day at index {index}.": "Ngày luyện tập không hợp lệ ở vị trí {index}.",
   "Invalid lesson completion at index {index}.": "Lượt hoàn thành bài học không hợp lệ ở vị trí {index}.",
+  "Invalid Learn progress at index {index}.": "Tiến độ chế độ Học ở vị trí {index} không hợp lệ.",
   "Invalid backup JSON.": "Tệp sao lưu không phải JSON hợp lệ.",
   "Invalid backup envelope.": "Định dạng tệp sao lưu không hợp lệ.",
   "Invalid user lesson at index {index}.": "Bài học của bạn không hợp lệ ở vị trí {index}.",
