@@ -57,6 +57,8 @@ export const projectTheme = defineTheme({
     "--rte-color-level-b2": pair(themePalette.levels.b2),
     "--rte-color-speak": pair(themePalette.speak),
     "--rte-color-speak-muted": pair(themePalette.speakMuted),
+    // Timestamps, scores and counts, as in the Shadowly design (JetBrains Mono when installed).
+    "--rte-font-mono": '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace',
     "--rte-text-reading-size": "1.25rem",
     "--rte-text-reading-leading": "1.5",
     "--rte-ease-emphasized": "cubic-bezier(0.2, 0.8, 0.2, 1)",

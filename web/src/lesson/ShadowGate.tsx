@@ -14,6 +14,7 @@ import { recognizeOnce } from "../lib/recognition";
 import { PASS_SCORE, scoreShadow, wordLevel, type ShadowScore, type WordLevel } from "../lib/shadowScore";
 import { speak, speechSupported } from "../lib/speech";
 import { useT } from "../i18n";
+import { FeedbackCard, ScoreStrip, TypeInstead } from "./LearnView";
 
 export const SLOW_SPEED = 0.75;
 
@@ -84,6 +85,7 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    fontFamily: "var(--rte-font-mono)",
     fontSize: "1.125rem",
     fontWeight: "var(--font-weight-bold)",
     fontVariantNumeric: "tabular-nums",
@@ -112,6 +114,24 @@ const styles = stylex.create({
   wrapLabel: {
     whiteSpace: "normal",
     overflowWrap: "anywhere",
+  },
+  note: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2)",
+    paddingInline: "var(--spacing-1)",
+  },
+  mono: {
+    fontFamily: "var(--rte-font-mono)",
+    color: "var(--color-text-primary)",
+    fontVariantNumeric: "tabular-nums",
+  },
+  // A primary button in the speak color, for saying the sentence again.
+  speakPrimary: {
+    backgroundColor: "var(--rte-color-speak)",
+    color: "var(--color-on-accent)",
   },
   heard: {
     fontSize: "var(--text-supporting-size)",
@@ -204,19 +224,37 @@ type Check =
   | { status: "failed"; message: string };
 
 // Shadow Gate for one sentence: say it, see each word scored, and pass at PASS_SCORE to unlock the next.
+// Moving between sentences from the shadow bar: Previous, the locked Next, and the lesson's skips.
+export interface GateNav {
+  first: boolean;
+  last: boolean;
+  skipsLeft: number;
+  skipsTotal: number;
+  previous: () => void;
+  next: () => void;
+  skip: () => void;
+}
+
 export function ShadowGate({
   text,
   targetWpm,
+  speed,
   passed,
   stopMedia,
   onChecked,
+  onTyped,
+  nav,
 }: {
   text: string;
   targetWpm: number;
-  // Passed (or skipped) earlier this visit.
+  speed: number;
+  // Passed (or skipped) earlier.
   passed: boolean;
   stopMedia: StopMedia;
   onChecked: (result: ShadowScore) => void;
+  // The learner typed the whole sentence correctly instead of saying it.
+  onTyped: () => void;
+  nav: GateNav;
 }) {
   const t = useT();
   const [check, setCheck] = useState<Check>({ status: "idle" });
@@ -282,63 +320,148 @@ export function ShadowGate({
     hint = t("Say the sentence. Reach {score} points to open the next one.", { score: PASS_SCORE });
   }
 
+  const locked = !passed && !(result?.passed ?? false) && !nav.last;
+  const listenSlowly = () => {
+    stopMedia();
+    speak(text, targetWpm, SLOW_SPEED);
+  };
+
   return (
-    <section aria-label={t("Shadow Gate")} className={stylex.props(styles.gate).className}>
-      <div className={stylex.props(styles.row).className}>
-        {result ? (
-          <ScoreRing score={result.score} />
-        ) : (
-          <button
-            ref={sayItRef}
-            type="button"
-            aria-label={listening ? t("Listening") : t("Say the sentence")}
-            data-shortcut="speak"
-            disabled={listening}
-            className={stylex.props(styles.sayIt).className}
-            onClick={sayIt}
-          >
-            <MicIcon />
-          </button>
-        )}
-        <div className={stylex.props(styles.phase).className}>
-          <span className={stylex.props(styles.phaseLabel, levelLabel[label.style]).className}>{label.text}</span>
-          <Text type="supporting">{hint}</Text>
+    <VStack gap={2}>
+      <section aria-label={t("Shadow Gate")} className={stylex.props(styles.gate).className}>
+        <div className={stylex.props(styles.row).className}>
+          {result ? (
+            <ScoreRing score={result.score} />
+          ) : (
+            <button
+              ref={sayItRef}
+              type="button"
+              aria-label={listening ? t("Listening") : t("Say the sentence")}
+              data-shortcut="speak"
+              disabled={listening}
+              className={stylex.props(styles.sayIt).className}
+              onClick={sayIt}
+            >
+              <MicIcon />
+            </button>
+          )}
+          <div className={stylex.props(styles.phase).className}>
+            <span className={stylex.props(styles.phaseLabel, levelLabel[label.style]).className}>{label.text}</span>
+            <Text type="supporting">{hint}</Text>
+          </div>
+          <ScoreStrip text={text} result={result} />
+          <HStack gap={1} wrap="wrap">
+            {result && <Button label={t("Try again")} variant="secondary" data-shortcut="retry" onClick={tryAgain} />}
+            <Button
+              label={t("Next")}
+              variant={locked ? "secondary" : "primary"}
+              data-shortcut="next"
+              isDisabled={nav.last || locked}
+              tooltip={nav.last ? t("This is the last sentence") : locked ? t("Reach {score} points or skip to unlock", { score: PASS_SCORE }) : undefined}
+              icon={locked ? <LockIcon /> : undefined}
+              onClick={nav.next}
+            />
+          </HStack>
         </div>
-        <HStack gap={1} wrap="wrap">
-          {result && <Button label={t("Try again")} variant="secondary" data-shortcut="retry" onClick={tryAgain} />}
+        <div className={stylex.props(styles.note).className}>
+          <HStack gap={1} wrap="wrap" align="center">
+            <Button
+              label={t("Listen")}
+              variant="secondary"
+              data-shortcut="listen"
+              isDisabled={!canSpeak || listening}
+              onClick={() => {
+                stopMedia();
+                speak(text, targetWpm, speed);
+              }}
+            />
+            <Button
+              label={t("Listen slowly {speed}×", { speed: SLOW_SPEED })}
+              variant="ghost"
+              data-shortcut="slow"
+              xstyle={styles.wrapButton}
+              children={<span className={stylex.props(styles.wrapLabel).className}>{t("Listen slowly {speed}×", { speed: SLOW_SPEED })}</span>}
+              isDisabled={!canSpeak || listening}
+              onClick={listenSlowly}
+            />
+            <Button
+              label={t("Previous")}
+              variant="ghost"
+              data-shortcut="previous"
+              isDisabled={nav.first}
+              tooltip={nav.first ? t("This is the first sentence") : undefined}
+              onClick={nav.previous}
+            />
+          </HStack>
+          <HStack gap={1} wrap="wrap" align="center">
+            {!locked && (
+              <Text type="supporting">
+                {t("Skips left:")}{" "}
+                <span className={stylex.props(styles.mono).className}>
+                  {nav.skipsLeft}/{nav.skipsTotal}
+                </span>
+              </Text>
+            )}
+            {locked && (
+              <Button
+                label={t("Skip ({left} of {total} left)", { left: nav.skipsLeft, total: nav.skipsTotal })}
+                variant="ghost"
+                isDisabled={nav.skipsLeft === 0}
+                tooltip={nav.skipsLeft === 0 ? t("No skips left in this lesson") : undefined}
+                onClick={nav.skip}
+              />
+            )}
+          </HStack>
+        </div>
+        <Status>
+          {result && (
+            <VStack gap={1}>
+              <ScoredWords result={result} />
+              <VisuallyHidden>
+                {result.passed
+                  ? t("Score {score}. Next sentence unlocked.", { score: result.score })
+                  : t("Score {score}. Reach {pass} to unlock the next sentence.", { score: result.score, pass: PASS_SCORE })}
+              </VisuallyHidden>
+            </VStack>
+          )}
+          {check.status === "failed" && (
+            <Text as="p" color="primary" xstyle={sharedStyles.error}>
+              {check.message}
+            </Text>
+          )}
+        </Status>
+        {check.status === "failed" && <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />}
+      </section>
+      {result && !result.passed && (
+        <FeedbackCard result={result}>
           <Button
             label={t("Listen slowly {speed}×", { speed: SLOW_SPEED })}
-            variant="ghost"
-            data-shortcut="slow"
+            variant="secondary"
             xstyle={styles.wrapButton}
             children={<span className={stylex.props(styles.wrapLabel).className}>{t("Listen slowly {speed}×", { speed: SLOW_SPEED })}</span>}
-            isDisabled={!canSpeak || listening}
-            onClick={() => {
-              stopMedia();
-              speak(text, targetWpm, SLOW_SPEED);
-            }}
+            isDisabled={!canSpeak}
+            onClick={listenSlowly}
           />
-        </HStack>
-      </div>
-      <Status>
-        {result && (
-          <VStack gap={1}>
-            <ScoredWords result={result} />
-            <VisuallyHidden>
-              {result.passed
-                ? t("Score {score}. Next sentence unlocked.", { score: result.score })
-                : t("Score {score}. Reach {pass} to unlock the next sentence.", { score: result.score, pass: PASS_SCORE })}
-            </VisuallyHidden>
-          </VStack>
-        )}
-        {check.status === "failed" && (
-          <Text as="p" color="primary" xstyle={sharedStyles.error}>
-            {check.message}
-          </Text>
-        )}
-      </Status>
-      {check.status === "failed" && <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />}
-    </section>
+          <Button
+            label={t("Say it again")}
+            variant="primary"
+            xstyle={[styles.speakPrimary, styles.wrapButton]}
+            children={<span className={stylex.props(styles.wrapLabel).className}>{t("Say it again")}</span>}
+            onClick={tryAgain}
+          />
+        </FeedbackCard>
+      )}
+      {!passed && !(result?.passed ?? false) && <TypeInstead text={text} onPassed={onTyped} />}
+    </VStack>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="9" width="12" height="8.5" rx="2" />
+      <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+    </svg>
   );
 }
 
