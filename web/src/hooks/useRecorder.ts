@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { tr } from "../i18n";
+
 type RecorderState = "idle" | "requesting" | "recording" | "ready" | "error";
 
 interface RecorderControls {
@@ -139,7 +141,7 @@ export function useRecorder(): RecorderControls {
 
     const getUserMedia = navigator.mediaDevices?.getUserMedia;
     if (typeof MediaRecorder === "undefined" || !getUserMedia) {
-      setError("Microphone recording is not supported in this browser.");
+      setError(tr("Microphone recording is not supported in this browser."));
       updateState("error");
       return;
     }
@@ -209,7 +211,7 @@ export function useRecorder(): RecorderControls {
           setError(null);
           updateState("ready");
         } catch {
-          setError("Unable to prepare the recording for replay.");
+          setError(tr("Unable to prepare the recording for replay."));
           updateState("error");
         }
       };
@@ -223,7 +225,7 @@ export function useRecorder(): RecorderControls {
       stopStream(stream ?? streamRef.current);
       streamRef.current = null;
       recorderRef.current = null;
-      setError("Unable to access the microphone. Please allow microphone access to record.");
+      setError(tr("Unable to access the microphone. Please allow microphone access to record."));
       updateState("error");
     }
   }, []);

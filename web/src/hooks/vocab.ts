@@ -15,6 +15,7 @@ import {
   saveCard,
   saveReview,
 } from "../lib/vocabStore";
+import { tr } from "../i18n";
 
 // A live card due within this window is refreshed in on time, so a card rated Again comes back in-session.
 const NEXT_DUE_WINDOW_MS = 60 * 60_000;
@@ -42,7 +43,7 @@ export function useVocabDeck() {
       if (current !== generation.current) {
         return;
       }
-      setError(loadError instanceof Error ? loadError : new Error("Unable to load cards"));
+      setError(loadError instanceof Error ? loadError : new Error(tr("Unable to load cards")));
     } finally {
       if (current === generation.current) {
         setLoading(false);

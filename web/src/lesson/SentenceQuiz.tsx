@@ -12,6 +12,7 @@ import { sharedStyles } from "../components/styles";
 import type { PracticeMode } from "../lib/progress";
 import { blankFor, blankMatches, diffWords, endingHints, hintFor, wordBank, type WordDiff } from "../lib/dictation";
 import { speak, speechSupported } from "../lib/speech";
+import { tr, useT } from "../i18n";
 
 const correctAnimation = stylex.keyframes({
   from: { transform: "scale(0.4)", opacity: 0 },
@@ -70,11 +71,11 @@ function wordNote(entry: WordDiff, verb: "typed" | "said"): string {
     case "correct":
       return "";
     case "missed":
-      return " (missed)";
+      return " " + tr("(missed)");
     case "replaced":
-      return ` (you ${verb} "${entry.typed}")`;
+      return " " + (verb === "typed" ? tr('(you typed "{word}")', { word: entry.typed }) : tr('(you said "{word}")', { word: entry.typed }));
     case "extra":
-      return " (extra)";
+      return " " + tr("(extra)");
   }
 }
 
@@ -108,6 +109,7 @@ export function WordDiffResult({
   speed: number;
   stopMedia: () => void;
 }) {
+  const t = useT();
   const diff = diffWords(answer, text);
   const total = diff.filter((entry) => entry.kind !== "extra").length;
   const matched = diff.filter((entry) => entry.kind === "correct").length;
@@ -124,7 +126,7 @@ export function WordDiffResult({
     return (
       <Button
         label={entry.word}
-        aria-label={`Hear ${entry.word}`}
+        aria-label={t("Hear {word}", { word: entry.word })}
         size="sm"
         variant="ghost"
         xstyle={styles.hearWord}
@@ -139,21 +141,21 @@ export function WordDiffResult({
     <VStack gap={1}>
       {verb === "said" ? (
         <>
-          <Text as="p">What the browser heard: {answer}</Text>
+          <Text as="p">{t("What the browser heard: {answer}", { answer })}</Text>
           <Text as="p" weight="semibold" xstyle={[styles.result, !correct && styles.wrongResult]} key={checkId} data-motion={correct ? "answer-correct" : "answer-nudge"}>
             {correct && <CorrectMark />}
-            The browser matched {matched} of {total} words
+            {t("The browser matched {matched} of {total} words", { matched, total })}
           </Text>
         </>
       ) : (
         <Text as="p" weight="semibold" xstyle={[styles.result, !correct && styles.wrongResult]} key={checkId} data-motion={correct ? "answer-correct" : "answer-nudge"}>
           {correct && <CorrectMark />}
           {correct
-            ? `Correct: ${total} of ${total} words`
-            : `Not quite: ${matched} of ${total} words matched`}
+            ? t("Correct: {total} of {total} words", { total })
+            : t("Not quite: {matched} of {total} words matched", { matched, total })}
         </Text>
       )}
-      <Text as="p">Reference: {text}</Text>
+      <Text as="p">{t("Reference: {text}", { text })}</Text>
       <Text as="p">
         {diff.map((entry, index) => (
           <Fragment key={index}>
@@ -175,7 +177,7 @@ export function WordDiffResult({
       </Text>
       {endings.length > 0 && (
         <Text as="p" type="supporting">
-          Check the ending sound: {endings.join(", ")}
+          {t("Check the ending sound: {words}", { words: endings.join(", ") })}
         </Text>
       )}
       {notes && <Text as="p" type="supporting">{notes}</Text>}
@@ -195,11 +197,12 @@ interface QuizProps {
 }
 
 function PlayButton({ text, targetWpm, speed, stopMedia }: Omit<QuizProps, "id" | "practice" | "miss">) {
+  const t = useT();
   const supported = speechSupported();
   return (
     <>
       <Button
-        label="Play"
+        label={t("Play")}
         variant="secondary"
         isDisabled={!supported}
         onClick={() => {
@@ -209,7 +212,7 @@ function PlayButton({ text, targetWpm, speed, stopMedia }: Omit<QuizProps, "id" 
       />
       {!supported && (
         <Text as="p" type="supporting">
-          Play disabled: speech synthesis is not supported in this browser.
+          {t("Play disabled: speech synthesis is not supported in this browser.")}
         </Text>
       )}
     </>
@@ -234,6 +237,7 @@ function AnswerForm({
   // Rendered between the input and Check.
   children?: ReactNode;
 }) {
+  const t = useT();
   return (
     <form
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
@@ -259,13 +263,14 @@ function AnswerForm({
           spellCheck={false}
         />
         {children}
-        <Button label="Check" variant="primary" type="submit" />
+        <Button label={t("Check")} variant="primary" type="submit" />
       </VStack>
     </form>
   );
 }
 
 export function SentenceDictation({ id, text, notes, targetWpm, speed, practice, miss, stopMedia }: QuizProps & { notes?: string }) {
+  const t = useT();
   const [typed, setTyped] = useState("");
   const [checked, setChecked] = useState<string | null>(null);
   const [checkId, setCheckId] = useState(0);
@@ -295,20 +300,20 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
       <PlayButton text={text} targetWpm={targetWpm} speed={speed} stopMedia={stopMedia} />
       <AnswerForm
         id={`dictation-${id}`}
-        label="What did you hear?"
+        label={t("What did you hear?")}
         inputRef={inputRef}
         value={typed}
         onChange={setTyped}
         onSubmit={checkAnswer}
       />
       <Button
-        label={showHint ? "Hide hint" : "Show hint"}
+        label={showHint ? t("Hide hint") : t("Show hint")}
         variant="ghost"
         aria-expanded={showHint}
         aria-controls={hintId}
         onClick={() => setShowHint((shown) => !shown)}
       />
-      {showHint && <Text as="p" id={hintId}>Hint: {hintFor(text)}</Text>}
+      {showHint && <Text as="p" id={hintId}>{t("Hint: {hint}", { hint: hintFor(text) })}</Text>}
       <Status>
         {checked !== null && (
           <WordDiffResult
@@ -323,7 +328,7 @@ export function SentenceDictation({ id, text, notes, targetWpm, speed, practice,
           />
         )}
       </Status>
-      {checked !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
+      {checked !== null && <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />}
     </VStack>
   );
 }
@@ -339,6 +344,7 @@ export function SentenceBlank({
   stopMedia,
   lessonWords,
 }: QuizProps & { lessonWords?: string[] }) {
+  const t = useT();
   const [typed, setTyped] = useState("");
   const [correct, setCorrect] = useState<boolean | null>(null);
   const [checkId, setCheckId] = useState(0);
@@ -377,7 +383,7 @@ export function SentenceBlank({
           i === index ? (
             <Fragment key={i}>
               <span aria-hidden="true">____</span>
-              <VisuallyHidden>blank</VisuallyHidden>
+              <VisuallyHidden>{t("blank")}</VisuallyHidden>
             </Fragment>
           ) : (
             part
@@ -387,7 +393,7 @@ export function SentenceBlank({
       <PlayButton text={text} targetWpm={targetWpm} speed={speed} stopMedia={stopMedia} />
       <AnswerForm
         id={`blank-${id}`}
-        label="Which word fills the blank?"
+        label={t("Which word fills the blank?")}
         inputRef={inputRef}
         value={typed}
         onChange={setTyped}
@@ -396,7 +402,7 @@ export function SentenceBlank({
         {choices.length > 0 && (
           <VStack gap={1} role="group" aria-labelledby={`bank-${id}`}>
             <Text as="span" type="supporting" id={`bank-${id}`}>
-              Choose a word
+              {t("Choose a word")}
             </Text>
             <HStack gap={1} xstyle={sharedStyles.shadowingControls}>
               {choices.map((choice) => (
@@ -424,11 +430,11 @@ export function SentenceBlank({
             data-motion={correct ? "answer-correct" : "answer-nudge"}
           >
             {correct && <CorrectMark />}
-            {correct ? "Correct" : `Not quite — the word was ${parts[index]}`}
+            {correct ? t("Correct") : t("Not quite — the word was {word}", { word: parts[index] })}
           </Text>
         )}
       </Status>
-      {correct !== null && <Button label="Try again" variant="ghost" onClick={tryAgain} />}
+      {correct !== null && <Button label={t("Try again")} variant="ghost" onClick={tryAgain} />}
     </VStack>
   );
 }

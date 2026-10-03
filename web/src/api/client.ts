@@ -1,3 +1,5 @@
+import { tr } from "../i18n";
+
 export class ApiError extends Error {
   readonly status: number;
   // Seconds to wait before retrying, from a 429's Retry-After; null when absent or not delta-seconds.
@@ -6,7 +8,7 @@ export class ApiError extends Error {
   readonly code: string | null;
 
   constructor(status: number, retryAfter: number | null, code: string | null = null) {
-    super(`Request failed with status ${status}`);
+    super(tr("Request failed with status {status}", { status }));
     this.name = "ApiError";
     this.status = status;
     this.retryAfter = retryAfter;

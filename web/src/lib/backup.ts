@@ -1,4 +1,5 @@
 import type { Lesson } from "../api/lessons";
+import { tr } from "../i18n";
 import type { StoredCard } from "./db";
 import { daysInMonth, todayKey } from "./progress";
 import { isValidUserLesson } from "./userLessons";
@@ -89,7 +90,7 @@ function timestampParts(value: string): number[] | null {
 function reviveTimestamp(value: string): Date {
   const parts = timestampParts(value);
   if (!parts) {
-    throw new Error("Invalid timestamp.");
+    throw new Error(tr("Invalid timestamp."));
   }
   const [year, month, day, hour, minute, second, milliseconds] = parts;
   const date = new Date(0);
@@ -134,7 +135,7 @@ function isValidFsrs(fsrs: Record<string, unknown>): boolean {
 
 function validateCard(value: unknown, index: number): asserts value is SerializedCard {
   if (!isRecord(value)) {
-    throw new Error(`Invalid card at index ${index}.`);
+    throw new Error(tr("Invalid card at index {index}.", { index }));
   }
 
   const source = value.source;
@@ -156,7 +157,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
     !isValidTimestamp(value.updatedAt) ||
     (value.deletedAt !== null && !isValidTimestamp(value.deletedAt))
   ) {
-    throw new Error(`Invalid card at index ${index}.`);
+    throw new Error(tr("Invalid card at index {index}.", { index }));
   }
 
   if (
@@ -164,33 +165,33 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
     fsrs.last_review !== null &&
     !isValidTimestamp(fsrs.last_review)
   ) {
-    throw new Error(`Invalid card at index ${index}.`);
+    throw new Error(tr("Invalid card at index {index}.", { index }));
   }
 }
 
 function validateSyncState(value: unknown): asserts value is SerializedState {
   if (!isRecord(value) || !Array.isArray(value.cards) || !Array.isArray(value.practiceDays) || !Array.isArray(value.lessonCompletion)) {
-    throw new Error("Invalid backup stores.");
+    throw new Error(tr("Invalid backup stores."));
   }
 
   const cardIds = new Set<string>();
   value.cards.forEach((card, index) => {
     validateCard(card, index);
     if (cardIds.has(card.id)) {
-      throw new Error(`Duplicate card at index ${index}.`);
+      throw new Error(tr("Duplicate card at index {index}.", { index }));
     }
     cardIds.add(card.id);
   });
 
   value.practiceDays.forEach((practiceDay, index) => {
     if (!isRecord(practiceDay) || !isValidDayKey(practiceDay.date)) {
-      throw new Error(`Invalid practice day at index ${index}.`);
+      throw new Error(tr("Invalid practice day at index {index}.", { index }));
     }
   });
 
   value.lessonCompletion.forEach((completion, index) => {
     if (!isRecord(completion) || !isNonEmptyText(completion.lessonId) || !isKeySize(completion.lessonId)) {
-      throw new Error(`Invalid lesson completion at index ${index}.`);
+      throw new Error(tr("Invalid lesson completion at index {index}.", { index }));
     }
   });
 }
@@ -240,7 +241,7 @@ export function importData(text: string): BackupData {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("Invalid backup JSON.");
+    throw new Error(tr("Invalid backup JSON."));
   }
 
   if (
@@ -248,17 +249,17 @@ export function importData(text: string): BackupData {
     parsed.version !== 1 ||
     typeof parsed.exportedAt !== "string"
   ) {
-    throw new Error("Invalid backup envelope.");
+    throw new Error(tr("Invalid backup envelope."));
   }
 
   const userLessons = parsed.userLessons;
   if (!Array.isArray(userLessons)) {
-    throw new Error("Invalid backup stores.");
+    throw new Error(tr("Invalid backup stores."));
   }
   const lessonIds = new Set<string>();
   userLessons.forEach((lesson, index) => {
     if (!isValidUserLesson(lesson) || lessonIds.has(lesson.id)) {
-      throw new Error(`Invalid user lesson at index ${index}.`);
+      throw new Error(tr("Invalid user lesson at index {index}.", { index }));
     }
     lessonIds.add(lesson.id);
   });

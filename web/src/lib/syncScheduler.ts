@@ -1,4 +1,5 @@
 import { ApiError, NetworkError } from "../api/client";
+import { tr } from "../i18n";
 import { syncState } from "../api/sync";
 import { claimOwner, exportAll, mergeInto } from "./backupStore";
 import type { SyncRequest } from "./backup";
@@ -126,7 +127,7 @@ export function createSyncScheduler(
 export function syncedAgo(syncedAt: number, now: number): string {
   const minutes = Math.floor((now - syncedAt) / 60_000);
   if (minutes < 1) {
-    return "Synced just now";
+    return tr("Synced just now");
   }
-  return minutes < 60 ? `Synced ${minutes} min ago` : `Synced ${Math.floor(minutes / 60)} h ago`;
+  return minutes < 60 ? tr("Synced {minutes} min ago", { minutes }) : tr("Synced {hours} h ago", { hours: Math.floor(minutes / 60) });
 }

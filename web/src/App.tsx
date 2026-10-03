@@ -8,6 +8,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "./api/lessons";
+import { AppFooter } from "./components/AppFooter";
 import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary, ViewHeading } from "./components/feedback";
 import { YourData } from "./components/YourData";
@@ -21,6 +22,7 @@ import { useLevelFilter } from "./hooks/useLevelFilter";
 import { useStorageKept } from "./hooks/useStorageKept";
 import { useSync } from "./hooks/useSync";
 import { useVocabDeck } from "./hooks/vocab";
+import { useT } from "./i18n";
 import { todayKey } from "./lib/progress";
 import { capNewCards } from "./lib/vocab";
 import { projectTheme } from "./theme";
@@ -28,6 +30,7 @@ import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
 import { IMPORT_TITLE, ImportTextForm } from "./library/ImportTextForm";
 import { LessonList } from "./library/LessonList";
 import { UserLessonList } from "./library/UserLessonList";
+import { Landing } from "./landing/Landing";
 import { ReviewDeck } from "./review/ReviewDeck";
 
 import "@astryxdesign/core/reset.css";
@@ -70,6 +73,7 @@ export function App() {
 }
 
 function AppViews() {
+  const t = useT();
   const {
     lessons: userLessons,
     reload: reloadUserLessons,
@@ -107,7 +111,7 @@ function AppViews() {
   };
 
   const deleteLesson = async (lesson: Lesson) => {
-    if (!window.confirm(`Delete "${lesson.title}"? Cards saved from it stay in your deck.`)) {
+    if (!window.confirm(t('Delete "{title}"? Cards saved from it stay in your deck.', { title: lesson.title }))) {
       return;
     }
     setDeleteFailedId(null);
@@ -160,23 +164,29 @@ function AppViews() {
         due={due}
         onNavigate={navigate}
       />
-      <div className={stylex.props(appStyles.content, view === "library" && appStyles.wide).className}>
+      <div className={stylex.props(appStyles.content, (view === "library" || view === "about") && appStyles.wide).className}>
         <VStack as="main" gap={2}>
           {(view === "review" || view === "library" || view === "manage") && (
             <VStack gap={1}>
               <ViewHeading takeFocus={takeHeadingFocus}>
-                {view === "library" ? "Lesson library" : view === "review" ? "Review deck" : "Manage lessons and data"}
+                {view === "library" ? t("Lesson library") : view === "review" ? t("Review deck") : t("Manage lessons and data")}
               </ViewHeading>
               <Text type="large">
                 {view === "library"
-                  ? "Choose a lesson to practise reading and speaking."
-                  : view === "review" ? "Review saved sentences with spaced repetition." : "Create lessons, import text, and manage your data."}
+                  ? t("Choose a lesson to practise reading and speaking.")
+                  : view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
               </Text>
             </VStack>
           )}
-          {view === "review" ? (
+          {view === "about" ? (
+            <Landing
+              takeHeadingFocus={takeHeadingFocus}
+              onStart={() => navigate({ view: "library" })}
+              onOpenLesson={(id) => navigate({ view: "lesson", id })}
+            />
+          ) : view === "review" ? (
             <VStack gap={2}>
-              <Badge label={`${reviewDeck.length} due`} variant="info" xstyle={appStyles.reviewDue} />
+              <Badge label={t("{count} due", { count: reviewDeck.length })} variant="info" xstyle={appStyles.reviewDue} />
               <ReviewDeck
                 due={reviewDeck}
                 hiddenNew={deck.due.length - reviewDeck.length}
@@ -216,7 +226,7 @@ function AppViews() {
                 }}
               />
               <VStack gap={2}>
-                <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>Your lessons</Heading>
+                <Heading level={2} ref={userLessonsHeading} tabIndex={-1}>{t("Your lessons")}</Heading>
                 <UserLessonList
                   lessons={userLessons}
                   onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
@@ -248,10 +258,11 @@ function AppViews() {
           ) : userLesson ? (
             <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
           ) : (
-            <Text as="p">Loading lesson...</Text>
+            <Text as="p">{t("Loading lesson...")}</Text>
           )}
         </VStack>
       </div>
+      <AppFooter onNavigate={navigate} />
     </div>
   );
 }

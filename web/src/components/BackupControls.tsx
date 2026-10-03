@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import * as stylex from "@stylexjs/stylex";
 
+import { useT } from "../i18n";
 import { backupFileName, exportData, importData } from "../lib/backup";
 import { exportBackupData, replaceAll } from "../lib/backupStore";
 import { cardsCsv, cardsCsvFileName } from "../lib/csv";
@@ -37,6 +38,7 @@ export function BackupControls({
   setError: (message: string | null) => void;
   onImported: () => Promise<void>;
 }) {
+  const t = useT();
   const importInput = useRef<HTMLInputElement>(null);
 
   const exportBackup = async () => {
@@ -44,7 +46,7 @@ export function BackupControls({
     try {
       downloadText(exportData(await exportBackupData(), new Date()), "application/json", backupFileName(new Date()));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to export backup.");
+      setError(error instanceof Error ? error.message : t("Unable to export backup."));
     }
   };
 
@@ -53,7 +55,7 @@ export function BackupControls({
     try {
       downloadText(cardsCsv(await getAllCards()), "text/csv;charset=utf-8", cardsCsvFileName(new Date()));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to export CSV.");
+      setError(error instanceof Error ? error.message : t("Unable to export CSV."));
     }
   };
 
@@ -67,26 +69,27 @@ export function BackupControls({
 
     try {
       const data = importData(await file.text());
-      const replaceNotice = "Importing this backup will replace all local data on this device.";
       const confirmText = signedIn
-        ? `${replaceNotice} Your next sync merges it with your account, so cards and progress already in your account stay. Continue?`
-        : `${replaceNotice} Continue?`;
+        ? t(
+            "Importing this backup will replace all local data on this device. Your next sync merges it with your account, so cards and progress already in your account stay. Continue?",
+          )
+        : t("Importing this backup will replace all local data on this device. Continue?");
       if (!window.confirm(confirmText)) {
         return;
       }
       await replaceAll(data);
       await onImported();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to import backup.");
+      setError(error instanceof Error ? error.message : t("Unable to import backup."));
     }
   };
 
   return (
     <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-      <Button label="Export" variant="secondary" onClick={() => void exportBackup()} />
-      <Button label="Export CSV" variant="secondary" onClick={() => void exportCsv()} />
+      <Button label={t("Export")} variant="secondary" onClick={() => void exportBackup()} />
+      <Button label={t("Export CSV")} variant="secondary" onClick={() => void exportCsv()} />
       <Button
-        label="Import"
+        label={t("Import")}
         variant="secondary"
         onClick={() => importInput.current?.click()}
       />
@@ -95,7 +98,7 @@ export function BackupControls({
         className={stylex.props(styles.backupFileInput).className}
         type="file"
         accept="application/json"
-        aria-label="Import backup file"
+        aria-label={t("Import backup file")}
         onChange={(event) => void importBackup(event)}
       />
     </HStack>

@@ -13,6 +13,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { sharedStyles } from "../components/styles";
 import { DAILY_GOALS, GOAL_NAMES, type DailyGoal } from "../hooks/useDailyGoal";
+import { useT } from "../i18n";
 import { MAX_FREEZES } from "../lib/progress";
 import { GoalRing } from "./GoalRing";
 
@@ -103,7 +104,6 @@ const WEEKDAY_NAMES: Record<string, string> = {
   Fri: "Friday",
   Sat: "Saturday",
 };
-const FREEZE_HELP = `A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to ${MAX_FREEZES}.`;
 
 export function TodayCard({
   headingRef,
@@ -132,10 +132,10 @@ export function TodayCard({
   suggestion: { text: string; action: string; onOpen: () => void } | undefined;
   onReview: () => void;
 }) {
-  const cards = (count: number) => `${count} card${count === 1 ? "" : "s"}`;
+  const t = useT();
   // With no card due, the suggestion shares the due line: "0 cards due · Next: About Me".
   // Its text names the lesson, so it describes the Continue or Start lesson button.
-  const dueText = due !== null ? `${cards(due)} due` : null;
+  const dueText = due !== null ? t(due === 1 ? "{count} card due" : "{count} cards due", { count: due }) : null;
   const suggestionText = due ? undefined : suggestion?.text;
   const suggestionId = useId();
   const today = week.at(-1)?.key;
@@ -143,7 +143,7 @@ export function TodayCard({
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
       <VStack xstyle={styles.todayContent}>
         <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-          <Heading level={2} tabIndex={-1} ref={headingRef}>Today</Heading>
+          <Heading level={2} tabIndex={-1} ref={headingRef}>{t("Today")}</Heading>
           {(dueText || suggestionText) && (
             <Text type="supporting">
               {dueText}
@@ -152,7 +152,7 @@ export function TodayCard({
             </Text>
           )}
           {due ? (
-            <Button label={`Review ${cards(due)}`} variant="primary" onClick={onReview} />
+            <Button label={t(due === 1 ? "Review {count} card" : "Review {count} cards", { count: due })} variant="primary" onClick={onReview} />
           ) : (
             suggestion && (
               <Button label={suggestion.action} aria-describedby={suggestionId} variant="primary" onClick={suggestion.onOpen} />
@@ -161,16 +161,16 @@ export function TodayCard({
         </HStack>
         <div className={stylex.props(styles.goalRow).className}>
           <GoalRing
-            label={`${actionsToday} of ${dailyGoal} practice actions today${goalMet ? " · Daily goal met" : ""}`}
+            label={`${t("{done} of {goal} practice actions today", { done: actionsToday, goal: dailyGoal })}${goalMet ? ` · ${t("Daily goal met")}` : ""}`}
             value={actionsToday}
             max={Number(dailyGoal)}
             goalMet={goalMet}
           />
           <VStack xstyle={[styles.goalDetails, styles.goalText]}>
-            <Text>{`${actionsToday} of ${dailyGoal} practice actions today`}</Text>
-            {goalMet && <Text weight="semibold">Daily goal met</Text>}
+            <Text>{t("{done} of {goal} practice actions today", { done: actionsToday, goal: dailyGoal })}</Text>
+            {goalMet && <Text weight="semibold">{t("Daily goal met")}</Text>}
             <ToggleButtonGroup
-              label="Daily goal"
+              label={t("Daily goal")}
               value={dailyGoal}
               xstyle={styles.goalPicker}
               onChange={(nextGoal) => {
@@ -180,34 +180,39 @@ export function TodayCard({
               }}
             >
               {DAILY_GOALS.map((value) => (
-                <ToggleButton key={value} value={value} label={`${value} ${GOAL_NAMES[value]}`} size="sm" />
+                <ToggleButton key={value} value={value} label={`${value} ${t(GOAL_NAMES[value])}`} size="sm" />
               ))}
             </ToggleButtonGroup>
           </VStack>
         </div>
         <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
-          <Text weight="semibold">{streak > 0 ? `${streak}-day streak` : "Start a new streak today"}</Text>
+          <Text weight="semibold">{streak > 0 ? t("{streak}-day streak", { streak }) : t("Start a new streak today")}</Text>
           <Text type="supporting">
-            <Tooltip content={FREEZE_HELP}>
+            <Tooltip
+              content={t(
+                "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to {max}.",
+                { max: MAX_FREEZES },
+              )}
+            >
               {/* The focusable trigger keeps the 24px minimum target size. */}
               <span tabIndex={0} className={stylex.props(styles.tooltipTarget).className}>
-                {`Freezes ${freezes} of ${MAX_FREEZES}`}
+                {t("Freezes {freezes} of {max}", { freezes, max: MAX_FREEZES })}
               </span>
             </Tooltip>
           </Text>
-          <Text type="supporting" xstyle={styles.xp}>{xp} XP</Text>
+          <Text type="supporting" xstyle={styles.xp}>{t("{xp} XP", { xp })}</Text>
         </HStack>
-        <ul aria-label="This week" className={stylex.props(styles.week).className}>
+        <ul aria-label={t("This week")} className={stylex.props(styles.week).className}>
           {week.map((day) => (
             <li
               key={day.key}
               aria-current={day.key === today ? "date" : undefined}
               className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
             >
-              <span aria-hidden="true">{day.label.slice(0, 2)}</span>
+              <span aria-hidden="true">{t(day.label.slice(0, 2))}</span>
               <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
               <VisuallyHidden>
-                {WEEKDAY_NAMES[day.label]} {day.practiced ? "practised" : "not practised"}
+                {t(day.practiced ? "{day} practised" : "{day} not practised", { day: t(WEEKDAY_NAMES[day.label]) })}
               </VisuallyHidden>
             </li>
           ))}

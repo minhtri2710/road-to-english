@@ -1,3 +1,4 @@
+import { tr } from "../i18n";
 import { GRADES, Rating, type Grade, type VocabCard } from "../lib/vocab";
 
 export const GRADE_NAMES: Record<Grade, string> = {
@@ -35,7 +36,7 @@ export function recapLine({ counts }: Recap): string {
     return "";
   }
   const breakdown = GRADES.filter((grade) => counts[grade] > 0)
-    .map((grade) => `${counts[grade]} ${GRADE_NAMES[grade]}`)
+    .map((grade) => `${counts[grade]} ${tr(GRADE_NAMES[grade])}`)
     .join(", ");
-  return `Reviewed ${total} card${total === 1 ? "" : "s"}: ${breakdown}. `;
+  return tr(total === 1 ? "Reviewed {total} card: {breakdown}. " : "Reviewed {total} cards: {breakdown}. ", { total, breakdown });
 }

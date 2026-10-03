@@ -40,6 +40,11 @@ import {
 import { installSpeechFakes } from "./test/browser";
 import { deferred, greetingsLesson, userLesson } from "./test/fixtures";
 
+// Elements marked with a language, outside the header, whose language switch marks its own label.
+function contentLang(container: Element): Element[] {
+  return Array.from(container.querySelectorAll("[lang]")).filter((node) => !node.closest("header"));
+}
+
 describe("App", () => {
   afterEach(resetApp);
 
@@ -1296,9 +1301,9 @@ describe("App", () => {
       const view = await openLesson();
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      expect(container.querySelectorAll("[lang]")).toHaveLength(0);
+      expect(contentLang(container)).toHaveLength(0);
       await click(container, "Vietnamese");
-      expect(Array.from(container.querySelectorAll("[lang]")).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual(
+      expect(contentLang(container).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual(
         greetingsLesson.sentences.map(({ vi }) => ["vi", vi]),
       );
 
@@ -1307,7 +1312,7 @@ describe("App", () => {
       await click(container, "Show answer");
       const answer = container.querySelector('main [lang="vi"]')?.parentElement;
       expect(answer?.textContent).toBe(`${sentence.text} — ${sentence.vi}`);
-      expect(Array.from(container.querySelectorAll("[lang]")).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual([
+      expect(contentLang(container).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual([
         ["vi", sentence.vi],
       ]);
     });

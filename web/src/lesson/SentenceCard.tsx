@@ -3,6 +3,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
 import { sharedStyles } from "../components/styles";
@@ -16,6 +17,14 @@ import { cardWord } from "../lib/words";
 import { SentenceShadowing } from "./SentenceShadowing";
 import { SentenceBlank, SentenceDictation } from "./SentenceQuiz";
 import { SaveToReview, SentenceWords, WordPanel } from "./WordPanel";
+import { useT } from "../i18n";
+
+const styles = stylex.create({
+  // The sentence now playing, from Listen, Loop or its video clip.
+  active: {
+    boxShadow: "0 0 0 2px var(--color-accent)",
+  },
+});
 
 const wordPanelId = (sentenceId: string) => `word-panel-${sentenceId}`;
 
@@ -51,6 +60,8 @@ interface SentenceCardProps {
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
   undoRemove: (tombstone: VocabCard) => Promise<boolean>;
+  active: boolean;
+  onPlayClip: (sentenceId: string) => void;
 }
 
 // One sentence's card, shared by the list and the guided view.
@@ -81,13 +92,16 @@ export function SentenceCard({
   addCard,
   removeCard,
   undoRemove,
+  active,
+  onPlayClip,
 }: SentenceCardProps) {
+  const t = useT();
   const showText = showTranscript && !textHidden;
   return (
-    <Card padding={3} xstyle={sharedStyles.sentence}>
+    <Card padding={3} xstyle={[sharedStyles.sentence, active && styles.active]} data-active={active || undefined}>
       {sentence.cue && (
         <Button
-          label="Play clip"
+          label={t("Play clip")}
           variant="secondary"
           isDisabled={video.status !== "ready"}
           onClick={() => {
@@ -95,6 +109,7 @@ export function SentenceCard({
             if (!cue) return;
             stopMedia({ keepVideo: true });
             video.playClip(cue, Number(speed));
+            onPlayClip(sentence.id);
           }}
         />
       )}
@@ -102,7 +117,7 @@ export function SentenceCard({
         <VStack gap={1}>
           <HStack>
             <Button
-              label="Text"
+              label={t("Text")}
               variant="ghost"
               aria-pressed={!textHidden}
               onClick={() => setTextHidden(sentence.id, !textHidden)}
@@ -170,7 +185,7 @@ export function SentenceCard({
           />
           <SaveToReview
             card={sentenceCard(data.id, sentence)}
-            label="Save to review"
+            label={t("Save to review")}
             saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
             addCard={addCard}
             removeCard={removeCard}
@@ -205,7 +220,7 @@ export function SentenceCard({
           )}
           <SaveToReview
             card={sentenceCard(data.id, sentence)}
-            label="Save to review"
+            label={t("Save to review")}
             saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
             addCard={addCard}
             removeCard={removeCard}

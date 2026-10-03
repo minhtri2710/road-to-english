@@ -11,6 +11,7 @@ import * as stylex from "@stylexjs/stylex";
 
 import { ApiError } from "../api/client";
 import type { AuthState } from "../hooks/auth";
+import { tr, useT } from "../i18n";
 import { Alert } from "./feedback";
 import { sharedStyles } from "./styles";
 
@@ -48,17 +49,18 @@ const passwordPolicyMessage =
   "Password must be at least 8 characters (and at most 72 bytes).";
 
 function waitText(seconds: number): string {
-  return seconds >= 60 ? `${Math.ceil(seconds / 60)} min` : `${seconds} s`;
+  return seconds >= 60 ? tr("{n} min", { n: Math.ceil(seconds / 60) }) : tr("{n} s", { n: seconds });
 }
 
 function AccountError({ error }: { error: Error }) {
-  let message = "Can't reach the server. You can keep practising on this device.";
+  const t = useT();
+  let message = t("Can't reach the server. You can keep practising on this device.");
   if (error instanceof ApiError) {
-    message = "Unable to complete account request. Please try again.";
+    message = t("Unable to complete account request. Please try again.");
     if (error.status === 401) {
-      message = "Invalid email or password.";
+      message = t("Invalid email or password.");
     } else if (error.status === 429) {
-      message = "Too many attempts. Try again in a few minutes.";
+      message = t("Too many attempts. Try again in a few minutes.");
     }
   }
 
@@ -74,6 +76,7 @@ function FieldError({ id, children }: { id: string; children: ReactNode }) {
 }
 
 export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onDisclosureChange?: (open: boolean) => void }) {
+  const t = useT();
   const { clearError } = auth;
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -111,7 +114,11 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
   const emailTaken = mode === "signUp" && status === 409;
   const passwordRejected = mode === "signUp" && status === 400;
   const passwordError =
-    localError ?? (passwordRejected ? `Check your email address and password. ${passwordPolicyMessage}` : null);
+    localError !== null
+      ? t(localError)
+      : passwordRejected
+        ? t("Check your email address and password. {policy}", { policy: t(passwordPolicyMessage) })
+        : null;
   const formError = auth.error && !emailTaken && !passwordRejected && retryAfter === null ? auth.error : null;
   // An error or countdown on screen keeps the form open: Escape, Close and the disclosure do not collapse it.
   const locked = emailTaken || passwordError !== null || formError !== null || secondsLeft !== null;
@@ -196,7 +203,7 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
           <Text type="supporting">{auth.user.email}</Text>
           <Button
             ref={takeFocus("signedIn")}
-            label="Sign out"
+            label={t("Sign out")}
             variant="secondary"
             onClick={() => {
               moveFocus.current = "signedOut";
@@ -225,7 +232,7 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
             disclosure.current = element;
             takeFocus("signedOut")(element);
           }}
-          label="Account"
+          label={t("Account")}
           variant="secondary"
           aria-expanded={open}
           aria-controls={formRegionId}
@@ -238,7 +245,7 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
             setOpen(true);
           }}
         />
-        {auth.expired && <Alert>You were signed out. Sign in again to sync.</Alert>}
+        {auth.expired && <Alert>{t("You were signed out. Sign in again to sync.")}</Alert>}
       </HStack>
       {open && (
         <VStack
@@ -256,16 +263,16 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
           }}>
             <VStack gap={0.5}>
               <SegmentedControl
-                label="Sign in or create an account"
+                label={t("Sign in or create an account")}
                 value={mode}
                 onChange={(next) => switchMode(next as Mode)}
               >
-                <SegmentedControlItem value="signIn" label="Sign in" />
-                <SegmentedControlItem value="signUp" label="Create account" />
+                <SegmentedControlItem value="signIn" label={t("Sign in")} />
+                <SegmentedControlItem value="signUp" label={t("Create account")} />
               </SegmentedControl>
               <VStack gap={0.5}>
                 <label htmlFor={`${ids}-email`}>
-                  <Text as="span" type="supporting">Email</Text>
+                  <Text as="span" type="supporting">{t("Email")}</Text>
                 </label>
                 <input
                   ref={(element) => {
@@ -284,9 +291,9 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
                 />
                 {emailTaken && (
                   <FieldError id={emailErrorId}>
-                    This email is already registered.{" "}
+                    {t("This email is already registered.")}{" "}
                     <Button
-                      label="Sign in instead?"
+                      label={t("Sign in instead?")}
                       variant="secondary"
                       onClick={() => {
                         switchMode("signIn");
@@ -298,7 +305,7 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
               </VStack>
               <VStack gap={0.5}>
                 <label htmlFor={`${ids}-password`}>
-                  <Text as="span" type="supporting">Password</Text>
+                  <Text as="span" type="supporting">{t("Password")}</Text>
                 </label>
                 <HStack gap={1} align="center" xstyle={styles.passwordRow}>
                   <input
@@ -313,30 +320,30 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
                     aria-describedby={passwordDescribedBy || undefined}
                     required
                   />
-                  <ToggleButton label="Show password" isPressed={passwordShown} onPressedChange={setPasswordShown} />
+                  <ToggleButton label={t("Show password")} isPressed={passwordShown} onPressedChange={setPasswordShown} />
                 </HStack>
                 {/* An error takes the helper's place, so the rule shows once. */}
                 {mode === "signUp" && !passwordError && (
                   <Text as="p" id={passwordHelpId} type="supporting">
-                    At least 8 characters.
+                    {t("At least 8 characters.")}
                   </Text>
                 )}
                 {passwordError && <FieldError id={passwordErrorId}>{passwordError}</FieldError>}
               </VStack>
               <HStack gap={1} align="center" xstyle={styles.accountControls}>
                 <Button
-                  label={mode === "signUp" ? "Create account" : "Sign in"}
+                  label={mode === "signUp" ? t("Create account") : t("Sign in")}
                   variant="primary"
                   type="submit"
                   isDisabled={secondsLeft !== null}
                   // A tooltip makes Astryx use aria-disabled, so the pressed button keeps keyboard focus.
-                  tooltip={secondsLeft !== null ? "Wait for the countdown to end" : undefined}
+                  tooltip={secondsLeft !== null ? t("Wait for the countdown to end") : undefined}
                 />
                 <Button
-                  label="Close"
+                  label={t("Close")}
                   variant="secondary"
                   isDisabled={locked}
-                  tooltip={locked ? "The form stays open while a message needs you" : undefined}
+                  tooltip={locked ? t("The form stays open while a message needs you") : undefined}
                   onClick={collapse}
                 />
               </HStack>
@@ -346,10 +353,10 @@ export function AccountArea({ auth, onDisclosureChange }: { auth: AuthState; onD
             <>
               {/* The visible countdown changes every second, so only its first wording is announced. */}
               <VisuallyHidden>
-                <Alert>Too many attempts. Try again in {waitText(retryAfter)}</Alert>
+                <Alert>{t("Too many attempts. Try again in {wait}", { wait: waitText(retryAfter) })}</Alert>
               </VisuallyHidden>
               <Text as="p" color="primary" xstyle={sharedStyles.error}>
-                Too many attempts. Try again in {waitText(secondsLeft)}
+                {t("Too many attempts. Try again in {wait}", { wait: waitText(secondsLeft) })}
               </Text>
             </>
           )}

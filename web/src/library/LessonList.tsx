@@ -14,6 +14,7 @@ import { useLessons } from "../hooks/lessons";
 import type { LessonRoute } from "../hooks/useLastLesson";
 import { filterByLevel, LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 import { useWelcome } from "../hooks/useWelcome";
+import { useT } from "../i18n";
 import { LessonCard } from "./LessonCard";
 import { TodayCard } from "./TodayCard";
 import { WelcomeCard } from "./WelcomeCard";
@@ -94,6 +95,7 @@ export function LessonList({
   onContinue: () => void;
   today: Omit<Parameters<typeof TodayCard>[0], "suggestion" | "headingRef">;
 }) {
+  const t = useT();
   const { welcomed, finishWelcome } = useWelcome();
   // Set by Done or Skip, so the Today card heading takes focus as it replaces the welcome.
   const focusToday = useRef(false);
@@ -111,21 +113,21 @@ export function LessonList({
   const nextLesson = shown?.find(unfinished);
   const completedCount = shown?.filter((lesson) => !unfinished(lesson)).length ?? 0;
   const suggestion = continueLesson
-    ? { text: `Continue: ${continueLesson.title}`, action: "Continue", onOpen: onContinue }
-    : nextLesson && { text: `Next: ${nextLesson.title}`, action: "Start lesson", onOpen: () => onSelect(nextLesson.id) };
+    ? { text: t("Continue: {title}", { title: continueLesson.title }), action: t("Continue"), onOpen: onContinue }
+    : nextLesson && { text: t("Next: {title}", { title: nextLesson.title }), action: t("Start lesson"), onOpen: () => onSelect(nextLesson.id) };
 
   let content: ReactNode;
   if (loading) {
-    content = <Text as="p">Loading lessons...</Text>;
+    content = <Text as="p">{t("Loading lessons...")}</Text>;
   } else if (error) {
     content = (
       <VStack gap={1}>
-        <ErrorMessage error={error} subject="lessons" />
+        <ErrorMessage error={error} subject={t("lessons")} />
         <Text as="p" type="supporting">
-          Your own lessons below still work offline.
+          {t("Your own lessons below still work offline.")}
         </Text>
         <Button
-          label="Retry"
+          label={t("Retry")}
           variant="secondary"
           xstyle={sharedStyles.viewToggle}
           onClick={() => {
@@ -137,9 +139,9 @@ export function LessonList({
       </VStack>
     );
   } else if (!data || data.length === 0 || !shown) {
-    content = <Text as="p">No lessons available.</Text>;
+    content = <Text as="p">{t("No lessons available.")}</Text>;
   } else if (shown.length === 0) {
-    content = <Text as="p">No lessons at this level.</Text>;
+    content = <Text as="p">{t("No lessons at this level.")}</Text>;
   } else {
     const groups = LEVELS.map((level) => ({
       level,
@@ -154,7 +156,7 @@ export function LessonList({
               <VStack gap={0.5}>
                 <div className={stylex.props(styles.groupHeading).className}>
                   <Heading level={3} id={`library-level-${level}`}>{level}</Heading>
-                  <Text type="supporting" xstyle={styles.groupCount}>{groupCompleted} of {lessons.length} completed</Text>
+                  <Text type="supporting" xstyle={styles.groupCount}>{t("{done} of {total} completed", { done: groupCompleted, total: lessons.length })}</Text>
                 </div>
                 <ul className={stylex.props(styles.lessonGrid).className}>
                   {lessons.map((lesson) => (
@@ -205,20 +207,20 @@ export function LessonList({
         />
       )}
       <VStack gap={1}>
-        <Heading level={2}>Library lessons</Heading>
+        <Heading level={2}>{t("Library lessons")}</Heading>
         <SegmentedControl
-          label="Library level"
+          label={t("Library level")}
           xstyle={styles.levelFilter}
           value={levelFilter}
           onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
         >
           {LEVEL_FILTERS.map((filter) => (
-            <SegmentedControlItem key={filter} value={filter} label={filter} />
+            <SegmentedControlItem key={filter} value={filter} label={filter === "All" ? t("All") : filter} />
           ))}
         </SegmentedControl>
         {shown && shown.length > 0 && (
           <div className={stylex.props(styles.progressRow).className}>
-            <Text type="supporting" id="library-overall-progress-text">{`${levelFilter === "All" ? "" : `${levelFilter}: `}${completedCount} of ${shown.length} completed`}</Text>
+            <Text type="supporting" id="library-overall-progress-text">{`${levelFilter === "All" ? "" : `${levelFilter}: `}${t("{done} of {total} completed", { done: completedCount, total: shown.length })}`}</Text>
             <div
               role="progressbar"
               aria-labelledby="library-overall-progress-text"

@@ -5,6 +5,7 @@ import type { useProgress } from "./progress";
 import type { useVocabDeck } from "./vocab";
 import { createSyncScheduler, syncedAgo, type SyncScheduler } from "../lib/syncScheduler";
 import { setSyncTrigger } from "../lib/syncEvents";
+import { tr, useT } from "../i18n";
 
 // The last finished run. syncedAt is when it synced (ms); recovered marks a sync that followed a failure.
 type SyncRun =
@@ -46,6 +47,7 @@ export function useSync(
   deck: Pick<ReturnType<typeof useVocabDeck>, "reload">,
   progress: Pick<ReturnType<typeof useProgress>, "reload">,
 ): SyncLine | null {
+  useT();
   const { expire } = auth;
   const syncRef = useRef<SyncScheduler | null>(null);
   const [run, setRun] = useState<SyncRun | null>(null);
@@ -125,7 +127,7 @@ export function useSync(
   }
   if (run.status === "tooLarge") {
     const text = (run.code !== null && Object.hasOwn(tooLargeText, run.code) ? tooLargeText[run.code] : undefined) ?? tooLargeText["request body too large"];
-    return { status: run.status, text, recovered: false };
+    return { status: run.status, text: tr(text), recovered: false };
   }
-  return { status: run.status, text: run.status === "ownerMismatch" ? ownerMismatchText : retryText[run.status], recovered: false };
+  return { status: run.status, text: tr(run.status === "ownerMismatch" ? ownerMismatchText : retryText[run.status]), recovered: false };
 }

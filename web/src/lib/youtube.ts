@@ -1,4 +1,5 @@
 import type { Cue } from "../api/lessons";
+import { tr } from "../i18n";
 
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const TIMESTAMP = /^(\d+:)?\d{1,2}:\d{2}$/;
@@ -43,20 +44,20 @@ export function parseTranscript(text: string): { text: string; cue: Cue }[] {
     if (TIMESTAMP.test(line)) {
       const parts = line.split(":").map(Number);
       if (parts.slice(1).some((part) => part > 59)) {
-        throw new Error(`Invalid timestamp: ${line}.`);
+        throw new Error(tr("Invalid timestamp: {line}.", { line }));
       }
       if (parts.length === 2 && parts[0] > 59) {
-        throw new Error(`Invalid timestamp: ${line}. Use h:mm:ss past an hour.`);
+        throw new Error(tr("Invalid timestamp: {line}. Use h:mm:ss past an hour.", { line }));
       }
       const start = parts.reduce((total, part) => total * 60 + part, 0);
       if (current && start <= current.start) {
-        throw new Error(`Timestamps must increase: ${line} is not after the previous one.`);
+        throw new Error(tr("Timestamps must increase: {line} is not after the previous one.", { line }));
       }
       cues.push({ start, lines: [] });
     } else if (current) {
       current.lines.push(line);
     } else {
-      throw new Error("The transcript must start with a timestamp.");
+      throw new Error(tr("The transcript must start with a timestamp."));
     }
   }
   const kept = cues.filter((cue) => cue.lines.length > 0);
