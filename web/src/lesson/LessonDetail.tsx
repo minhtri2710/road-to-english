@@ -24,7 +24,14 @@ import { useLesson } from "../hooks/lessons";
 import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import type { PracticeMode } from "../lib/progress";
-import { LEARN_MODE_KEY, readLearnProgress, writeLearnProgress, type LearnProgress } from "../lib/learnProgress";
+import {
+  EMPTY_LEARN_PROGRESS,
+  LEARN_MODE_KEY,
+  onLearnProgressChanged,
+  readLearnProgress,
+  writeLearnProgress,
+  type LearnProgress,
+} from "../lib/learnProgress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
@@ -176,27 +183,46 @@ export function LessonDetail({
   const clipSentence = data.sentences.find((sentence) => sentence.id === clipSentenceId) ?? null;
   // The sentence shown one at a time, or null for the full list; per visit.
   const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
-  // Learn mode (Shadow Gate) in the guided view. The mode is a preference; the sentences passed or
-  // skipped and the skips used are kept per lesson on this device.
+  // Learn mode (Shadow Gate) in the guided view. The mode is a device preference; the sentences passed or
+  // skipped and the skips used are saved per lesson, backed up and synced.
   const [learn, setLearnState] = useState(() => readPref(LEARN_MODE_KEY) === "on");
   const setLearn = (on: boolean) => {
     writePref(LEARN_MODE_KEY, on ? "on" : null);
     setLearnState(on);
   };
-  const [learnProgress, setLearnProgressState] = useState(() => readLearnProgress(data.id));
-  const setLearnProgress = (update: (current: LearnProgress) => LearnProgress) =>
-    setLearnProgressState((current) => {
-      const next = update(current);
-      writeLearnProgress(data.id, next);
-      return next;
-    });
+  const [learnProgress, setLearnProgressState] = useState<LearnProgress>(EMPTY_LEARN_PROGRESS);
+  // Set once this visit changes the progress, so a slower read cannot overwrite the change.
+  const changedProgress = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = (fromElsewhere: boolean) => {
+      readLearnProgress(data.id).then(
+        (stored) => {
+          if (!cancelled && (fromElsewhere || !changedProgress.current)) setLearnProgressState(stored);
+        },
+        () => undefined,
+      );
+    };
+    load(false);
+    // A sync or a backup import may change it while the lesson is open.
+    const stop = onLearnProgressChanged(() => load(true));
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [data.id]);
+  const setLearnProgress = (next: LearnProgress) => {
+    changedProgress.current = true;
+    setLearnProgressState(next);
+    writeLearnProgress(data.id, next).catch(() => undefined);
+  };
   const passedIds = new Set(learnProgress.passed);
   const skipsUsed = learnProgress.skipsUsed;
   const pass = (sentenceId: string, skipped = false) =>
-    setLearnProgress((current) => ({
-      passed: current.passed.includes(sentenceId) ? current.passed : [...current.passed, sentenceId],
-      skipsUsed: current.skipsUsed + (skipped ? 1 : 0),
-    }));
+    setLearnProgress({
+      passed: learnProgress.passed.includes(sentenceId) ? learnProgress.passed : [...learnProgress.passed, sentenceId],
+      skipsUsed: learnProgress.skipsUsed + (skipped ? 1 : 0),
+    });
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayButtonRef = useRef<HTMLButtonElement>(null);
@@ -493,7 +519,7 @@ export function LessonDetail({
             skipsLeft: SKIPS_PER_LESSON - skipsUsed,
             skip: () => pass(data.sentences[guidedIndex].id, true),
             progressCount: learnProgress.passed.length,
-            startOver: () => setLearnProgress(() => ({ passed: [], skipsUsed: 0 })),
+            startOver: () => setLearnProgress(EMPTY_LEARN_PROGRESS),
           }}
         >
           {/* Keyed so a step to another sentence starts its practice afresh. */}

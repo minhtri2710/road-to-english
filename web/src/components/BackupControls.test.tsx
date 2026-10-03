@@ -31,7 +31,7 @@ describe("BackupControls", () => {
     }
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     if (!input) throw new Error("backup file input not found");
-    const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], userLessons: [] }, new Date());
+    const text = exportData({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], userLessons: [] }, new Date());
     await harnessAct(async () => {
       Object.defineProperty(input, "files", {
         configurable: true,
@@ -103,7 +103,7 @@ describe("BackupControls", () => {
       {
         cards: [importedCard],
         practiceDays: [{ date: todayKey(new Date()) }],
-        lessonCompletion: [{ lessonId: "lesson-1" }],
+        lessonCompletion: [{ lessonId: "lesson-1" }], learnProgress: [],
         userLessons: [],
       },
       new Date(),

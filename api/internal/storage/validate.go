@@ -63,6 +63,30 @@ func (s State) validate() error {
 			return ErrInvalidState
 		}
 	}
+
+	progressLessons := make(map[string]struct{}, len(s.LearnProgress))
+	for _, progress := range s.LearnProgress {
+		if !ValidKey(progress.LessonID) || progress.Passed == nil || len(progress.Passed) > MaxPassedSentences {
+			return ErrInvalidState
+		}
+		if _, exists := progressLessons[progress.LessonID]; exists {
+			return ErrInvalidState
+		}
+		progressLessons[progress.LessonID] = struct{}{}
+		passed := make(map[string]struct{}, len(progress.Passed))
+		for _, sentenceID := range progress.Passed {
+			if _, exists := passed[sentenceID]; exists || !ValidKey(sentenceID) {
+				return ErrInvalidState
+			}
+			passed[sentenceID] = struct{}{}
+		}
+		if progress.SkipsUsed < 0 || progress.SkipsUsed > MaxSkipsUsed {
+			return ErrInvalidState
+		}
+		if _, err := parseTimestamp(progress.UpdatedAt); err != nil {
+			return ErrInvalidState
+		}
+	}
 	return nil
 }
 

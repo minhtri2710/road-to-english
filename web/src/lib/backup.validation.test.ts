@@ -28,7 +28,7 @@ function state(overrides: Record<string, unknown> = {}) {
       },
     ],
     practiceDays: [{ date: "2026-01-01" }],
-    lessonCompletion: [{ lessonId: "lesson-1" }],
+    lessonCompletion: [{ lessonId: "lesson-1" }], learnProgress: [],
     ...overrides,
   };
 }
@@ -112,7 +112,7 @@ describe("sync state validation", () => {
     ["invalid deletedAt", { deletedAt: "yesterday" }],
     ["null cards", { cards: null }],
     ["null practice days", { practiceDays: null }],
-    ["null lesson completion", { lessonCompletion: null }],
+    ["null lesson completion", { lessonCompletion: null, learnProgress: [] }],
   ])("rejects %s", (_name, cardOverrides) => {
     const overrides = cardOverrides as Record<string, unknown>;
     const next = "cards" in overrides || "practiceDays" in overrides || "lessonCompletion" in overrides
@@ -168,8 +168,8 @@ describe("sync state validation", () => {
 
   it("rejects a lesson completion whose lessonId is over MAX_KEY_BYTES", () => {
     const atCap = "l".repeat(MAX_KEY_BYTES);
-    expect(revives(state({ lessonCompletion: [{ lessonId: atCap }] }))).toBe(true);
-    expect(revives(state({ lessonCompletion: [{ lessonId: `${atCap}l` }] }))).toBe(false);
+    expect(revives(state({ lessonCompletion: [{ lessonId: atCap }], learnProgress: [] }))).toBe(true);
+    expect(revives(state({ lessonCompletion: [{ lessonId: `${atCap}l` }], learnProgress: [] }))).toBe(false);
   });
 
   it("accepts sentence and word cards", () => {
@@ -205,9 +205,35 @@ describe("sync state validation", () => {
   it("revives only the sync stores, never user lessons", () => {
     expect(Object.keys(reviveSyncState({ ...state(), userLessons: [] })).sort()).toEqual([
       "cards",
+      "learnProgress",
       "lessonCompletion",
       "practiceDays",
     ]);
+  });
+
+  it("reads a file without Learn progress, from before it was saved, as none", () => {
+    const { learnProgress: _omitted, ...older } = state();
+    void _omitted;
+    expect(reviveSyncState(older).learnProgress).toEqual([]);
+  });
+
+  it("keeps valid Learn progress and rejects a broken entry", () => {
+    const progress = { lessonId: "lesson-1", passed: ["s1", "s2"], skipsUsed: 1, updatedAt: "2026-09-22T10:00:00Z" };
+    expect(reviveSyncState({ ...state(), learnProgress: [progress] }).learnProgress).toEqual([progress]);
+    for (const broken of [
+      { ...progress, lessonId: "" },
+      { ...progress, passed: ["s1", "s1"] },
+      { ...progress, passed: [""] },
+      { ...progress, skipsUsed: -1 },
+      { ...progress, skipsUsed: 1.5 },
+      { ...progress, updatedAt: "yesterday" },
+    ]) {
+      expect(() => reviveSyncState({ ...state(), learnProgress: [broken] }), JSON.stringify(broken)).toThrow(
+        "Invalid Learn progress at index 0.",
+      );
+    }
+    expect(() => reviveSyncState({ ...state(), learnProgress: [progress, progress] })).toThrow("Invalid Learn progress at index 1.");
+    expect(() => reviveSyncState({ ...state(), learnProgress: {} })).toThrow("Invalid backup stores.");
   });
 
   it("accepts live and tombstone cards", () => {

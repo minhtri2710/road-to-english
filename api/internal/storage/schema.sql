@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS lesson_completion (
     PRIMARY KEY (user_id, lesson_id)
 );
 
+-- One row per lesson with Learn mode progress: the newer updated_at wins a sync, so a Start over carries across devices.
+CREATE TABLE IF NOT EXISTS learn_progress (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    passed TEXT[] NOT NULL,
+    skips_used INTEGER NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_id, lesson_id)
+);
+
 CREATE TABLE IF NOT EXISTS sync_epochs (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     epoch UUID NOT NULL DEFAULT gen_random_uuid()

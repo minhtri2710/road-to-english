@@ -51,7 +51,7 @@ describe("vocabulary store", () => {
     it("rejects a rating of the pre-merge card and keeps the merged history", async () => {
       await saveCard(newCard("sentence-1", new Date("2026-01-04T00:00:00.000Z")));
       const shown = (await getAllCards())[0]!;
-      await mergeInto({ cards: [history()], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+      await mergeInto({ cards: [history()], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
       const merged = (await getAllCards())[0]!;
       expect(merged.updatedAt).toBe(shown.updatedAt);
       expect(merged.fsrs.reps).toBe(3);
@@ -75,7 +75,7 @@ describe("vocabulary store", () => {
 describe("dirty flag on local writes", () => {
   const stored = () => withDb((db) => db.getAll("cards"));
   // Stores `card` as a clean synced copy.
-  const synced = (card: VocabCard) => mergeInto({ cards: [card], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }, []);
+  const synced = (card: VocabCard) => mergeInto({ cards: [card], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
 
   it.each<[string, (card: VocabCard) => Promise<unknown>]>([
     ["putCard", (card) => putCard({ ...card, front: "edited" })],
@@ -98,7 +98,7 @@ describe("dirty flag on local writes", () => {
 
   it("replaceAll stores every imported card dirty", async () => {
     await synced(newCard("sentence-1", now));
-    await replaceAll({ cards: [newCard("sentence-1", now), newCard("sentence-2", now)], practiceDays: [], lessonCompletion: [], userLessons: [] });
+    await replaceAll({ cards: [newCard("sentence-1", now), newCard("sentence-2", now)], practiceDays: [], lessonCompletion: [], learnProgress: [], userLessons: [] });
     expect((await stored()).map(({ dirty }) => dirty)).toEqual([true, true]);
   });
 

@@ -32,7 +32,7 @@ export function responseFor(path: string, lesson: Lesson = greetingsLesson): Res
   }
 
   if (path === "/sync") {
-    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [], syncEpoch: SYNC_EPOCH }), {
+    return new Response(JSON.stringify({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }), {
       status: 200,
     });
   }

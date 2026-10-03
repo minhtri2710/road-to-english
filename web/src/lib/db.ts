@@ -15,7 +15,15 @@ interface AppDatabase extends DBSchema {
   // Local-only: not synced, not in backup.
   dailyCounts: { key: string; value: DailyCount };
   // Not synced; carried only by the backup file.
-  userLessons: { key: string; value: Lesson };
+  userLessons: { key: string; value: Lesson };  // Synced and in backup: each lesson's Learn mode progress, newest updatedAt wins.
+  learnProgress: { key: string; value: StoredLearnProgress };
+}
+
+export interface StoredLearnProgress {
+  lessonId: string;
+  passed: string[];
+  skipsUsed: number;
+  updatedAt: string;
 }
 
 export interface DailyCount {
@@ -25,18 +33,22 @@ export interface DailyCount {
 }
 
 export function openAppDatabase(): Promise<IDBPDatabase<AppDatabase>> {
-  return openDB<AppDatabase>("road-to-english", 1, {
-    upgrade(db) {
+  return openDB<AppDatabase>("road-to-english", 2, {
+    upgrade(db, oldVersion) {
       // ponytail: one local DB per browser profile; upgrade = key the IndexedDB name by user id.
-      // Pre-launch: the schema is redefined in place at version 1 — no v2, no migration
-      // ladder. Dev data is disposable; clear the "road-to-english" IndexedDB in DevTools
-      // when this schema changes.
-      db.createObjectStore("cards", { keyPath: "id" });
-      db.createObjectStore("practiceDays", { keyPath: "date" });
-      db.createObjectStore("lessonCompletion", { keyPath: "lessonId" });
-      db.createObjectStore("meta", { keyPath: "key" });
-      db.createObjectStore("dailyCounts", { keyPath: "date" });
-      db.createObjectStore("userLessons", { keyPath: "id" });
+      // Pre-launch: version 1 is redefined in place, so dev data is disposable. Version 2 only adds
+      // learnProgress, so a version 1 database keeps its data.
+      if (oldVersion < 1) {
+        db.createObjectStore("cards", { keyPath: "id" });
+        db.createObjectStore("practiceDays", { keyPath: "date" });
+        db.createObjectStore("lessonCompletion", { keyPath: "lessonId" });
+        db.createObjectStore("meta", { keyPath: "key" });
+        db.createObjectStore("dailyCounts", { keyPath: "date" });
+        db.createObjectStore("userLessons", { keyPath: "id" });
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore("learnProgress", { keyPath: "lessonId" });
+      }
     },
   });
 }

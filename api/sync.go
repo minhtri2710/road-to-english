@@ -32,6 +32,10 @@ func syncHandler(w http.ResponseWriter, r *http.Request, repo *storage.Repositor
 		writeError(w, http.StatusRequestEntityTooLarge, "too many lesson completions")
 		return
 	}
+	if errors.Is(err, storage.ErrTooManyLearnProgress) {
+		writeError(w, http.StatusRequestEntityTooLarge, "too many learn progress entries")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return

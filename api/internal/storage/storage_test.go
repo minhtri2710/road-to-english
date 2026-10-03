@@ -85,6 +85,7 @@ func emptyState() State {
 		Cards:            []Card{},
 		PracticeDays:     []PracticeDay{},
 		LessonCompletion: []LessonCompletion{},
+		LearnProgress:    []LearnProgress{},
 	}
 }
 
@@ -132,6 +133,7 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 			Cards:            []Card{dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))},
 			PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
 			LessonCompletion: []LessonCompletion{{LessonID: "lesson-1"}},
+			LearnProgress:    []LearnProgress{{LessonID: "lesson-1", Passed: []string{"sentence-1"}, SkipsUsed: 1, UpdatedAt: "2026-09-22T10:00:00Z"}},
 		}
 	}
 	addCard := func(state *State, mutate func(*Card)) {
@@ -140,18 +142,26 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 		state.Cards = append(state.Cards, card)
 	}
 	for name, mutate := range map[string]func(*State){
-		"nil cards":             func(s *State) { s.Cards = nil },
-		"nil practice days":     func(s *State) { s.PracticeDays = nil },
-		"nil lesson completion": func(s *State) { s.LessonCompletion = nil },
-		"card text":             func(s *State) { addCard(s, func(c *Card) { c.Front = "" }) },
-		"card word":             func(s *State) { addCard(s, func(c *Card) { c.Source.Word = nil }) },
-		"card id":               func(s *State) { addCard(s, func(c *Card) { c.ID = "wrong" }) },
-		"duplicate card":        func(s *State) { s.Cards = append(s.Cards, s.Cards[0]) },
-		"card fsrs":             func(s *State) { addCard(s, func(c *Card) { c.Fsrs = []byte(`{"due":"2026-09-22T10:00:00Z"}`) }) },
-		"card updatedAt":        func(s *State) { addCard(s, func(c *Card) { c.UpdatedAt = "yesterday" }) },
-		"card deletedAt":        func(s *State) { addCard(s, func(c *Card) { c.DeletedAt = DeletedAt{} }) },
-		"practice day":          func(s *State) { s.PracticeDays = append(s.PracticeDays, PracticeDay{Date: "2026-02-30"}) },
-		"lesson completion":     func(s *State) { s.LessonCompletion = append(s.LessonCompletion, LessonCompletion{LessonID: ""}) },
+		"nil cards":                       func(s *State) { s.Cards = nil },
+		"nil practice days":               func(s *State) { s.PracticeDays = nil },
+		"nil lesson completion":           func(s *State) { s.LessonCompletion = nil },
+		"card text":                       func(s *State) { addCard(s, func(c *Card) { c.Front = "" }) },
+		"card word":                       func(s *State) { addCard(s, func(c *Card) { c.Source.Word = nil }) },
+		"card id":                         func(s *State) { addCard(s, func(c *Card) { c.ID = "wrong" }) },
+		"duplicate card":                  func(s *State) { s.Cards = append(s.Cards, s.Cards[0]) },
+		"card fsrs":                       func(s *State) { addCard(s, func(c *Card) { c.Fsrs = []byte(`{"due":"2026-09-22T10:00:00Z"}`) }) },
+		"card updatedAt":                  func(s *State) { addCard(s, func(c *Card) { c.UpdatedAt = "yesterday" }) },
+		"card deletedAt":                  func(s *State) { addCard(s, func(c *Card) { c.DeletedAt = DeletedAt{} }) },
+		"practice day":                    func(s *State) { s.PracticeDays = append(s.PracticeDays, PracticeDay{Date: "2026-02-30"}) },
+		"lesson completion":               func(s *State) { s.LessonCompletion = append(s.LessonCompletion, LessonCompletion{LessonID: ""}) },
+		"learn progress lesson":           func(s *State) { s.LearnProgress[0].LessonID = "" },
+		"learn progress nil passed":       func(s *State) { s.LearnProgress[0].Passed = nil },
+		"learn progress passed id":        func(s *State) { s.LearnProgress[0].Passed = []string{""} },
+		"learn progress duplicate passed": func(s *State) { s.LearnProgress[0].Passed = []string{"s1", "s1"} },
+		"learn progress negative skips":   func(s *State) { s.LearnProgress[0].SkipsUsed = -1 },
+		"learn progress too many skips":   func(s *State) { s.LearnProgress[0].SkipsUsed = MaxSkipsUsed + 1 },
+		"learn progress updatedAt":        func(s *State) { s.LearnProgress[0].UpdatedAt = "yesterday" },
+		"duplicate learn progress":        func(s *State) { s.LearnProgress = append(s.LearnProgress, s.LearnProgress[0]) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			state := valid()
@@ -611,6 +621,7 @@ func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
 		Cards:            []Card{},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}, {Date: "2026-09-23"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-x"}, {LessonID: "lesson-y"}},
+		LearnProgress:    []LearnProgress{},
 	}
 
 	syncState(t, repo, user.ID, first)
@@ -624,6 +635,34 @@ func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
 	}
 }
 
+// Each lesson's Learn progress is last-writer-wins on updatedAt: a newer push replaces it, even with less progress
+// (a Start over), and an older or equal one leaves it.
+func TestLearnProgressNewerUpdatedAtWins(t *testing.T) {
+	repo := newTestRepo(t)
+	user := createTestUser(t, repo, "learn-lww@example.com")
+	push := func(progress LearnProgress) []LearnProgress {
+		state := emptyState()
+		state.LearnProgress = []LearnProgress{progress}
+		return syncState(t, repo, user.ID, state).LearnProgress
+	}
+	started := LearnProgress{LessonID: "lesson-1", Passed: []string{"s1", "s2"}, SkipsUsed: 1, UpdatedAt: "2026-09-22T10:00:00Z"}
+	if got := push(started); !reflect.DeepEqual(got, []LearnProgress{started}) {
+		t.Fatalf("first push = %#v, want %#v", got, []LearnProgress{started})
+	}
+	stale := LearnProgress{LessonID: "lesson-1", Passed: []string{"s1"}, SkipsUsed: 0, UpdatedAt: "2026-09-22T09:00:00Z"}
+	if got := push(stale); !reflect.DeepEqual(got, []LearnProgress{started}) {
+		t.Fatalf("older push = %#v, want the stored %#v", got, []LearnProgress{started})
+	}
+	tie := LearnProgress{LessonID: "lesson-1", Passed: []string{}, SkipsUsed: 0, UpdatedAt: started.UpdatedAt}
+	if got := push(tie); !reflect.DeepEqual(got, []LearnProgress{started}) {
+		t.Fatalf("equal-time push = %#v, want the stored %#v", got, []LearnProgress{started})
+	}
+	startOver := LearnProgress{LessonID: "lesson-1", Passed: []string{}, SkipsUsed: 0, UpdatedAt: "2026-09-23T10:00:00Z"}
+	if got := push(startOver); !reflect.DeepEqual(got, []LearnProgress{startOver}) {
+		t.Fatalf("newer Start over = %#v, want %#v", got, []LearnProgress{startOver})
+	}
+}
+
 func TestUserStateIsolatedByUser(t *testing.T) {
 	repo := newTestRepo(t)
 	userA := createTestUser(t, repo, "a@example.com")
@@ -632,11 +671,13 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 		Cards:            []Card{testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "A", "card", fsrs("2026-01-01T00:00:00Z", 0))},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-a"}},
+		LearnProgress:    []LearnProgress{{LessonID: "lesson-a", Passed: []string{"sentence-1"}, SkipsUsed: 0, UpdatedAt: "2026-09-22T10:00:00Z"}},
 	}
 	stateB := State{
 		Cards:            []Card{testCard("lesson-2:sentence-2", "lesson-2", "sentence-2", "B", "card", fsrs("2026-01-01T00:00:00Z", 0))},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-23"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-b"}},
+		LearnProgress:    []LearnProgress{},
 	}
 
 	gotA := syncState(t, repo, userA.ID, stateA)
