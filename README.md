@@ -2,13 +2,14 @@
 
 A web app for daily English practice, built for Vietnamese speakers.
 
-- Lesson library: shadow each sentence along with its video, with optional Vietnamese translation and a pronunciation check.
+- Lesson library: 40 lessons from A1 to B2. Shadow each sentence along with its video, with optional Vietnamese translation and a pronunciation check.
 - Dictation and fill-in-the-blank quizzes, plus guided shadowing.
 - Learn mode (Shadow Gate): in guided shadowing, each word you say is scored clear, close or missed, and the next sentence unlocks at 70 points, with three skips per lesson and keyboard shortcuts.
 - Video lessons caption the clip that played, with its Vietnamese translation.
 - A recording is drawn as a waveform and scored by its sound: your pace against the lesson's target, and long pauses mid-sentence.
 - A "How it works" page at `#/about`.
 - Import your own text as a lesson.
+- Installable as an app (web app manifest and service worker, production builds only). Once installed or visited, it opens offline, with the library lessons you have already opened.
 - Save words and sentences as cards and review them with spaced repetition.
 - Everything is stored on your device. Sign in to sync with an account, or export a backup file.
 

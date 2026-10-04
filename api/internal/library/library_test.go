@@ -9,8 +9,8 @@ func TestLoadSeed(t *testing.T) {
 	}
 
 	summaries := store.Summaries()
-	if len(summaries) != 32 {
-		t.Fatalf("LoadSeed() returned %d lessons, want 32", len(summaries))
+	if len(summaries) != 40 {
+		t.Fatalf("LoadSeed() returned %d lessons, want 40", len(summaries))
 	}
 	levels := make(map[Level]int)
 	sentenceCount := 0
@@ -30,10 +30,10 @@ func TestLoadSeed(t *testing.T) {
 			}
 		}
 	}
-	if sentenceCount < 288 {
-		t.Errorf("seed has %d sentences, want at least 288", sentenceCount)
+	if sentenceCount < 360 {
+		t.Errorf("seed has %d sentences, want at least 360", sentenceCount)
 	}
-	for level, want := range map[Level]int{LevelA1: 8, LevelA2: 9, LevelB1: 8, LevelB2: 7} {
+	for level, want := range map[Level]int{LevelA1: 10, LevelA2: 11, LevelB1: 10, LevelB2: 9} {
 		if levels[level] != want {
 			t.Errorf("seed has %d lessons at level %q, want %d", levels[level], level, want)
 		}
