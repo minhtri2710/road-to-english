@@ -44,9 +44,10 @@ const appStyles = stylex.create({
     backgroundColor: "var(--color-background-body)",
     color: "var(--color-text-primary)",
   },
+  // Every view shares the header's 72rem column, so page edges line up from view to view.
   content: {
     width: "100%",
-    maxWidth: "48rem",
+    maxWidth: "72rem",
     marginInline: "auto",
     // Narrow screens give the spacing back to the first screen of lessons.
     padding: {
@@ -54,9 +55,17 @@ const appStyles = stylex.create({
       "@media (max-width: 480px)": "var(--spacing-2) var(--spacing-4) var(--spacing-8)",
     },
   },
-  // The library lays its lessons out in columns, so it takes the header's full width.
-  wide: {
-    maxWidth: "72rem",
+  // Review's cards keep a reading width, on the page's left edge.
+  readingColumn: {
+    width: "100%",
+    maxWidth: "48rem",
+  },
+  // Manage's import form beside Your data from laptop width.
+  manageGrid: {
+    display: "grid",
+    gridTemplateColumns: { default: "minmax(0, 1fr)", "@media (min-width: 960px)": "minmax(0, 3fr) minmax(0, 2fr)" },
+    alignItems: "start",
+    gap: { default: "var(--spacing-4)", "@media (min-width: 960px)": "var(--spacing-6)" },
   },
   reviewDue: {
     alignSelf: "start",
@@ -87,14 +96,13 @@ const appStyles = stylex.create({
   listenChip: { backgroundColor: "var(--color-accent-muted)", color: "var(--color-accent)" },
   speakChip: { backgroundColor: "var(--rte-color-speak-muted)", color: "var(--rte-color-speak)" },
   unlockChip: { backgroundColor: "var(--color-background-muted)", color: "var(--color-text-secondary)" },
-  display: {
-    fontSize: { default: null, "@media (min-width: 481px)": "3rem" },
-    lineHeight: { default: null, "@media (min-width: 481px)": 1.1 },
-    letterSpacing: { default: null, "@media (min-width: 481px)": "-0.02em" },
-  },
   lead: {
     maxWidth: "32rem",
     color: "var(--color-text-secondary)",
+  },
+  // Review and Manage open with the library's title and lead, with the same space below as its hero.
+  pageIntro: {
+    paddingBlockEnd: { default: 0, "@media (min-width: 481px)": "var(--spacing-4)" },
   },
   // Phones keep the first screen for lessons; the footer links How it works too.
   introLink: {
@@ -212,17 +220,17 @@ function AppViews() {
         }
         onNavigate={navigate}
       />
-      <div className={stylex.props(appStyles.content, view !== "review" && view !== "manage" && appStyles.wide).className}>
+      <div className={stylex.props(appStyles.content).className}>
         <VStack as="main" gap={2}>
           {(view === "review" || view === "manage") && (
-            <VStack gap={1}>
-              <ViewHeading takeFocus={takeHeadingFocus}>
+            <div className={stylex.props(appStyles.intro, appStyles.pageIntro).className}>
+              <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.pageTitle}>
                 {view === "review" ? t("Review deck") : t("Manage lessons and data")}
               </ViewHeading>
-              <Text type="large">
+              <Text type="large" xstyle={appStyles.lead}>
                 {view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
               </Text>
-            </VStack>
+            </div>
           )}
           {view === "about" ? (
             <Landing
@@ -231,7 +239,7 @@ function AppViews() {
               onOpenLesson={(id) => navigate({ view: "lesson", id })}
             />
           ) : view === "review" ? (
-            <VStack gap={2}>
+            <VStack gap={2} xstyle={appStyles.readingColumn}>
               <Badge label={t("{count} due", { count: reviewDeck.length })} variant="info" xstyle={appStyles.reviewDue} />
               <ReviewDeck
                 due={reviewDeck}
@@ -255,7 +263,7 @@ function AppViews() {
                       <li className={stylex.props(appStyles.chip, appStyles.speakChip).className}>{t("SAY IT BACK")}</li>
                       <li className={stylex.props(appStyles.chip, appStyles.unlockChip).className}>{t("UNLOCK")}</li>
                     </ul>
-                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={appStyles.display}>{t("Lesson library")}</ViewHeading>
+                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.pageTitle}>{t("Lesson library")}</ViewHeading>
                     <Text type="large" xstyle={appStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
                     <Button label={t("How it works")} variant="secondary" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
                   </div>
@@ -300,20 +308,24 @@ function AppViews() {
               </VStack>
             </VStack>
           ) : view === "manage" ? (
-            <VStack gap={4}>
-              <ImportTextForm
-                onCreate={createLesson}
-                levelFilter={levelFilter}
-                takeReturnFocus={takeReturnFocus}
-              />
-              <YourData
-                storageKept={storageKept}
-                signedIn={auth.user !== null}
-                setError={setBackupError}
-                onImported={reloadAfterImport}
-                takeReturnFocus={takeReturnFocus}
-              />
-            </VStack>
+            <div className={stylex.props(appStyles.manageGrid).className}>
+              <div className={stylex.props(sharedStyles.panel).className}>
+                <ImportTextForm
+                  onCreate={createLesson}
+                  levelFilter={levelFilter}
+                  takeReturnFocus={takeReturnFocus}
+                />
+              </div>
+              <div className={stylex.props(sharedStyles.panel).className}>
+                <YourData
+                  storageKept={storageKept}
+                  signedIn={auth.user !== null}
+                  setError={setBackupError}
+                  onImported={reloadAfterImport}
+                  takeReturnFocus={takeReturnFocus}
+                />
+              </div>
+            </div>
           ) : route.view === "lesson" ? (
             <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
           ) : userLesson ? (

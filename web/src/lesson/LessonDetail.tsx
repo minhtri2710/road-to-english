@@ -46,11 +46,11 @@ import { LessonSummary, type SummaryProps } from "./LessonSummary";
 import { useT } from "../i18n";
 
 const styles = stylex.create({
-  // A reading column; Learn mode one sentence at a time takes the full width for its transcript.
+  // A reading column on the page's left edge, in line with the header; Learn mode one sentence at a time takes the
+  // full width for its transcript.
   column: {
     width: "100%",
     maxWidth: "48rem",
-    marginInline: "auto",
   },
   wideColumn: {
     maxWidth: "none",
@@ -347,7 +347,7 @@ export function LessonDetail({
         </HStack>
       </HStack>
       <VStack gap={1}>
-        <ViewHeading takeFocus={takeHeadingFocus}>{data.title}</ViewHeading>
+        <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.pageTitle}>{data.title}</ViewHeading>
         <Text type="supporting">{t("Level {level}", { level: data.level })}</Text>
       </VStack>
       {data.videoId && (
