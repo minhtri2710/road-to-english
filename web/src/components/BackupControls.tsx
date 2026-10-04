@@ -1,7 +1,9 @@
 import { useRef, type ChangeEvent } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import { useT } from "../i18n";
@@ -9,13 +11,48 @@ import { backupFileName, exportData, importData } from "../lib/backup";
 import { exportBackupData, replaceAll } from "../lib/backupStore";
 import { cardsCsv, cardsCsvFileName } from "../lib/csv";
 import { getAllCards } from "../lib/vocabStore";
-import { sharedStyles } from "./styles";
 
 const styles = stylex.create({
   backupFileInput: {
     display: "none",
   },
+  // Settings rows: what an action does on the left, its button on the right; stacked on phones.
+  rows: {
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  row: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2) var(--spacing-4)",
+    paddingBlock: "var(--spacing-3)",
+    borderBlockStartWidth: { default: "1px", ":first-child": 0 },
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: "var(--color-border)",
+  },
+  rowText: {
+    flex: "1 1 14rem",
+    minWidth: 0,
+  },
+  rowAction: {
+    flex: "0 0 auto",
+  },
 });
+
+function Row({ title, description, action }: { title: string; description: string; action: ReactNode }) {
+  return (
+    <li className={stylex.props(styles.row).className}>
+      <VStack gap={0} xstyle={styles.rowText}>
+        <Text weight="semibold">{title}</Text>
+        <Text type="supporting">{description}</Text>
+      </VStack>
+      <div className={stylex.props(styles.rowAction).className}>{action}</div>
+    </li>
+  );
+}
 
 function downloadText(text: string, type: string, fileName: string): void {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -85,22 +122,34 @@ export function BackupControls({
   };
 
   return (
-    <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-      <Button label={t("Export")} variant="secondary" onClick={() => void exportBackup()} />
-      <Button label={t("Export CSV")} variant="secondary" onClick={() => void exportCsv()} />
-      <Button
-        label={t("Import")}
-        variant="secondary"
-        onClick={() => importInput.current?.click()}
+    <ul className={stylex.props(styles.rows).className}>
+      <Row
+        title={t("Backup file")}
+        description={t("Saves your cards, progress and lessons.")}
+        action={<Button label={t("Export")} variant="secondary" onClick={() => void exportBackup()} />}
       />
-      <input
-        ref={importInput}
-        className={stylex.props(styles.backupFileInput).className}
-        type="file"
-        accept="application/json"
-        aria-label={t("Import backup file")}
-        onChange={(event) => void importBackup(event)}
+      <Row
+        title={t("Cards for a spreadsheet")}
+        description={t("Saves your cards as a CSV file.")}
+        action={<Button label={t("Export CSV")} variant="secondary" onClick={() => void exportCsv()} />}
       />
-    </HStack>
+      <Row
+        title={t("Restore a backup")}
+        description={t("Replaces the data on this device with a backup file.")}
+        action={(
+          <>
+            <Button label={t("Import")} variant="secondary" onClick={() => importInput.current?.click()} />
+            <input
+              ref={importInput}
+              className={stylex.props(styles.backupFileInput).className}
+              type="file"
+              accept="application/json"
+              aria-label={t("Import backup file")}
+              onChange={(event) => void importBackup(event)}
+            />
+          </>
+        )}
+      />
+    </ul>
   );
 }

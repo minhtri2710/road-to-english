@@ -224,9 +224,9 @@ describe("LessonList", () => {
 
     expect(card.textContent).toContain("Freezes 0 of 2");
     expect(card.textContent).toContain("0 XP");
-    // The order the card reads in: action row, goal, picker, streak, XP.
+    // The order the card reads in: title and XP, next step, goal, picker, streak.
     const text = card.textContent!;
-    const order = ["Today", "practice actions today", "5 Light", "Start a new streak today", "Freezes", "0 XP"].map((part) =>
+    const order = ["Today", "0 XP", "Start lesson", "practice actions today", "5 Light", "Start a new streak today", "Freezes"].map((part) =>
       text.indexOf(part),
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));

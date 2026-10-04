@@ -22,7 +22,35 @@ const styles = stylex.create({
     padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-2)" },
   },
   todayContent: {
-    gap: "var(--spacing-0-5)",
+    gap: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1)" },
+  },
+  // The title row: Today on the left, the XP total at the end.
+  titleRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2)",
+  },
+  // The next step, as a highlighted block with its button, like a learning app's "continue" card.
+  next: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-1) var(--spacing-3)",
+    padding: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1-5)" },
+    borderRadius: "var(--radius-element)",
+    backgroundColor: "var(--color-accent-muted)",
+  },
+  nextText: {
+    flex: "1 1 10rem",
+    minWidth: 0,
+  },
+  divider: {
+    paddingBlockStart: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1)" },
+    borderBlockStartWidth: "1px",
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: "var(--color-border)",
   },
   // One line down to 320px: the longest streak text and the freezes fit at this size.
   // Larger text wraps rather than overflowing the card.
@@ -91,7 +119,8 @@ const styles = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
   xp: {
-    marginInlineStart: "auto",
+    fontFamily: "var(--rte-font-mono)",
+    fontVariantNumeric: "tabular-nums",
   },
 });
 
@@ -142,23 +171,28 @@ export function TodayCard({
   return (
     <Card xstyle={[sharedStyles.sentence, styles.todayCard]}>
       <VStack xstyle={styles.todayContent}>
-        <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
+        <div className={stylex.props(styles.titleRow).className}>
           <Heading level={2} tabIndex={-1} ref={headingRef}>{t("Today")}</Heading>
-          {(dueText || suggestionText) && (
-            <Text type="supporting">
-              {dueText}
-              {dueText && suggestionText && " · "}
-              {suggestionText && <span id={suggestionId}>{suggestionText}</span>}
-            </Text>
-          )}
-          {due ? (
-            <Button label={t(due === 1 ? "Review {count} card" : "Review {count} cards", { count: due })} variant="primary" onClick={onReview} />
-          ) : (
-            suggestion && (
-              <Button label={suggestion.action} aria-describedby={suggestionId} variant="primary" onClick={suggestion.onOpen} />
-            )
-          )}
-        </HStack>
+          <Text type="supporting" xstyle={styles.xp}>{t("{xp} XP", { xp })}</Text>
+        </div>
+        {(dueText || suggestionText || due || suggestion) && (
+          <div className={stylex.props(styles.next).className}>
+            {(dueText || suggestionText) && (
+              <Text type="supporting" xstyle={styles.nextText}>
+                {dueText}
+                {dueText && suggestionText && " · "}
+                {suggestionText && <span id={suggestionId}>{suggestionText}</span>}
+              </Text>
+            )}
+            {due ? (
+              <Button label={t(due === 1 ? "Review {count} card" : "Review {count} cards", { count: due })} variant="primary" onClick={onReview} />
+            ) : (
+              suggestion && (
+                <Button label={suggestion.action} aria-describedby={suggestionId} variant="primary" onClick={suggestion.onOpen} />
+              )
+            )}
+          </div>
+        )}
         <div className={stylex.props(styles.goalRow).className}>
           <GoalRing
             label={`${t("{done} of {goal} practice actions today", { done: actionsToday, goal: dailyGoal })}${goalMet ? ` · ${t("Daily goal met")}` : ""}`}
@@ -185,38 +219,39 @@ export function TodayCard({
             </ToggleButtonGroup>
           </VStack>
         </div>
-        <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
-          <Text weight="semibold">{streak > 0 ? t("{streak}-day streak", { streak }) : t("Start a new streak today")}</Text>
-          <Text type="supporting">
-            <Tooltip
-              content={t(
-                "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to {max}.",
-                { max: MAX_FREEZES },
-              )}
-            >
-              {/* The focusable trigger keeps the 24px minimum target size. */}
-              <span tabIndex={0} className={stylex.props(styles.tooltipTarget).className}>
-                {t("Freezes {freezes} of {max}", { freezes, max: MAX_FREEZES })}
-              </span>
-            </Tooltip>
-          </Text>
-          <Text type="supporting" xstyle={styles.xp}>{t("{xp} XP", { xp })}</Text>
-        </HStack>
-        <ul aria-label={t("This week")} className={stylex.props(styles.week).className}>
-          {week.map((day) => (
-            <li
-              key={day.key}
-              aria-current={day.key === today ? "date" : undefined}
-              className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
-            >
-              <span aria-hidden="true">{t(day.label.slice(0, 2))}</span>
-              <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
-              <VisuallyHidden>
-                {t(day.practiced ? "{day} practised" : "{day} not practised", { day: t(WEEKDAY_NAMES[day.label]) })}
-              </VisuallyHidden>
-            </li>
-          ))}
-        </ul>
+        <VStack gap={1} xstyle={styles.divider}>
+          <HStack gap={2} align="center" xstyle={[styles.streakRow, styles.statRow]}>
+            <Text weight="semibold">{streak > 0 ? t("{streak}-day streak", { streak }) : t("Start a new streak today")}</Text>
+            <Text type="supporting">
+              <Tooltip
+                content={t(
+                  "A freeze keeps your streak when you miss one day. You earn one for every 7 days in a row, up to {max}.",
+                  { max: MAX_FREEZES },
+                )}
+              >
+                {/* The focusable trigger keeps the 24px minimum target size. */}
+                <span tabIndex={0} className={stylex.props(styles.tooltipTarget).className}>
+                  {t("Freezes {freezes} of {max}", { freezes, max: MAX_FREEZES })}
+                </span>
+              </Tooltip>
+            </Text>
+          </HStack>
+          <ul aria-label={t("This week")} className={stylex.props(styles.week).className}>
+            {week.map((day) => (
+              <li
+                key={day.key}
+                aria-current={day.key === today ? "date" : undefined}
+                className={stylex.props(styles.day, day.practiced && styles.practised, day.key === today && styles.today).className}
+              >
+                <span aria-hidden="true">{t(day.label.slice(0, 2))}</span>
+                <span aria-hidden="true" className={stylex.props(day.practiced && styles.dayCheck).className}>{day.practiced ? "✓" : "○"}</span>
+                <VisuallyHidden>
+                  {t(day.practiced ? "{day} practised" : "{day} not practised", { day: t(WEEKDAY_NAMES[day.label]) })}
+                </VisuallyHidden>
+              </li>
+            ))}
+          </ul>
+        </VStack>
       </VStack>
     </Card>
   );

@@ -92,34 +92,31 @@ const styles = stylex.create({
     fontWeight: "var(--font-weight-bold)",
     letterSpacing: "0.04em",
   },
-  // A text lesson's cover: a waveform drawn from its title, listening bars then speaking bars as in the mark.
+  // A text lesson's cover: a waveform drawn from its title on its level's tint, listening bars
+  // then softer speaking bars, so every card differs and the grid reads by level.
+  textCover: {
+    aspectRatio: "4 / 1",
+  },
   bars: {
     position: "absolute",
-    inset: "18% 10%",
+    inset: "20% var(--spacing-4)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "3%",
+    gap: "1.5%",
   },
   bar: {
     flex: "1 1 0",
-    maxWidth: "6px",
+    maxWidth: "5px",
     borderRadius: "var(--radius-full)",
+    backgroundColor: "currentColor",
   },
-  listenBar: { backgroundColor: "#4FC3CC" },
-  speakBar: { backgroundColor: "#FF8A4C" },
-  coverTag: {
-    position: "absolute",
-    insetInlineStart: "var(--spacing-2)",
-    top: "var(--spacing-2)",
-    padding: "var(--spacing-0-5) var(--spacing-1-5)",
-    borderRadius: "var(--radius-inner)",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    color: "#C9CED6",
+  speakBar: { opacity: 0.45 },
+  // The WPM target as quiet metadata, so the title leads the card.
+  wpmBadge: {
+    backgroundColor: "var(--color-background-muted)",
+    color: "var(--color-text-secondary)",
     fontFamily: "var(--rte-font-mono)",
-    fontSize: "0.75rem",
-    fontWeight: "var(--font-weight-bold)",
-    letterSpacing: "0.04em",
   },
   titleAndMeta: {
     minWidth: 0,
@@ -148,6 +145,14 @@ const styles = stylex.create({
   check: {
     fontWeight: "var(--font-weight-bold)",
   },
+});
+
+// Each level's tint behind a text lesson's cover; its bars and tile take the level color.
+export const levelTints = stylex.create({
+  A1: { backgroundColor: "var(--rte-color-level-a1-muted)", color: "var(--rte-color-level-a1)" },
+  A2: { backgroundColor: "var(--rte-color-level-a2-muted)", color: "var(--rte-color-level-a2)" },
+  B1: { backgroundColor: "var(--rte-color-level-b1-muted)", color: "var(--rte-color-level-b1)" },
+  B2: { backgroundColor: "var(--rte-color-level-b2-muted)", color: "var(--rte-color-level-b2)" },
 });
 
 const levelStyles = stylex.create({
@@ -192,7 +197,7 @@ function VideoThumbnail({ videoId, onSelect }: { videoId: string; onSelect: () =
   );
 }
 
-const BARS = 24;
+const BARS = 40;
 
 // Bar heights from 20% to 100%, fixed per title so each lesson keeps its own cover.
 export function coverBars(title: string): number[] {
@@ -210,17 +215,16 @@ export function coverBars(title: string): number[] {
 // Decorative, like the video thumbnail: the card's title names the lesson, and clicking the cover opens it too.
 function TextCover({ title, level, onSelect }: { title: string; level: Level; onSelect: () => void }) {
   return (
-    <span aria-hidden="true" className={stylex.props(styles.thumbnail).className} onClick={onSelect}>
+    <span aria-hidden="true" className={stylex.props(styles.thumbnail, styles.textCover, levelTints[level]).className} onClick={onSelect}>
       <span className={stylex.props(styles.bars).className}>
         {coverBars(title).map((height, index) => (
           <span
             key={index}
-            className={stylex.props(styles.bar, index < BARS / 2 ? styles.listenBar : styles.speakBar).className}
+            className={stylex.props(styles.bar, index >= BARS / 2 && styles.speakBar).className}
             style={{ height: `${height}%` }}
           />
         ))}
       </span>
-      <span className={stylex.props(styles.coverTag).className}>{level}</span>
     </span>
   );
 }
@@ -261,7 +265,7 @@ export function LessonCard({
       xstyle={[styles.button, levelStyles[level], styles.framedButton]}
       endContent={(
         <HStack gap={1} align="center" xstyle={styles.badges}>
-          <Badge label={t("{wpm} WPM", { wpm: targetWpm })} variant="info" id={wpmId} />
+          <Badge label={t("{wpm} WPM", { wpm: targetWpm })} variant="info" id={wpmId} xstyle={styles.wpmBadge} />
           {completed && (
             <HStack gap={0.5} align="center" xstyle={styles.completed}>
               <span aria-hidden="true" className={stylex.props(styles.check).className}>✓</span>

@@ -16,11 +16,19 @@ import type { LessonRoute } from "../hooks/useLastLesson";
 import { filterByLevel, LEVEL_FILTERS, type LevelFilter } from "../hooks/useLevelFilter";
 import { useWelcome } from "../hooks/useWelcome";
 import { useT } from "../i18n";
-import { LessonCard } from "./LessonCard";
+import { LessonCard, levelTints } from "./LessonCard";
 import { TodayCard } from "./TodayCard";
 import { WelcomeCard } from "./WelcomeCard";
 
 const LEVELS: Level[] = ["A1", "A2", "B1", "B2"];
+
+// The CEFR name under each level's heading, as course catalogs label their levels.
+const LEVEL_NAMES: Record<Level, string> = {
+  A1: "Beginner",
+  A2: "Elementary",
+  B1: "Intermediate",
+  B2: "Upper intermediate",
+};
 
 const styles = stylex.create({
   levelFilter: {
@@ -46,11 +54,50 @@ const styles = stylex.create({
     borderRadius: "var(--radius-container)",
     backgroundColor: "var(--color-background-surface)",
   },
+  // A level's header row: its tile, its name, and its progress at the end.
   groupHeading: {
     display: "flex",
-    alignItems: "baseline",
-    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "var(--spacing-3)",
+    paddingBlockEnd: "var(--spacing-3)",
+    marginBlockEnd: "var(--spacing-1)",
+    borderBlockEndWidth: "1px",
+    borderBlockEndStyle: "solid",
+    borderBlockEndColor: "var(--color-border)",
+  },
+  levelTile: {
+    flex: "0 0 auto",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "2.75rem",
+    height: "2.75rem",
+    borderRadius: "var(--radius-element)",
+    fontFamily: "var(--rte-font-mono)",
+    fontWeight: "var(--font-weight-bold)",
+  },
+  groupName: {
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
+  groupProgress: {
+    flex: "0 1 12rem",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
     gap: "var(--spacing-1)",
+    minWidth: "7rem",
+  },
+  groupTrack: {
+    width: "100%",
+    height: "4px",
+    overflow: "hidden",
+    borderRadius: "var(--radius-full)",
+    backgroundColor: "var(--color-background-muted)",
+  },
+  groupFill: {
+    height: "100%",
+    backgroundColor: "currentColor",
   },
   // Cards fill the library's width in columns; one column once a card would be narrower than 20rem.
   lessonGrid: {
@@ -64,6 +111,10 @@ const styles = stylex.create({
   lessonItem: {
     display: "flex",
     minWidth: 0,
+  },
+  // The progress block takes the level color for its fill only, not a tinted background.
+  groupTint: {
+    backgroundColor: "transparent",
   },
   groupCount: {
     flex: "0 0 auto",
@@ -176,15 +227,24 @@ export function LessonList({
       lessons: shown.filter((lesson) => lesson.level === level),
     })).filter((group) => group.lessons.length > 0);
     content = (
-      <VStack gap={3}>
+      <VStack gap={6}>
         {groups.map(({ level, lessons }) => {
           const groupCompleted = lessons.filter((lesson) => completedLessons.has(lesson.id)).length;
           return (
             <section key={level} aria-labelledby={`library-level-${level}`}>
-              <VStack gap={0.5}>
+              <VStack gap={2}>
                 <div className={stylex.props(styles.groupHeading).className}>
-                  <Heading level={3} id={`library-level-${level}`}>{level}</Heading>
-                  <Text type="supporting" xstyle={styles.groupCount}>{t("{done} of {total} completed", { done: groupCompleted, total: lessons.length })}</Text>
+                  <span aria-hidden="true" className={stylex.props(styles.levelTile, levelTints[level]).className}>{level}</span>
+                  <VStack gap={0} xstyle={styles.groupName}>
+                    <Heading level={3} id={`library-level-${level}`}>{level}</Heading>
+                    <Text type="supporting">{t(LEVEL_NAMES[level])}</Text>
+                  </VStack>
+                  <div className={stylex.props(styles.groupProgress, levelTints[level], styles.groupTint).className}>
+                    <Text type="supporting" xstyle={styles.groupCount}>{t("{done} of {total} completed", { done: groupCompleted, total: lessons.length })}</Text>
+                    <span aria-hidden="true" className={stylex.props(styles.groupTrack).className}>
+                      <span className={stylex.props(styles.groupFill).className} style={{ width: `${(groupCompleted / lessons.length) * 100}%` }} />
+                    </span>
+                  </div>
                 </div>
                 <ul className={stylex.props(styles.lessonGrid).className}>
                   {lessons.map((lesson) => (

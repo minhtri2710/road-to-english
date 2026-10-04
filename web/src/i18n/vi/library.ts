@@ -1,4 +1,9 @@
 export const library: Record<string, string> = {
+  // CEFR level names
+  "Beginner": "Sơ cấp",
+  "Elementary": "Cơ bản",
+  "Intermediate": "Trung cấp",
+  "Upper intermediate": "Trung cao cấp",
   // Today card
   "Today": "Hôm nay",
   "{count} card due": "{count} thẻ đến hạn",
