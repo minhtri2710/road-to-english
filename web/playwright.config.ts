@@ -10,8 +10,8 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   reporter: "list",
-  // Recent 306-test runs take 4.4–4.6 minutes; 15 minutes leaves loaded-host headroom.
-  globalTimeout: 900_000,
+  // The 342-test suite takes about 15 minutes on a GitHub runner (one worker); 30 leaves loaded-host headroom.
+  globalTimeout: 1_800_000,
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
     headless: true,
