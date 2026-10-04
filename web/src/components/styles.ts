@@ -32,6 +32,22 @@ export const sharedStyles = stylex.create({
   speakEyebrow: {
     color: "var(--rte-color-speak)",
   },
+  // Every view's h1 at the design's display size from tablet width; phones keep the theme's h1.
+  pageTitle: {
+    fontSize: { default: null, "@media (min-width: 481px)": "3rem" },
+    lineHeight: { default: null, "@media (min-width: 481px)": 1.1 },
+    letterSpacing: { default: null, "@media (min-width: 481px)": "-0.02em" },
+  },
+  // A section of a page set apart as a card, like the library's Today card.
+  panel: {
+    minWidth: 0,
+    padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-3)" },
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
+    borderRadius: "var(--radius-container)",
+    backgroundColor: "var(--color-background-surface)",
+  },
   // From tablet width, a section title at the design's 32px.
   sectionTitle: {
     fontSize: { default: null, "@media (min-width: 481px)": "2rem" },
@@ -42,9 +58,12 @@ export const sharedStyles = stylex.create({
     width: "100%",
     minHeight: "var(--size-element-lg)",
     padding: "var(--spacing-2) var(--spacing-3)",
-    border: "1px solid var(--color-border)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
     borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-background-surface)",
+    // The page's color, so a field stands out on the white cards and panels it sits in.
+    backgroundColor: "var(--color-background-body)",
     color: "var(--color-text-primary)",
     font: "inherit",
   },

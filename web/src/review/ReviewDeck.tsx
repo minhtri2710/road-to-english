@@ -333,7 +333,7 @@ export function ReviewDeck({
           ? t("All caught up. Next card in {minutes} min.", { minutes: nextDueInMinutes })
           : t("All caught up. Come back later for your next review.");
     return (
-      <VStack gap={2}>
+      <VStack gap={2} xstyle={recapTotal === 0 ? sharedStyles.panel : undefined}>
         {rateErrorLine}
         {recapTotal === 0 ? (
           <Text as="p" ref={promptRef} tabIndex={-1}>
