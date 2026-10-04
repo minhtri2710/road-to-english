@@ -22,7 +22,7 @@ const styles = stylex.create({
     padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-2)" },
   },
   todayContent: {
-    gap: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1)" },
+    gap: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-0-5)" },
   },
   // The title row: Today on the left, the XP total at the end.
   titleRow: {
@@ -38,17 +38,19 @@ const styles = stylex.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: "var(--spacing-1) var(--spacing-3)",
-    padding: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1-5)" },
+    // Phones show it as a plain row, keeping the first lesson inside the first screen.
+    padding: { default: "var(--spacing-3)", "@media (max-width: 480px)": 0 },
     borderRadius: "var(--radius-element)",
-    backgroundColor: "var(--color-accent-muted)",
+    backgroundColor: { default: "var(--color-accent-muted)", "@media (max-width: 480px)": "transparent" },
   },
   nextText: {
     flex: "1 1 10rem",
     minWidth: 0,
   },
+  // Phones drop the rule to keep the first lesson inside the first screen.
   divider: {
-    paddingBlockStart: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1)" },
-    borderBlockStartWidth: "1px",
+    paddingBlockStart: { default: "var(--spacing-3)", "@media (max-width: 480px)": 0 },
+    borderBlockStartWidth: { default: "1px", "@media (max-width: 480px)": 0 },
     borderBlockStartStyle: "solid",
     borderBlockStartColor: "var(--color-border)",
   },

@@ -57,17 +57,19 @@ const styles = stylex.create({
   // A level's header row: its tile, its name, and its progress at the end.
   groupHeading: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: "var(--spacing-3)",
-    paddingBlockEnd: "var(--spacing-3)",
-    marginBlockEnd: "var(--spacing-1)",
-    borderBlockEndWidth: "1px",
+    gap: { default: "var(--spacing-3)", "@media (max-width: 480px)": "var(--spacing-1) var(--spacing-2)" },
+    // Phones keep the row to one line, so the first lesson stays inside the first screen.
+    paddingBlockEnd: { default: "var(--spacing-3)", "@media (max-width: 480px)": 0 },
+    marginBlockEnd: { default: "var(--spacing-1)", "@media (max-width: 480px)": 0 },
+    borderBlockEndWidth: { default: "1px", "@media (max-width: 480px)": 0 },
     borderBlockEndStyle: "solid",
     borderBlockEndColor: "var(--color-border)",
   },
   levelTile: {
     flex: "0 0 auto",
-    display: "flex",
+    display: { default: "flex", "@media (max-width: 480px)": "none" },
     alignItems: "center",
     justifyContent: "center",
     width: "2.75rem",
@@ -79,6 +81,10 @@ const styles = stylex.create({
   groupName: {
     flex: "1 1 auto",
     minWidth: 0,
+    flexDirection: { default: "column", "@media (max-width: 480px)": "row" },
+    alignItems: { default: "flex-start", "@media (max-width: 480px)": "baseline" },
+    columnGap: "var(--spacing-1)",
+    flexWrap: "wrap",
   },
   groupProgress: {
     flex: "0 1 12rem",
@@ -86,9 +92,10 @@ const styles = stylex.create({
     flexDirection: "column",
     alignItems: "flex-end",
     gap: "var(--spacing-1)",
-    minWidth: "7rem",
+    minWidth: 0,
   },
   groupTrack: {
+    display: { default: "block", "@media (max-width: 480px)": "none" },
     width: "100%",
     height: "4px",
     overflow: "hidden",
