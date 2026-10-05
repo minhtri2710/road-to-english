@@ -3,9 +3,11 @@ import * as stylex from "@stylexjs/stylex";
 // Styles used by more than one module; a style used by one component lives beside it.
 export const sharedStyles = stylex.create({
   sentence: {
-    padding: "var(--spacing-4)",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-element)",
+    padding: { default: "var(--spacing-5)", "@media (max-width: 480px)": "var(--spacing-4)" },
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
+    borderRadius: "var(--radius-container)",
     backgroundColor: "var(--color-background-surface)",
   },
   error: {
@@ -32,11 +34,23 @@ export const sharedStyles = stylex.create({
   speakEyebrow: {
     color: "var(--rte-color-speak)",
   },
-  // Every view's h1 at the design's display size from tablet width; phones keep the theme's h1.
+  // Every view's h1 at the design's heading-1 (32/40) from tablet width; phones keep the theme's h1.
   pageTitle: {
+    fontSize: { default: null, "@media (min-width: 481px)": "2rem" },
+    lineHeight: { default: null, "@media (min-width: 481px)": 1.25 },
+    letterSpacing: { default: null, "@media (min-width: 481px)": "-0.01em" },
+  },
+  // The library's hero title at the design's display size (48/52).
+  heroTitle: {
     fontSize: { default: null, "@media (min-width: 481px)": "3rem" },
-    lineHeight: { default: null, "@media (min-width: 481px)": 1.1 },
+    lineHeight: { default: null, "@media (min-width: 481px)": 1.0833 },
     letterSpacing: { default: null, "@media (min-width: 481px)": "-0.02em" },
+  },
+  // A view's intro line under its title: regular weight, muted, as the design's lead paragraphs.
+  lead: {
+    maxWidth: "36rem",
+    color: "var(--color-text-secondary)",
+    fontWeight: "var(--font-weight-normal)",
   },
   // A section of a page set apart as a card, like the library's Today card.
   panel: {

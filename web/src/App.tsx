@@ -67,6 +67,10 @@ const appStyles = stylex.create({
     alignItems: "start",
     gap: { default: "var(--spacing-4)", "@media (min-width: 960px)": "var(--spacing-6)" },
   },
+  // The design's space between page sections from tablet width.
+  sections: {
+    rowGap: { default: null, "@media (min-width: 481px)": "var(--spacing-12)" },
+  },
   reviewDue: {
     alignSelf: "start",
   },
@@ -96,10 +100,6 @@ const appStyles = stylex.create({
   listenChip: { backgroundColor: "var(--color-accent-muted)", color: "var(--color-accent)" },
   speakChip: { backgroundColor: "var(--rte-color-speak-muted)", color: "var(--rte-color-speak)" },
   unlockChip: { backgroundColor: "var(--color-background-muted)", color: "var(--color-text-secondary)" },
-  lead: {
-    maxWidth: "32rem",
-    color: "var(--color-text-secondary)",
-  },
   // Review and Manage open with the library's title and lead, with the same space below as its hero.
   pageIntro: {
     paddingBlockEnd: { default: 0, "@media (min-width: 481px)": "var(--spacing-4)" },
@@ -227,7 +227,7 @@ function AppViews() {
               <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.pageTitle}>
                 {view === "review" ? t("Review deck") : t("Manage lessons and data")}
               </ViewHeading>
-              <Text type="large" xstyle={appStyles.lead}>
+              <Text type="large" xstyle={sharedStyles.lead}>
                 {view === "review" ? t("Review saved sentences with spaced repetition.") : t("Create lessons, import text, and manage your data.")}
               </Text>
             </div>
@@ -254,7 +254,7 @@ function AppViews() {
               />
             </VStack>
           ) : view === "library" ? (
-            <VStack gap={4}>
+            <VStack gap={4} xstyle={appStyles.sections}>
               <LessonList
                 intro={(
                   <div className={stylex.props(appStyles.intro).className}>
@@ -263,8 +263,8 @@ function AppViews() {
                       <li className={stylex.props(appStyles.chip, appStyles.speakChip).className}>{t("SAY IT BACK")}</li>
                       <li className={stylex.props(appStyles.chip, appStyles.unlockChip).className}>{t("UNLOCK")}</li>
                     </ul>
-                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.pageTitle}>{t("Lesson library")}</ViewHeading>
-                    <Text type="large" xstyle={appStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
+                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.heroTitle}>{t("Lesson library")}</ViewHeading>
+                    <Text type="large" xstyle={sharedStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
                     <Button label={t("How it works")} variant="secondary" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
                   </div>
                 )}

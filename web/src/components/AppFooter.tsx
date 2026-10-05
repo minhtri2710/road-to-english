@@ -5,7 +5,9 @@ import { routeHash, type Route } from "../lib/route";
 
 const styles = stylex.create({
   footer: {
-    borderTop: "1px solid var(--color-border)",
+    borderTopWidth: "1px",
+    borderTopStyle: "solid",
+    borderTopColor: "var(--color-border)",
   },
   inner: {
     width: "100%",

@@ -1,5 +1,4 @@
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -23,6 +22,28 @@ const styles = stylex.create({
   // The sentence now playing, from Listen, Loop or its video clip.
   active: {
     boxShadow: "0 0 0 2px var(--color-accent)",
+  },
+  // The card's top row: the sentence's number, as the design's transcript timestamps, and the Text toggle.
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2)",
+  },
+  number: {
+    fontFamily: "var(--rte-font-mono)",
+    fontSize: "0.75rem",
+    fontWeight: "var(--font-weight-medium)",
+    color: "var(--color-text-secondary)",
+    fontVariantNumeric: "tabular-nums",
+  },
+  // Text-only buttons at a row's edge, shifted by their padding so their labels line up with the text.
+  flushEnd: {
+    marginInlineEnd: "calc(-1 * var(--spacing-3))",
+  },
+  flushStart: {
+    alignSelf: "flex-start",
+    marginInlineStart: "calc(-1 * var(--spacing-3))",
   },
 });
 
@@ -115,14 +136,19 @@ export function SentenceCard({
       )}
       {mode === "shadow" ? (
         <VStack gap={1}>
-          <HStack>
+          <div className={stylex.props(styles.header).className}>
+            <span aria-hidden="true" className={stylex.props(styles.number).className}>
+              {String(data.sentences.indexOf(sentence) + 1).padStart(2, "0")}
+            </span>
             <Button
               label={t("Text")}
               variant="ghost"
+              size="sm"
+              xstyle={styles.flushEnd}
               aria-pressed={!textHidden}
               onClick={() => setTextHidden(sentence.id, !textHidden)}
             />
-          </HStack>
+          </div>
           {showText && (
             <SentenceWords
               text={sentence.text}
@@ -183,15 +209,17 @@ export function SentenceCard({
             pronunciationCheck={pronunciationCheck}
             stopMedia={stopMedia}
           />
-          <SaveToReview
-            card={sentenceCard(data.id, sentence)}
-            label={t("Save to review")}
-            saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-            addCard={addCard}
-            removeCard={removeCard}
-            undoRemove={undoRemove}
-            compact
-          />
+          <div className={stylex.props(styles.flushStart).className}>
+            <SaveToReview
+              card={sentenceCard(data.id, sentence)}
+              label={t("Save to review")}
+              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
+              addCard={addCard}
+              removeCard={removeCard}
+              undoRemove={undoRemove}
+              compact
+            />
+          </div>
         </VStack>
       ) : (
         <VStack gap={1}>
@@ -218,15 +246,17 @@ export function SentenceCard({
               lessonWords={bankWords}
             />
           )}
-          <SaveToReview
-            card={sentenceCard(data.id, sentence)}
-            label={t("Save to review")}
-            saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
-            addCard={addCard}
-            removeCard={removeCard}
-            undoRemove={undoRemove}
-            compact
-          />
+          <div className={stylex.props(styles.flushStart).className}>
+            <SaveToReview
+              card={sentenceCard(data.id, sentence)}
+              label={t("Save to review")}
+              saved={savedCardIds.has(cardId(sentenceCard(data.id, sentence).source))}
+              addCard={addCard}
+              removeCard={removeCard}
+              undoRemove={undoRemove}
+              compact
+            />
+          </div>
         </VStack>
       )}
     </Card>

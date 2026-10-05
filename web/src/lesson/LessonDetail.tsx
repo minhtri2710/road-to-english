@@ -46,6 +46,16 @@ import { LessonSummary, type SummaryProps } from "./LessonSummary";
 import { useT } from "../i18n";
 
 const styles = stylex.create({
+  // A text-only button at the column's start, shifted by its padding so its label lines up with the title.
+  flushStart: {
+    marginInlineStart: "calc(-1 * var(--spacing-3))",
+  },
+  // The WPM target as quiet metadata, as on the library cards.
+  wpm: {
+    backgroundColor: "var(--color-background-muted)",
+    color: "var(--color-text-secondary)",
+    fontFamily: "var(--rte-font-mono)",
+  },
   // A reading column on the page's left edge, in line with the header; Learn mode one sentence at a time takes the
   // full width for its transcript.
   column: {
@@ -340,9 +350,9 @@ export function LessonDetail({
   return (
     <VStack gap={4} xstyle={[styles.column, learnGuided && styles.wideColumn]}>
       <HStack justify="between" align="center" wrap="wrap">
-        <Button label={t("Back to lessons")} variant="ghost" onClick={onBack} />
+        <Button label={t("Back to lessons")} variant="ghost" xstyle={styles.flushStart} onClick={onBack} />
         <HStack gap={1} align="center">
-          <Badge label={t("{wpm} WPM", { wpm: data.targetWpm })} variant="info" />
+          <Badge label={t("{wpm} WPM", { wpm: data.targetWpm })} variant="info" xstyle={styles.wpm} />
           {completed && <Badge label={t("Completed")} variant="success" />}
         </HStack>
       </HStack>
