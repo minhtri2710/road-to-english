@@ -17,7 +17,8 @@ const styles = stylex.create({
     height: "auto",
     justifyContent: "space-between",
     // Narrow screens keep the first lesson inside the first screen.
-    paddingBlock: { default: "var(--spacing-4)", "@media (max-width: 480px)": "var(--spacing-2)" },
+    // On phones, 2px less than spacing-2 each side pays for the card's 1px borders and the header's rule.
+    paddingBlock: { default: "var(--spacing-4)", "@media (max-width: 480px)": "calc(var(--spacing-2) - 2px)" },
     paddingInline: { default: "var(--spacing-4)", "@media (max-width: 480px)": "var(--spacing-3)" },
     textAlign: "start",
     whiteSpace: "normal",

@@ -53,7 +53,7 @@ const styles = stylex.create({
     flexWrap: "wrap",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    gap: "var(--spacing-2) var(--spacing-6)",
+    gap: "var(--spacing-1) var(--spacing-6)",
   },
   // A failed load sits in a panel the size of a lesson card's row, so the page keeps its shape.
   errorPanel: {
@@ -315,7 +315,7 @@ export function LessonList({
           />
         )}
       </div>
-      <VStack gap={2}>
+      <VStack gap={1}>
         <div className={stylex.props(styles.sectionHeader).className}>
           <VStack gap={0.5}>
             <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow).className}>{t("Lessons")}</p>
