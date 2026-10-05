@@ -18,6 +18,10 @@ import { createUserLesson, USER_LEVELS, USER_WPMS } from "../lib/userLessons";
 export const IMPORT_TITLE = "import-title";
 
 const styles = stylex.create({
+  // Each field's label sets its field apart from the one above, as the design's form groups.
+  fieldLabel: {
+    marginBlockStart: "var(--spacing-2)",
+  },
   importTextArea: {
     width: "100%",
     minHeight: "8rem",
@@ -82,8 +86,8 @@ export function ImportTextForm({
         <Text as="p" type="supporting">
           {t("Your lessons stay on this device; export a backup to move them.")}
         </Text>
-        <label htmlFor="import-title">
-          <Text as="span" type="supporting">{t("Title")}</Text>
+        <label htmlFor="import-title" className={stylex.props(styles.fieldLabel).className}>
+          <Text as="span" weight="semibold">{t("Title")}</Text>
         </label>
         <input
           id={IMPORT_TITLE}
@@ -96,8 +100,8 @@ export function ImportTextForm({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
-        <label htmlFor="import-video">
-          <Text as="span" type="supporting">{t("YouTube URL")}</Text>
+        <label htmlFor="import-video" className={stylex.props(styles.fieldLabel).className}>
+          <Text as="span" weight="semibold">{t("YouTube URL")}</Text>
         </label>
         <input
           id="import-video"
@@ -106,8 +110,8 @@ export function ImportTextForm({
           value={videoUrl}
           onChange={(event) => setVideoUrl(event.target.value)}
         />
-        <label htmlFor="import-text">
-          <Text as="span" type="supporting">{t("Text")}</Text>
+        <label htmlFor="import-text" className={stylex.props(styles.fieldLabel).className}>
+          <Text as="span" weight="semibold">{t("Text")}</Text>
         </label>
         <Text as="p" type="supporting" id="import-text-hint">
           {t("Paste the transcript from YouTube's Show transcript panel (timestamps included).")}

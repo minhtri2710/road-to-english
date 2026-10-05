@@ -101,7 +101,9 @@ const styles = stylex.create({
     textAlign: "center",
     whiteSpace: "nowrap",
     fontSize: "var(--font-size-sm)",
-    border: "var(--border-width) solid var(--color-border)",
+    borderWidth: "var(--border-width)",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
     borderRadius: "var(--radius-element)",
   },
   practised: {

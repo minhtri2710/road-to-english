@@ -113,6 +113,18 @@ export const projectTheme = defineTheme({
     "--radius-container": "16px",
   },
   components: {
+    // Shadowly buttons: a semibold label, a white secondary button outlined in line-strong (3:1 on
+    // the page).
+    button: {
+      base: {
+        fontWeight: "600",
+      },
+      "variant:secondary": {
+        backgroundColor: "var(--color-background-surface)",
+        boxShadow: "inset 0 0 0 1px var(--color-border-emphasized)",
+        color: "var(--color-text-primary)",
+      },
+    },
     "segmented-control": {
       base: { padding: "var(--spacing-1)" },
     },
