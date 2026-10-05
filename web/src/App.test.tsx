@@ -1196,9 +1196,13 @@ describe("App", () => {
       expect(headings).toEqual(["Import text", "Your data"]);
       const section = yourData(container).parentElement!;
       expect(["Export", "Export CSV", "Import"].map((name) => buttonsNamed(section, name).length)).toEqual([1, 1, 1]);
-      expect(section.textContent).toContain(
-        "Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a spreadsheet. Import replaces the data on this device with a backup file.",
-      );
+      for (const line of [
+        "Saves your cards, progress and lessons.",
+        "Saves your cards as a CSV file.",
+        "Replaces the data on this device with a backup file.",
+      ]) {
+        expect(section.textContent).toContain(line);
+      }
     });
   });
 

@@ -64,8 +64,14 @@ export const app: Record<string, string> = {
 
   // Your data and backups
   "Your data": "Dữ liệu của bạn",
-  "Export saves a backup file of your cards, progress and lessons. Export CSV saves your cards for a spreadsheet. Import replaces the data on this device with a backup file.":
-    "Xuất sẽ lưu một tệp sao lưu gồm thẻ, tiến độ và bài học của bạn. Xuất CSV lưu các thẻ để mở bằng bảng tính. Nhập sẽ thay dữ liệu trên thiết bị này bằng một tệp sao lưu.",
+  "Everything you practise stays on this device. Back it up or move it here.":
+    "Mọi thứ bạn luyện tập được lưu trên thiết bị này. Hãy sao lưu hoặc chuyển dữ liệu về đây.",
+  "Backup file": "Tệp sao lưu",
+  "Saves your cards, progress and lessons.": "Lưu thẻ, tiến độ và bài học của bạn.",
+  "Cards for a spreadsheet": "Thẻ cho bảng tính",
+  "Saves your cards as a CSV file.": "Lưu các thẻ thành tệp CSV.",
+  "Restore a backup": "Khôi phục bản sao lưu",
+  "Replaces the data on this device with a backup file.": "Thay dữ liệu trên thiết bị này bằng một tệp sao lưu.",
   "Storage: kept on this device.": "Lưu trữ: được giữ trên thiết bị này.",
   "This browser may clear your saved progress when space is low. Export a backup or sign in to keep it.":
     "Trình duyệt này có thể xoá tiến độ đã lưu khi thiếu dung lượng. Hãy xuất bản sao lưu hoặc đăng nhập để giữ lại.",

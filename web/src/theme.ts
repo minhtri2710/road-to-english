@@ -25,6 +25,13 @@ export const themePalette = {
     b1: ["#92400E", "#FCD34D"],
     b2: ["#6B21A8", "#D8B4FE"],
   },
+  // Each level's tint: lesson covers and level tiles, so the library reads by level at a glance.
+  levelsMuted: {
+    a1: ["#E3F5E8", "#13281B"],
+    a2: ["#E3ECFC", "#152238"],
+    b1: ["#FBF0D9", "#2E2410"],
+    b2: ["#F1E6FA", "#261833"],
+  },
 } as const;
 
 const pair = (value: readonly [string, string]): TokenValue => [value[0], value[1]];
@@ -55,6 +62,10 @@ export const projectTheme = defineTheme({
     "--rte-color-level-a2": pair(themePalette.levels.a2),
     "--rte-color-level-b1": pair(themePalette.levels.b1),
     "--rte-color-level-b2": pair(themePalette.levels.b2),
+    "--rte-color-level-a1-muted": pair(themePalette.levelsMuted.a1),
+    "--rte-color-level-a2-muted": pair(themePalette.levelsMuted.a2),
+    "--rte-color-level-b1-muted": pair(themePalette.levelsMuted.b1),
+    "--rte-color-level-b2-muted": pair(themePalette.levelsMuted.b2),
     "--rte-color-speak": pair(themePalette.speak),
     "--rte-color-speak-muted": pair(themePalette.speakMuted),
     // Timestamps, scores and counts, as in the Shadowly design (JetBrains Mono when installed).
