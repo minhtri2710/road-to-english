@@ -7,10 +7,19 @@ import (
 	"github.com/road-to-english/api/internal/storage"
 )
 
-// ponytail: full-state push ceiling; upgrade = delta sync.
+// Bounds one push of changed cards and progress; the server returns the full account state.
 const syncBodyMaxBytes int64 = 4 * 1024 * 1024
 
 func syncHandler(w http.ResponseWriter, r *http.Request, repo *storage.Repository) {
+	owner := r.Header.Get("X-RTE-Sync-Owner")
+	if owner == "" {
+		writeError(w, http.StatusBadRequest, "missing sync owner")
+		return
+	}
+	if owner != requestUserID(r) {
+		writeError(w, http.StatusConflict, "sync owner mismatch")
+		return
+	}
 	var input storage.State
 	if !decodeJSONBody(w, r, &input, syncBodyMaxBytes, "invalid sync state") {
 		return

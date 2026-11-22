@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { VStack } from "@astryxdesign/core/VStack";
 
@@ -10,7 +10,7 @@ import { speak } from "../lib/speech";
 import type { StressDict } from "../lib/stress";
 import { wordCard, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord } from "../lib/words";
-import { SKIPS_PER_LESSON } from "./GuidedShadowing";
+import { SKIPS_PER_LESSON } from "../lib/learnProgress";
 import { LearnStage } from "./LearnView";
 import { ShadowGate } from "./ShadowGate";
 import { SentenceWords, WordPanel } from "./WordPanel";
@@ -26,6 +26,7 @@ export function LearnSentence({
   speeds,
   passed,
   skipsLeft,
+  busy,
   showVietnamese,
   stressDict,
   stopMedia,
@@ -45,12 +46,15 @@ export function LearnSentence({
   speeds: readonly string[];
   passed: boolean;
   skipsLeft: number;
+  // True while a Learn progress save is in flight; skip and check wait for it.
+  busy: boolean;
   showVietnamese: boolean;
   stressDict: StressDict | null;
   stopMedia: StopMedia;
   onChecked: (result: ShadowScore) => void;
   onTyped: () => void;
-  onSkip: () => void;
+  // Resolves true only when the skip committed.
+  onSkip: () => Promise<boolean>;
   savedCardIds: Set<string>;
   addCard: (input: NewCard) => Promise<void>;
   removeCard: (id: string) => Promise<VocabCard>;
@@ -61,6 +65,17 @@ export function LearnSentence({
   const count = lesson.sentences.length;
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const panelId = `learn-word-panel-${sentence.id}`;
+  // A committed skip navigates only if this sentence is still the mounted view.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const skip = async () => {
+    if (await onSkip() && mounted.current) go(index + 1);
+  };
 
   return (
     <VStack gap={2}>
@@ -113,6 +128,7 @@ export function LearnSentence({
         targetWpm={lesson.targetWpm}
         speed={Number(speed)}
         passed={passed}
+        busy={busy}
         stopMedia={stopMedia}
         onChecked={onChecked}
         onTyped={onTyped}
@@ -123,7 +139,7 @@ export function LearnSentence({
           skipsTotal: SKIPS_PER_LESSON,
           previous: () => go(index - 1),
           next: () => go(index + 1),
-          skip: onSkip,
+          skip: () => void skip(),
         }}
       />
     </VStack>

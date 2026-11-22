@@ -92,7 +92,7 @@ describe("FeedbackCard", () => {
 describe("TypeInstead", () => {
   it("unlocks only when every word is typed right", async () => {
     const onPassed = vi.fn();
-    const container = await render(createElement(TypeInstead, { text: "Good morning, friend.", onPassed }));
+    const container = await render(createElement(TypeInstead, { text: "Good morning, friend.", busy: false, onPassed }));
     const input = container.querySelector("input")!;
     const type = async (value: string) => {
       await harnessAct(async () => {
@@ -107,6 +107,6 @@ describe("TypeInstead", () => {
     expect(container.textContent).toContain("Not every word matches yet.");
     await type("good morning friend");
     expect(onPassed).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain("Every word is right. The next sentence is open.");
+    expect(container.textContent).toContain("Every word is right.");
   });
 });

@@ -18,7 +18,7 @@ func corsMiddleware(next http.Handler, configuredOrigin string) http.Handler {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-RTE-Sync-Owner")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

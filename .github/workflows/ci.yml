@@ -14,24 +14,22 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# The api tests and the e2e suite share one disposable Postgres, on the port the dev setup uses.
-env:
-  DATABASE_URL: postgres://rte:rte_dev_password@localhost:5435/rte?sslmode=disable
-
 jobs:
   api:
     name: API (Go)
     runs-on: ubuntu-latest
+    env:
+      RTE_TEST_DATABASE_URL: postgres://rte_test:rte_test_password@127.0.0.1:5436/rte_test?sslmode=disable
     services:
       db:
         image: postgres:17
         env:
-          POSTGRES_USER: rte
-          POSTGRES_PASSWORD: rte_dev_password
-          POSTGRES_DB: rte
-        ports: ["5435:5432"]
+          POSTGRES_USER: rte_test
+          POSTGRES_PASSWORD: rte_test_password
+          POSTGRES_DB: rte_test
+        ports: ["5436:5432"]
         options: >-
-          --health-cmd "pg_isready -U rte -d rte"
+          --health-cmd "pg_isready -U rte_test -d rte_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -67,16 +65,18 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
+    env:
+      RTE_TEST_DATABASE_URL: postgres://rte_test:rte_test_password@127.0.0.1:5436/rte_test?sslmode=disable
     services:
       db:
         image: postgres:17
         env:
-          POSTGRES_USER: rte
-          POSTGRES_PASSWORD: rte_dev_password
-          POSTGRES_DB: rte
-        ports: ["5435:5432"]
+          POSTGRES_USER: rte_test
+          POSTGRES_PASSWORD: rte_test_password
+          POSTGRES_DB: rte_test
+        ports: ["5436:5432"]
         options: >-
-          --health-cmd "pg_isready -U rte -d rte"
+          --health-cmd "pg_isready -U rte_test -d rte_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4

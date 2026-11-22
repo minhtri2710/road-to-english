@@ -1,8 +1,32 @@
 import { defineConfig } from "vitest/config";
-import { loadEnv } from "vite";
+import { loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import stylex from "@stylexjs/unplugin/vite";
 import { assertApiUrl } from "./scripts/api-url-guard.mjs";
+
+// Emits the file list the service worker precaches for offline route screens: each lazy screen's chunk
+// plus its static imports, so an unvisited local screen still renders offline. Dynamic imports (the
+// dictionary) stay out of the install on purpose.
+const offlineScreens: Plugin = {
+  name: "offline-screen-files",
+  apply: "build",
+  generateBundle(_, bundle) {
+    const files = new Set<string>();
+    const add = (name: string) => {
+      const output = bundle[name];
+      if (!output || output.type !== "chunk" || files.has(name)) return;
+      files.add(name);
+      for (const dependency of output.imports) add(dependency);
+      for (const css of output.viteMetadata?.importedCss ?? []) files.add(css);
+    };
+    for (const output of Object.values(bundle)) {
+      if (output.type === "chunk" && output.facadeModuleId && /\/src\/(?:review\/ReviewDeck|lesson\/LessonDetail|landing\/Landing)\.tsx$/.test(output.facadeModuleId)) {
+        add(output.fileName);
+      }
+    }
+    this.emitFile({ type: "asset", fileName: "offline-screens.js", source: `self.RTE_OFFLINE_SCREENS=${JSON.stringify([...files].sort())};\n` });
+  },
+};
 
 const stylexPlugin = stylex();
 // @stylexjs/unplugin 0.19.1 clears its CSS-update interval only on httpServer close, which Vitest's server lacks; drop this when upstream clears it on server close.
@@ -17,7 +41,7 @@ export default defineConfig(({ command, mode, isPreview }) => {
   }
 
   return {
-    plugins: [react(), stylexPlugin],
+    plugins: [react(), stylexPlugin, offlineScreens],
     test: {
       environment: "happy-dom",
       setupFiles: "./src/test/setup.ts",

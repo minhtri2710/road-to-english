@@ -13,7 +13,7 @@ import type { StopMedia } from "../hooks/usePracticeMedia";
 import { recognizeOnce } from "../lib/recognition";
 import { PASS_SCORE, scoreShadow, wordLevel, type ShadowScore, type WordLevel } from "../lib/shadowScore";
 import { speak, speechSupported } from "../lib/speech";
-import { useT } from "../i18n";
+import { useLang, useT } from "../i18n";
 import { FeedbackCard, ScoreStrip, TypeInstead } from "./LearnView";
 
 export const SLOW_SPEED = 0.75;
@@ -184,17 +184,20 @@ export function ScoreRing({ score }: { score: number }) {
 // Every reference word in its level's color and underline; a near or missed word shows what was heard.
 export function ScoredWords({ result }: { result: ShadowScore }) {
   const t = useT();
+  const uiLang = useLang();
   return (
-    <p className={stylex.props(styles.words).className}>
+    <p lang="en" className={stylex.props(styles.words).className}>
       {result.words.map((word, index) => (
         <Fragment key={index}>
           <span className={stylex.props(styles.word, levelStyles[word.level]).className}>
             {word.word}
             <VisuallyHidden>
               {" "}
-              {word.heard
-                ? t('({level}, heard "{heard}")', { level: t(LEVEL_NAMES[word.level]), heard: word.heard })
-                : t("({level})", { level: t(LEVEL_NAMES[word.level]) })}
+              <span lang={uiLang}>
+                {word.heard
+                  ? t('({level}, heard "{heard}")', { level: t(LEVEL_NAMES[word.level]), heard: word.heard })
+                  : t("({level})", { level: t(LEVEL_NAMES[word.level]) })}
+              </span>
             </VisuallyHidden>
           </span>
           {word.heard && word.level !== "good" && (
@@ -240,6 +243,7 @@ export function ShadowGate({
   targetWpm,
   speed,
   passed,
+  busy,
   stopMedia,
   onChecked,
   onTyped,
@@ -248,8 +252,10 @@ export function ShadowGate({
   text: string;
   targetWpm: number;
   speed: number;
-  // Passed (or skipped) earlier.
+  // Passed (or skipped) earlier — the only unlock source; a fresh score alone doesn't open Next.
   passed: boolean;
+  // True while a Learn progress save is in flight.
+  busy: boolean;
   stopMedia: StopMedia;
   onChecked: (result: ShadowScore) => void;
   // The learner typed the whole sentence correctly instead of saying it.
@@ -306,9 +312,13 @@ export function ShadowGate({
   if (listening) {
     label = { text: t("Listening…"), style: "speak" };
     hint = t("Say the sentence now.");
-  } else if (result && result.passed) {
+  } else if (result && result.passed && passed) {
     label = { text: t("Unlocked · {score} points", { score: result.score }), style: "good" };
     hint = t("The next sentence is open.");
+  } else if (result && result.passed) {
+    // The score is real, but the pass isn't saved yet (or the save failed): no unlocked claim.
+    label = { text: t("{score} points", { score: result.score }), style: "speak" };
+    hint = t("Say it again any time to practise.");
   } else if (result) {
     label = { text: t("Not yet · {score} points", { score: result.score }), style: result.score >= 50 ? "fair" : "miss" };
     hint = t("Reach {score} to open the next sentence. Listen slowly, then try again.", { score: PASS_SCORE });
@@ -320,7 +330,7 @@ export function ShadowGate({
     hint = t("Say the sentence. Reach {score} points to open the next one.", { score: PASS_SCORE });
   }
 
-  const locked = !passed && !(result?.passed ?? false) && !nav.last;
+  const locked = !passed && !nav.last;
   const listenSlowly = () => {
     stopMedia();
     speak(text, targetWpm, SLOW_SPEED);
@@ -338,7 +348,7 @@ export function ShadowGate({
               type="button"
               aria-label={listening ? t("Listening") : t("Say the sentence")}
               data-shortcut="speak"
-              disabled={listening}
+              disabled={listening || busy}
               className={stylex.props(styles.sayIt).className}
               onClick={sayIt}
             >
@@ -406,7 +416,7 @@ export function ShadowGate({
               <Button
                 label={t("Skip ({left} of {total} left)", { left: nav.skipsLeft, total: nav.skipsTotal })}
                 variant="ghost"
-                isDisabled={nav.skipsLeft === 0}
+                isDisabled={nav.skipsLeft === 0 || busy}
                 tooltip={nav.skipsLeft === 0 ? t("No skips left in this lesson") : undefined}
                 onClick={nav.skip}
               />
@@ -418,9 +428,11 @@ export function ShadowGate({
             <VStack gap={1}>
               <ScoredWords result={result} />
               <VisuallyHidden>
-                {result.passed
+                {result.passed && passed
                   ? t("Score {score}. Next sentence unlocked.", { score: result.score })
-                  : t("Score {score}. Reach {pass} to unlock the next sentence.", { score: result.score, pass: PASS_SCORE })}
+                  : result.passed
+                    ? t("Score {score}.", { score: result.score })
+                    : t("Score {score}. Reach {pass} to unlock the next sentence.", { score: result.score, pass: PASS_SCORE })}
               </VisuallyHidden>
             </VStack>
           )}
@@ -451,7 +463,7 @@ export function ShadowGate({
           />
         </FeedbackCard>
       )}
-      {!passed && !(result?.passed ?? false) && <TypeInstead text={text} onPassed={onTyped} />}
+      {!passed && !(result?.passed ?? false) && <TypeInstead text={text} busy={busy} onPassed={onTyped} />}
     </VStack>
   );
 }

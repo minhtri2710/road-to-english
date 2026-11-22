@@ -1,5 +1,13 @@
 import { withDb, type DailyCount } from "./db";
+import { xp } from "./progress";
 import { notifyLocalMutation } from "./syncEvents";
+
+export interface ProgressSnapshot {
+  practiceDays: string[];
+  completedLessons: Set<string>;
+  dailyCount: DailyCount | null;
+  xp: number;
+}
 
 export async function recordPractice(
   dateKey: string,
@@ -22,24 +30,6 @@ export async function recordPractice(
   });
 }
 
-export async function getDailyCount(dateKey: string): Promise<DailyCount> {
-  return withDb(async (db) => {
-    return (await db.get("dailyCounts", dateKey)) ?? { date: dateKey, actions: 0, newCards: 0 };
-  });
-}
-
-export async function getAllDailyCounts(): Promise<DailyCount[]> {
-  return withDb(async (db) => {
-    return await db.getAll("dailyCounts");
-  });
-}
-
-export async function getPracticeDays(): Promise<string[]> {
-  return withDb(async (db) => {
-    return (await db.getAll("practiceDays")).map(({ date }) => date);
-  });
-}
-
 export async function markLessonComplete(lessonId: string): Promise<void> {
   return withDb(async (db) => {
     await db.put("lessonCompletion", { lessonId });
@@ -47,8 +37,20 @@ export async function markLessonComplete(lessonId: string): Promise<void> {
   });
 }
 
-export async function getCompletedLessons(): Promise<string[]> {
+export function readProgressSnapshot(dateKey: string): Promise<ProgressSnapshot> {
   return withDb(async (db) => {
-    return (await db.getAll("lessonCompletion")).map(({ lessonId }) => lessonId);
+    const tx = db.transaction(["practiceDays", "lessonCompletion", "dailyCounts"], "readonly");
+    const [practiceDays, completed, counts] = await Promise.all([
+      tx.objectStore("practiceDays").getAllKeys(),
+      tx.objectStore("lessonCompletion").getAllKeys(),
+      tx.objectStore("dailyCounts").getAll(),
+      tx.done,
+    ]);
+    return {
+      practiceDays,
+      completedLessons: new Set(completed),
+      dailyCount: counts.find(({ date }) => date === dateKey) ?? null,
+      xp: xp(counts),
+    };
   });
 }

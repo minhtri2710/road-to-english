@@ -36,8 +36,7 @@ var (
 	ErrTooManyLearnProgress     = errors.New("too many learn progress entries")
 )
 
-// MaxCards caps an account's stored cards to one push's worth: a full-state sync body (4 MiB, api/sync.go)
-// holds at most 4,194,304 / (299 + 1) = 13,981 of the smallest web card (299 B of JSON plus a comma).
+// MaxCards caps the number of stored cards returned in one account snapshot.
 const MaxCards = 13981
 
 // MaxPracticeDays is one push's worth of the smallest practice day, {"date":"2026-09-25"} (21 B plus a comma): 4,194,304 / 22.
@@ -69,8 +68,6 @@ type Card struct {
 	Fsrs      json.RawMessage `json:"fsrs"`
 	UpdatedAt string          `json:"updatedAt"`
 	DeletedAt DeletedAt       `json:"deletedAt"`
-	// Dirty is required on a request card and absent from a response card: a dirty card upserts, a clean one only updates.
-	Dirty *bool `json:"dirty,omitempty"`
 }
 
 // DeletedAt is a card's required, nullable deletedAt: Present tells a missing field from null.
@@ -120,8 +117,7 @@ type State struct {
 	Cards            []Card             `json:"cards"`
 	PracticeDays     []PracticeDay      `json:"practiceDays"`
 	LessonCompletion []LessonCompletion `json:"lessonCompletion"`
-	// LearnProgress may be missing from a request, from a client that predates it; a response always carries it.
-	LearnProgress []LearnProgress `json:"learnProgress"`
+	LearnProgress    []LearnProgress    `json:"learnProgress"`
 }
 
 // Synced is a sync's 200 body: the user's full state and the epoch of the server's copy of it.
@@ -396,12 +392,11 @@ func syncEpoch(ctx context.Context, tx pgx.Tx, userID string) (string, error) {
 const incomingWins = `(EXCLUDED.updated_at > cards.updated_at
 	OR (EXCLUDED.updated_at = cards.updated_at AND EXCLUDED.deleted_at IS NOT NULL AND cards.deleted_at IS NULL))`
 
-// A dirty card ($11 true) upserts. A clean card only merges into an existing row: the server may have purged it, and
-// re-inserting it would undo the purge. FOR UPDATE makes the existence check wait out a concurrent purge.
+// The client only sends locally changed cards, so every request card upserts: the server's row is
+// authoritative for anything the client did not touch.
 var syncCardSQL = strings.ReplaceAll(`
 	INSERT INTO cards (user_id, id, front, back, lesson_id, sentence_id, word, fsrs, updated_at, deleted_at)
-	SELECT $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::json, $9::timestamptz, $10::timestamptz
-	WHERE $11::boolean OR EXISTS (SELECT 1 FROM cards WHERE user_id = $1::uuid AND id = $2::text FOR UPDATE)
+	VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::json, $9::timestamptz, $10::timestamptz)
 	ON CONFLICT (user_id, id) DO UPDATE SET
 		front = CASE WHEN {wins} THEN EXCLUDED.front ELSE cards.front END,
 		back = CASE WHEN {wins} THEN EXCLUDED.back ELSE cards.back END,
@@ -424,7 +419,7 @@ var syncCardSQL = strings.ReplaceAll(`
 func syncBatch(ctx context.Context, tx pgx.Tx, userID string, in State) error {
 	batch := &pgx.Batch{}
 	for _, card := range in.Cards {
-		batch.Queue(syncCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, card.UpdatedAt, card.DeletedAt.Value, *card.Dirty)
+		batch.Queue(syncCardSQL, userID, card.ID, card.Front, card.Back, card.Source.LessonID, card.Source.SentenceID, *card.Source.Word, card.Fsrs, card.UpdatedAt, card.DeletedAt.Value)
 	}
 	for _, practiceDay := range in.PracticeDays {
 		batch.Queue(`

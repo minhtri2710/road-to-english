@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { withDb } from "../lib/db";
 import * as progressStore from "../lib/progressStore";
-import { getCompletedLessons } from "../lib/progressStore";
 import { putUserLesson } from "../lib/userLessons";
 import { createCard, wordCard } from "../lib/vocab";
 import * as vocabStore from "../lib/vocabStore";
@@ -77,7 +77,7 @@ describe("lesson summary", () => {
     await settle();
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith(greetingsLesson.id);
-    expect(await getCompletedLessons()).toEqual([greetingsLesson.id]);
+    expect(await withDb((db) => db.getAllKeys("lessonCompletion"))).toEqual([greetingsLesson.id]);
   });
 
   it("does not complete the lesson when one sentence is not attempted", async () => {
@@ -165,7 +165,7 @@ describe("lesson summary", () => {
     expect(container.textContent).not.toContain("Couldn't save your progress.");
     // Try again is gone, so focus moves to the summary heading.
     expect(document.activeElement?.textContent).toBe("Lesson complete");
-    expect(await getCompletedLessons()).toEqual([greetingsLesson.id]);
+    expect(await withDb((db) => db.getAllKeys("lessonCompletion"))).toEqual([greetingsLesson.id]);
   });
 
   it("shows the count, the cards due with Review now, the next library lesson and Back to lessons", async () => {

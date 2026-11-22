@@ -1,13 +1,13 @@
 import { tr } from "../i18n";
 import { request } from "./client";
-import { reviveSyncState, type SyncReply, type SyncRequest } from "../lib/backup";
+import { reviveSyncState, type SyncReply, type SyncState } from "../lib/backup";
 import { isRecord } from "../lib/vocab";
 
-export async function syncState(local: SyncRequest): Promise<SyncReply> {
+export async function syncState(local: SyncState, ownerId: string): Promise<SyncReply> {
   const reply = await request<unknown>("/sync", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-RTE-Sync-Owner": ownerId },
     body: JSON.stringify(local),
   });
   if (!isRecord(reply) || typeof reply.syncEpoch !== "string" || reply.syncEpoch === "") {

@@ -49,5 +49,12 @@ test("a Vietnamese lesson keeps its English sentences", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Greetings & Basics" }).click();
   await expect(page.getByText("Good morning, how are you today?", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Nghe", exact: true }).first()).toBeVisible();
+  const nghe = page.getByRole("button", { name: "Nghe", exact: true }).first();
+  await expect(nghe).toBeVisible();
+
+  // The English sentence and its word buttons are marked English; the interface stays Vietnamese.
+  const good = page.getByRole("button", { name: "Good", exact: true }).first();
+  await expect(good).toBeVisible();
+  expect(await good.evaluate((e) => e.closest("[lang]")?.getAttribute("lang"))).toBe("en");
+  expect(await nghe.evaluate((e) => e.closest("[lang]")?.getAttribute("lang"))).toBe("vi");
 });

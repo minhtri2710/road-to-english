@@ -63,7 +63,7 @@ describe("LessonList", () => {
     const { container } = await renderApp({ route: (path) =>
       path === "/lessons" ? new Response(JSON.stringify(lessons), { status: 200 }) : undefined,
     });
-    await waitForCondition(hasText(container, "Lesson B2"));
+    await waitForCondition(hasText(container, "1 of 1 completed"));
 
     const groups = Array.from(container.querySelectorAll("main section")).filter((section) =>
       ["A1", "A2", "B1", "B2"].includes(section.querySelector("h3")?.textContent ?? ""),
@@ -174,11 +174,9 @@ describe("LessonList", () => {
     await progressStore.markLessonComplete("greetings-basics");
     const view = await renderApp();
     const { container } = view;
-    await waitForCondition(() => buttonsNamed(container, "Start lesson").length === 1);
-    const card = todayCard(container)!;
-    expect(card.textContent).toContain("0 cards due · Next: Daily Routine");
+    await waitForCondition(() => todayCard(container)?.textContent?.includes("0 cards due · Next: Daily Routine") ?? false);
 
-    await click(card, "Start lesson");
+    await click(todayCard(container)!, "Start lesson");
     await waitForCondition(() => container.querySelector("main h1") !== null && h1Texts(container)[0] !== "Lesson library");
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/lessons/daily-routine"))).toBe(true);
   });

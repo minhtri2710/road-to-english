@@ -61,13 +61,16 @@ After a schema change, recreate the database with `docker compose -f api/compose
 
 ## Checks
 
-GitHub Actions runs these on every pull request and on `main` (`.github/workflows/ci.yml`), except the macOS-only `visual.spec.ts`. That one runs on a macOS runner (`.github/workflows/visual.yml`) and compares screenshots with the baselines in `web/e2e/visual.spec.ts-snapshots`. After an intended visual change, add the `update-visuals` label to the pull request: the workflow regenerates the baselines, commits them to the branch and removes the label. It then starts CI and the comparison on that commit itself, since a commit made by the workflow does not start workflows on its own.
+GitHub Actions runs these on every pull request and on `main` (`.github/workflows/ci.yml`), except the macOS-only `visual.spec.ts`. That one runs on a macOS runner (`.github/workflows/visual.yml`) and compares screenshots with the baselines in `web/e2e/visual.spec.ts-snapshots`. Comparing and regenerating screenshots are read-only: they never write to the repository. Only a separate publisher job can write new baselines, and only on an explicit `update-visuals` label from a same-repo pull request or a manual run on a branch.
 
-The api tests use the same database and need `DATABASE_URL` set.
+The Go integration tests and Playwright use a separate, disposable PostgreSQL server; neither uses the development `DATABASE_URL`. Each Go database test gets its own schema.
 
 On a fresh machine, install the e2e browser first with `pnpm -C web exec playwright install chromium`.
 
 ```sh
+docker compose -f api/compose.yaml up -d --wait test-db
+export RTE_TEST_DATABASE_URL='postgres://rte_test:rte_test_password@127.0.0.1:5436/rte_test?sslmode=disable'
+
 gofmt -l api
 go -C api vet ./...
 go -C api build ./...
@@ -80,7 +83,9 @@ pnpm -C web build
 pnpm -C web e2e
 ```
 
-The e2e suite uses Playwright. It starts its own api on port 8787 and web server on port 5183, and needs the dev database running.
+The e2e suite uses Playwright. It starts its own api on port 8787 and web server on port 5183, and uses the test database on port 5436. The offline test serves a production build and reloads a previously opened lesson with the browser offline.
+
+Stop just the test database with `docker compose -f api/compose.yaml stop test-db`.
 
 ## Third-party data
 
