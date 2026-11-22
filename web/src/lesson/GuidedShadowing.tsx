@@ -9,7 +9,8 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
-import { Status } from "../components/feedback";
+import { Alert, Status } from "../components/feedback";
+import { SKIPS_PER_LESSON } from "../lib/learnProgress";
 import { PASS_SCORE } from "../lib/shadowScore";
 import { useT } from "../i18n";
 
@@ -30,8 +31,6 @@ const SHORTCUTS: { key: string; label: string; does: string; target: string }[] 
   { key: "ArrowLeft", label: "←", does: "previous", target: "previous" },
   { key: "ArrowRight", label: "→", does: "next", target: "next" },
 ];
-
-export const SKIPS_PER_LESSON = 3;
 
 const styles = stylex.create({
   practiceMode: {
@@ -73,8 +72,11 @@ export interface GateState {
   on: boolean;
   setOn: (on: boolean) => void;
   skipsLeft: number;
-  // Sentences passed or skipped in this lesson so far, kept on this device.
-  progressCount: number;
+  // Sentences passed or skipped in this lesson so far, kept on this device; null while the stored row loads.
+  progressCount: number | null;
+  saving: boolean;
+  // Non-null when the last save failed: retries that change.
+  retrySave: (() => void) | null;
   startOver: () => void;
 }
 
@@ -150,26 +152,46 @@ export function GuidedShadowing({
             <SegmentedControlItem value="learn" label={t("Learn")} />
           </SegmentedControl>
           {gate.on && (
-            <HStack gap={1} align="center" wrap="wrap">
-              <Text type="supporting">
-                {t("Unlocked {passed} of {count} sentences · {left} of {total} skips left. Saved on this device.", {
-                  passed: gate.progressCount,
-                  count,
-                  left: gate.skipsLeft,
-                  total: SKIPS_PER_LESSON,
-                })}
-              </Text>
-              {(gate.progressCount > 0 || gate.skipsLeft < SKIPS_PER_LESSON) && (
-                <Button
-                  label={t("Start over")}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if (window.confirm(t("Lock every sentence again and get all skips back?"))) gate.startOver();
-                  }}
-                />
+            <VStack gap={1} align="start">
+              <HStack gap={1} align="center" wrap="wrap">
+                {gate.progressCount !== null && (
+                  <Text type="supporting">
+                    {t("Unlocked {passed} of {count} sentences · {left} of {total} skips left.", {
+                      passed: gate.progressCount,
+                      count,
+                      left: gate.skipsLeft,
+                      total: SKIPS_PER_LESSON,
+                    })}
+                    {!gate.saving && !gate.retrySave && ` ${t("Saved on this device.")}`}
+                  </Text>
+                )}
+                {gate.saving && (
+                  <Text type="supporting">{t("Saving Learn progress…")}</Text>
+                )}
+                {gate.progressCount !== null && !gate.saving && !gate.retrySave &&
+                  (gate.progressCount > 0 || gate.skipsLeft < SKIPS_PER_LESSON) && (
+                  <Button
+                    label={t("Start over")}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm(t("Lock every sentence again and get all skips back?"))) gate.startOver();
+                    }}
+                  />
+                )}
+              </HStack>
+              {gate.retrySave && (
+                <HStack gap={1} align="center" wrap="wrap">
+                  <Alert>{t("Couldn't save Learn progress.")}</Alert>
+                  <Button
+                    label={t("Retry save")}
+                    variant="secondary"
+                    size="sm"
+                    onClick={gate.retrySave}
+                  />
+                </HStack>
               )}
-            </HStack>
+            </VStack>
           )}
           {!gate.available && (
             <Text as="p" type="supporting">

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getPracticeDays } from "../lib/progressStore";
+import { withDb } from "../lib/db";
 import { getAllCards } from "../lib/vocabStore";
 import { listUserLessons } from "../lib/userLessons";
 import {
@@ -72,7 +72,7 @@ describe("LessonDetail", () => {
     await submitInput(input, greetingsLesson.sentences[0].text);
     await waitForActions(1);
 
-    expect(await getPracticeDays()).toHaveLength(1);
+    expect(await withDb((db) => db.getAllKeys("practiceDays"))).toHaveLength(1);
     await click(container, "Back to lessons");
     await waitForCondition(hasText(container, "1-day streak"));
   });

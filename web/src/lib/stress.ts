@@ -83,8 +83,10 @@ export function intonation(text: string): Intonation | null {
   return QUESTION_AUXILIARIES.has(key) ? "rising" : null;
 }
 
-// Loads the dictionary chunk; call it only once the learner asks for stress marks. The raw import
-// keeps tsc from inferring a type for the 2 MB object.
+let parsedDict: StressDict | undefined;
+
+// Import the raw chunk on demand and share its parsed value across lessons.
 export async function loadStressDict(): Promise<StressDict> {
-  return JSON.parse((await import("./stressDict.json?raw")).default) as StressDict;
+  const { default: raw } = await import("./stressDict.json?raw");
+  return parsedDict ??= JSON.parse(raw) as StressDict;
 }

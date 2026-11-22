@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as backupStore from "../lib/backupStore";
 import { exportData } from "../lib/backup";
+import { withDb } from "../lib/db";
 import { todayKey } from "../lib/progress";
-import { getPracticeDays, recordPractice } from "../lib/progressStore";
+import { recordPractice } from "../lib/progressStore";
 import { createCard } from "../lib/vocab";
 import { getAllCards, putCard } from "../lib/vocabStore";
 import {
@@ -133,7 +134,39 @@ describe("BackupControls", () => {
     expect(container.textContent).toContain("imported card");
     expect(container.textContent).not.toContain("old card");
     expect(await getAllCards()).toHaveLength(1);
-    expect(await getPracticeDays()).toHaveLength(1);
+    expect(await withDb((db) => db.getAllKeys("practiceDays"))).toHaveLength(1);
+  });
+
+  it("rejects a backup missing learnProgress before confirm and keeps stored Learn progress", async () => {
+    const seeded = { lessonId: "lesson-1", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-01-05T10:00:00.000Z" };
+    await withDb((db) => db.put("learnProgress", seeded));
+    const text = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      cards: [],
+      practiceDays: [],
+      lessonCompletion: [],
+      userLessons: [],
+    });
+    const confirm = vi.fn<(message?: string) => boolean>(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const { container } = await renderApp();
+    await click(container, "Manage");
+    await waitForCondition(() => container.querySelector("#import-title") !== null);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("backup file input not found");
+
+    await harnessAct(async () => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File([text], "backup.json", { type: "application/json" })],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await waitForCondition(hasText(container, "Backup error"));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(await withDb((db) => db.getAll("learnProgress"))).toEqual([seeded]);
   });
 
   it("clears a backup error on the next successful export", async () => {

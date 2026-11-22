@@ -105,19 +105,19 @@ func TestNewServerTimeouts(t *testing.T) {
 // A sync with a canceled context reaches SyncState, returns 500, and writes nothing.
 func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-deadline@example.com")
+	user := signupForSync(t, api, "sync-deadline@example.com")
 	deadContextSync := authMiddleware(api.repo, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancel(r.Context())
 		cancel()
 		syncHandler(w, r.WithContext(ctx), api.repo)
 	}))
 
-	expired := doJSONWithCookie(deadContextSync, http.MethodPost, "/sync", validSyncState, cookie)
+	expired := syncWithCookie(deadContextSync, validSyncState, user)
 	if expired.Code != http.StatusInternalServerError || compactJSON(t, expired.Body.Bytes()) != `{"error":"internal server error"}` {
 		t.Fatalf("expired sync = %d %s, want 500 internal server error", expired.Code, expired.Body.String())
 	}
 	empty := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
-	later := syncWithCookie(api.handler, empty, cookie)
+	later := syncWithCookie(api.handler, empty, user)
 	if later.Code != http.StatusOK {
 		t.Fatalf("later sync = %d %s, want empty state", later.Code, later.Body.String())
 	}
@@ -132,7 +132,7 @@ func TestSyncPastRequestDeadlineWritesNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(request.Context())
 	cancel()
 	request = request.WithContext(ctx)
-	request.AddCookie(cookie)
+	request.AddCookie(user.cookie)
 	recorder := httptest.NewRecorder()
 	failedLookup.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
@@ -466,34 +466,88 @@ func doJSONWithCookie(handler http.Handler, method, path, body string, cookie *h
 	return recorder
 }
 
-func syncWithCookie(handler http.Handler, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
-	return doJSONWithCookie(handler, http.MethodPost, "/sync", body, cookie)
+// A signed-up user: the real id from the signup response and its session cookie.
+type syncUser struct {
+	id     string
+	cookie *http.Cookie
 }
 
-func signupForSync(t *testing.T, api *testAPI, email string) *http.Cookie {
+func syncWithCookie(handler http.Handler, body string, user syncUser) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/sync", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-RTE-Sync-Owner", user.id)
+	if user.cookie != nil {
+		req.AddCookie(user.cookie)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	return recorder
+}
+
+func signupForSync(t *testing.T, api *testAPI, email string) syncUser {
 	t.Helper()
 	signup := doJSON(api.handler, http.MethodPost, "/signup", `{"email":"`+email+`","password":"correct password"}`)
 	if signup.Code != http.StatusOK {
 		t.Fatalf("signup status = %d, body = %s", signup.Code, signup.Body.String())
 	}
-	return responseCookie(t, signup)
+	var created struct {
+		ID string `json:"id"`
+	}
+	decodeJSON(t, signup, &created)
+	return syncUser{id: created.ID, cookie: responseCookie(t, signup)}
 }
 
-const validSyncState = `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00.000Z","reps":1}}],"practiceDays":[{"date":"2026-09-22"}],"lessonCompletion":[{"lessonId":"lesson-1"}],"learnProgress":[{"lessonId":"lesson-1","passed":["sentence-1"],"skipsUsed":1,"updatedAt":"2026-09-22T10:00:00Z"}]}`
+const validSyncState = `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00.000Z","reps":1}}],"practiceDays":[{"date":"2026-09-22"}],"lessonCompletion":[{"lessonId":"lesson-1"}],"learnProgress":[{"lessonId":"lesson-1","passed":["sentence-1"],"skipsUsed":1,"updatedAt":"2026-09-22T10:00:00Z"}]}`
 
 func TestSyncRequiresSession(t *testing.T) {
 	api := newTestAPI(t)
-	response := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, nil)
+	response := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, syncUser{})
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
 
+// The owner header is checked before the repository: a mismatch or a missing header never reaches SyncState.
+func TestSyncRejectsMissingOrMismatchedOwner(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		header string
+		want   int
+		code   string
+	}{
+		{name: "missing", want: http.StatusBadRequest, code: "missing sync owner"},
+		{name: "mismatched", header: "not-the-session-user", want: http.StatusConflict, code: "sync owner mismatch"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/sync", strings.NewReader(`{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`))
+			req.Header.Set("Content-Type", "application/json")
+			if test.header != "" {
+				req.Header.Set("X-RTE-Sync-Owner", test.header)
+			}
+			req = req.WithContext(context.WithValue(req.Context(), userIDContextKey, "session-user"))
+			recorder := httptest.NewRecorder()
+			syncHandler(recorder, req, nil)
+			if recorder.Code != test.want {
+				t.Fatalf("status = %d, want %d", recorder.Code, test.want)
+			}
+			var reply struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(recorder.Body).Decode(&reply); err != nil {
+				t.Fatalf("decode error body %q: %v", recorder.Body.String(), err)
+			}
+			if reply.Error != test.code {
+				t.Fatalf("error = %q, want %q", reply.Error, test.code)
+			}
+		})
+	}
+}
+
 func TestSyncAcceptsNullLastReview(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-null-last-review@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":null}}],"practiceDays":[],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, body, cookie)
+	user := signupForSync(t, api, "sync-null-last-review@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00.000Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":null}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
+	response := syncWithCookie(api.handler, body, user)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
 	}
@@ -501,9 +555,9 @@ func TestSyncAcceptsNullLastReview(t *testing.T) {
 
 func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-empty-back@example.com")
-	body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1:café","front":"café","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"café"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`
-	response := syncWithCookie(api.handler, body, cookie)
+	user := signupForSync(t, api, "sync-empty-back@example.com")
+	body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"id":"lesson-1:sentence-1:café","front":"café","back":"Hello there — Xin chào","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"café"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
+	response := syncWithCookie(api.handler, body, user)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
 	}
@@ -518,35 +572,22 @@ func TestSyncAcceptsEmptyCardBackAndRoundTrips(t *testing.T) {
 
 func TestSyncMergesAndReturnsFullState(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-merge@example.com")
+	user := signupForSync(t, api, "sync-merge@example.com")
 
-	first := syncWithCookie(api.handler, validSyncState, cookie)
+	first := syncWithCookie(api.handler, validSyncState, user)
 	if first.Code != http.StatusOK {
 		t.Fatalf("first sync status = %d, body = %s", first.Code, first.Body.String())
 	}
-	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second sync status = %d, body = %s", second.Code, second.Body.String())
 	}
 	state, secondEpoch := stateJSON(t, second.Body.Bytes())
-	if state != withoutDirty(t, validSyncState) {
+	if state != compactJSON(t, []byte(validSyncState)) {
 		t.Fatalf("second sync body = %s, want %s", second.Body.String(), validSyncState)
 	}
 	if _, firstEpoch := stateJSON(t, first.Body.Bytes()); firstEpoch != secondEpoch {
 		t.Fatalf("syncEpoch = %s then %s, want equal", firstEpoch, secondEpoch)
-	}
-}
-
-// A client that predates Learn mode sync sends no learnProgress; it is accepted, and the reply still carries the list.
-func TestSyncAcceptsRequestWithoutLearnProgress(t *testing.T) {
-	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-legacy@example.com")
-	response := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
-	if response.Code != http.StatusOK {
-		t.Fatalf("legacy sync status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if state, _ := stateJSON(t, response.Body.Bytes()); state != compactJSON(t, []byte(`{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`)) {
-		t.Fatalf("legacy sync state = %s, want empty lists including learnProgress", state)
 	}
 }
 
@@ -573,14 +614,14 @@ func TestSyncIsolatesUsersOverHTTP(t *testing.T) {
 	if responseA.Code != http.StatusOK {
 		t.Fatalf("user A follow-up sync status = %d, body = %s", responseA.Code, responseA.Body.String())
 	}
-	if state, _ := stateJSON(t, responseA.Body.Bytes()); state != withoutDirty(t, validSyncState) {
+	if state, _ := stateJSON(t, responseA.Body.Bytes()); state != compactJSON(t, []byte(validSyncState)) {
 		t.Fatalf("user A state = %s, want its original card unchanged", responseA.Body.String())
 	}
 }
 
-func syncCardsJSON(t *testing.T, api *testAPI, cookie *http.Cookie, cards string) []storage.Card {
+func syncCardsJSON(t *testing.T, api *testAPI, user syncUser, cards string) []storage.Card {
 	t.Helper()
-	response := syncWithCookie(api.handler, `{"cards":[`+cards+`],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	response := syncWithCookie(api.handler, `{"cards":[`+cards+`],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 	if response.Code != http.StatusOK {
 		t.Fatalf("sync status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -593,9 +634,9 @@ func syncCardsJSON(t *testing.T, api *testAPI, cookie *http.Cookie, cards string
 
 func TestSyncDeletePropagatesAndUndoWins(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-delete@example.com")
+	user := signupForSync(t, api, "sync-delete@example.com")
 	card := func(updatedAt, deletedAt string) string {
-		return `{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"reps":1},"updatedAt":"` + updatedAt + `","deletedAt":` + deletedAt + `}`
+		return `{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"lapses":0,"state":0,"reps":1},"updatedAt":"` + updatedAt + `","deletedAt":` + deletedAt + `}`
 	}
 	only := func(cards []storage.Card) storage.Card {
 		t.Helper()
@@ -606,17 +647,17 @@ func TestSyncDeletePropagatesAndUndoWins(t *testing.T) {
 	}
 
 	// Both devices hold the live card; device A deletes it.
-	syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null"))
-	syncCardsJSON(t, api, cookie, card("2026-09-23T10:00:00Z", `"2026-09-23T10:00:00Z"`))
+	syncCardsJSON(t, api, user, card("2026-09-22T10:00:00Z", "null"))
+	syncCardsJSON(t, api, user, card("2026-09-23T10:00:00Z", `"2026-09-23T10:00:00Z"`))
 
 	// Device B syncs its older live copy: the tombstone survives and is returned.
-	got := only(syncCardsJSON(t, api, cookie, card("2026-09-22T10:00:00Z", "null")))
+	got := only(syncCardsJSON(t, api, user, card("2026-09-22T10:00:00Z", "null")))
 	if got.DeletedAt.Value == nil || *got.DeletedAt.Value != "2026-09-23T10:00:00Z" || got.UpdatedAt != "2026-09-23T10:00:00Z" {
 		t.Fatalf("after older live copy = %#v, want the tombstone", got)
 	}
 
 	// Device A undoes with a newer updatedAt: the live card wins.
-	got = only(syncCardsJSON(t, api, cookie, card("2026-09-24T10:00:00Z", "null")))
+	got = only(syncCardsJSON(t, api, user, card("2026-09-24T10:00:00Z", "null")))
 	if got.DeletedAt.Value != nil || got.UpdatedAt != "2026-09-24T10:00:00Z" {
 		t.Fatalf("after undo = %#v, want live at the undo time", got)
 	}
@@ -624,60 +665,59 @@ func TestSyncDeletePropagatesAndUndoWins(t *testing.T) {
 
 func TestSyncRejectsInvalidState(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-invalid@example.com")
+	user := signupForSync(t, api, "sync-invalid@example.com")
 	tests := []struct {
 		name string
 		body string
 	}{
-		{name: "dirty missing", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "dirty string", body: `{"cards":[{"dirty":"yes","id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "dirty null", body: `{"cards":[{"dirty":null,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "bad fsrs due", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"not-a-date","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "fsrs due non-UTC offset", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00+20:00","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "fsrs due year zero", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"0000-01-01T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "missing fsrs due", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "wrong fsrs type", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":[] }],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "bad fsrs last review", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"not-a-date"}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "fsrs last review non-UTC offset", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "fsrs last review year zero", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"0000-01-01T00:00:00Z"}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "fsrs last review contains NUL", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T00:00:00Z\u0000"}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "invalid calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[]}`},
-		{name: "practice day year zero", body: `{"cards":[],"practiceDays":[{"date":"0000-01-01"}],"lessonCompletion":[]}`},
-		{name: "noncanonical calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-9-3"}],"lessonCompletion":[]}`},
-		{name: "card id mismatch", body: `{"cards":[{"dirty":true,"id":"wrong-id","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty card id", body: `{"cards":[{"dirty":true,"id":"","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty card front", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "card front contains NUL", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"a\u0000b","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "card id contains NUL", body: `{"cards":[{"dirty":true,"id":"lesson\u0000-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson\u0000-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "card back contains NUL", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"a\u0000b","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty source lesson id", body: `{"cards":[{"dirty":true,"id":":sentence-1","front":"front","back":"back","source":{"lessonId":"","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty source sentence id", body: `{"cards":[{"dirty":true,"id":"lesson-1:","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "duplicate card id", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"dirty":true,"id":"lesson-1:sentence-1","front":"front 2","back":"back 2","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "missing source word", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "uppercase word", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1:Hello","front":"Hello","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"Hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "word contains colon", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1:a:b","front":"a","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"a:b"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "word card id without word", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"hello","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "empty lesson completion id", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":""}]}`},
-		{name: "lesson completion contains NUL", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":"x\u0000y"}]}`},
-		{name: "missing cards array", body: `{"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "null cards array", body: `{"cards":null,"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "wrong cards type", body: `{"cards":{},"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "missing practice days array", body: `{"cards":[],"lessonCompletion":[]}`},
-		{name: "null practice days array", body: `{"cards":[],"practiceDays":null,"lessonCompletion":[]}`},
-		{name: "missing lesson completion array", body: `{"cards":[],"practiceDays":[]}`},
-		{name: "null lesson completion array", body: `{"cards":[],"practiceDays":[],"lessonCompletion":null}`},
-		{name: "missing updatedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "null updatedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":null,"deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "invalid updatedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-02-30T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "four-digit fraction updatedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00.1234Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "missing deletedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "invalid deletedAt", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":"yesterday","fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
-		{name: "wrong deletedAt type", body: `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":1,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "bad fsrs due", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"not-a-date","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "fsrs due non-UTC offset", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00+20:00","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "fsrs due year zero", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"0000-01-01T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "missing fsrs due", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "wrong fsrs type", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":[] }],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "bad fsrs last review", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"not-a-date"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "fsrs last review non-UTC offset", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T10:00:00+20:00"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "fsrs last review year zero", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"0000-01-01T00:00:00Z"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "fsrs last review contains NUL", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"last_review":"2026-09-21T00:00:00Z\u0000"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "invalid calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-02-30"}],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "practice day year zero", body: `{"cards":[],"practiceDays":[{"date":"0000-01-01"}],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "noncanonical calendar day", body: `{"cards":[],"practiceDays":[{"date":"2026-9-3"}],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "card id mismatch", body: `{"cards":[{"id":"wrong-id","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "empty card id", body: `{"cards":[{"id":"","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "empty card front", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "card front contains NUL", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"a\u0000b","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "card id contains NUL", body: `{"cards":[{"id":"lesson\u0000-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson\u0000-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "card back contains NUL", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"a\u0000b","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "empty source lesson id", body: `{"cards":[{"id":":sentence-1","front":"front","back":"back","source":{"lessonId":"","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "empty source sentence id", body: `{"cards":[{"id":"lesson-1:","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "duplicate card id", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}},{"id":"lesson-1:sentence-1","front":"front 2","back":"back 2","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "missing source word", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "uppercase word", body: `{"cards":[{"id":"lesson-1:sentence-1:Hello","front":"Hello","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"Hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "word contains colon", body: `{"cards":[{"id":"lesson-1:sentence-1:a:b","front":"a","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"a:b"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "word card id without word", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"hello","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":"hello"},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "empty lesson completion id", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":""}],"learnProgress":[]}`},
+		{name: "lesson completion contains NUL", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":"x\u0000y"}],"learnProgress":[]}`},
+		{name: "missing cards array", body: `{"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "null cards array", body: `{"cards":null,"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "wrong cards type", body: `{"cards":{},"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "missing practice days array", body: `{"cards":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "null practice days array", body: `{"cards":[],"practiceDays":null,"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "missing lesson completion array", body: `{"cards":[],"practiceDays":[],"learnProgress":[]}`},
+		{name: "null lesson completion array", body: `{"cards":[],"practiceDays":[],"lessonCompletion":null,"learnProgress":[]}`},
+		{name: "missing learn progress array", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`},
+		{name: "null learn progress array", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":null}`},
+		{name: "missing updatedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "null updatedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":null,"deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "invalid updatedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-02-30T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "four-digit fraction updatedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00.1234Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "missing deletedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "invalid deletedAt", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":"yesterday","fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
+		{name: "wrong deletedAt type", body: `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":1,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`},
 		{name: "malformed json", body: `{"cards":[],"practiceDays":[],"lessonCompletion":[]`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response := syncWithCookie(api.handler, test.body, cookie)
+			response := syncWithCookie(api.handler, test.body, user)
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
 			}
@@ -690,7 +730,7 @@ func TestSyncRejectsInvalidState(t *testing.T) {
 
 func TestSyncValidatesFSRSFields(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-fsrs-fields@example.com")
+	user := signupForSync(t, api, "sync-fsrs-fields@example.com")
 	fields := map[string]string{"stability": "2.5", "difficulty": "4.2", "elapsed_days": "1", "scheduled_days": "2", "learning_steps": "0", "reps": "3", "lapses": "0", "state": "2"}
 	body := func(key, value string) string {
 		parts := []string{`"due":"2026-09-22T10:00:00Z"`}
@@ -704,7 +744,7 @@ func TestSyncValidatesFSRSFields(t *testing.T) {
 			}
 			parts = append(parts, `"`+name+`":`+raw)
 		}
-		return `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{` + strings.Join(parts, ",") + `}}],"practiceDays":[],"lessonCompletion":[]}`
+		return `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{` + strings.Join(parts, ",") + `}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
 	}
 	invalid := map[string][]string{
 		"stability":      {"", "-0.5", "null", `"1"`, "1e400"},
@@ -723,18 +763,18 @@ func TestSyncValidatesFSRSFields(t *testing.T) {
 				name = key + " " + value
 			}
 			t.Run(name, func(t *testing.T) {
-				response := syncWithCookie(api.handler, body(key, value), cookie)
+				response := syncWithCookie(api.handler, body(key, value), user)
 				if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
 					t.Fatalf("status = %d, body = %s, want 400 invalid sync state", response.Code, response.Body.String())
 				}
 			})
 		}
 	}
-	if cards := syncCardsJSON(t, api, cookie, ""); len(cards) != 0 {
+	if cards := syncCardsJSON(t, api, user, ""); len(cards) != 0 {
 		t.Fatalf("cards after rejected pushes = %#v, want empty", cards)
 	}
 	for key, value := range map[string]string{"state": "3", "reps": "9007199254740991", "stability": "0", "difficulty": "10.75"} {
-		if response := syncWithCookie(api.handler, body(key, value), cookie); response.Code != http.StatusOK {
+		if response := syncWithCookie(api.handler, body(key, value), user); response.Code != http.StatusOK {
 			t.Fatalf("%s %s status = %d, body = %s, want 200", key, value, response.Code, response.Body.String())
 		}
 	}
@@ -742,16 +782,16 @@ func TestSyncValidatesFSRSFields(t *testing.T) {
 
 func TestSyncRejectsInvalidFSRSBytesWithoutWriting(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-invalid-fsrs-bytes@example.com")
-	body := []byte(`{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"note":"a`)
+	user := signupForSync(t, api, "sync-invalid-fsrs-bytes@example.com")
+	body := []byte(`{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"note":"a`)
 	body = append(body, 0xff)
-	body = append(body, []byte(`b"}}],"practiceDays":[],"lessonCompletion":[]}`)...)
-	response := syncWithCookie(api.handler, string(body), cookie)
+	body = append(body, []byte(`b"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`)...)
+	response := syncWithCookie(api.handler, string(body), user)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 
-	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	empty := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 	var state storage.State
 	decodeJSON(t, empty, &state)
 	if len(state.Cards) != 0 {
@@ -770,9 +810,9 @@ func TestSyncPreservesFSRSUnicodeEscapes(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			api := newTestAPI(t)
-			cookie := signupForSync(t, api, "sync-"+strings.ReplaceAll(test.name, " ", "-")+"@example.com")
-			body := `{"cards":[{"dirty":true,"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"note":"` + test.note + `"}}],"practiceDays":[],"lessonCompletion":[]}`
-			response := syncWithCookie(api.handler, body, cookie)
+			user := signupForSync(t, api, "sync-"+strings.ReplaceAll(test.name, " ", "-")+"@example.com")
+			body := `{"cards":[{"id":"lesson-1:sentence-1","front":"front","back":"back","source":{"lessonId":"lesson-1","sentenceId":"sentence-1","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T00:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0,"note":"` + test.note + `"}}],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`
+			response := syncWithCookie(api.handler, body, user)
 			if response.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body = %s", response.Code, response.Body.String())
 			}
@@ -787,11 +827,12 @@ func TestSyncPreservesFSRSUnicodeEscapes(t *testing.T) {
 
 func TestSyncRejectsMissingOrWrongContentType(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-content-type@example.com")
+	user := signupForSync(t, api, "sync-content-type@example.com")
 	for _, contentType := range []string{"", "text/plain"} {
 		t.Run(map[string]string{"": "missing", "text/plain": "text plain"}[contentType], func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/sync", strings.NewReader(validSyncState))
-			req.AddCookie(cookie)
+			req.Header.Set("X-RTE-Sync-Owner", user.id)
+			req.AddCookie(user.cookie)
 			if contentType != "" {
 				req.Header.Set("Content-Type", contentType)
 			}
@@ -809,9 +850,9 @@ func TestSyncRejectsMissingOrWrongContentType(t *testing.T) {
 
 func TestSyncRejectsOversizedBody(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-large@example.com")
-	oversizedBody := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"padding":"` + strings.Repeat("x", int(syncBodyMaxBytes)) + `"}`
-	response := syncWithCookie(api.handler, oversizedBody, cookie)
+	user := signupForSync(t, api, "sync-large@example.com")
+	oversizedBody := `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[],"padding":"` + strings.Repeat("x", int(syncBodyMaxBytes)) + `"}`
+	response := syncWithCookie(api.handler, oversizedBody, user)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
 	}
@@ -822,29 +863,29 @@ func TestSyncRejectsOversizedBody(t *testing.T) {
 
 func TestSyncRejectsCardsOverCap(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-card-cap@example.com")
+	user := signupForSync(t, api, "sync-card-cap@example.com")
 	card := func(i int) string {
 		sentenceID := "s" + strconv.Itoa(i)
-		return `{"dirty":true,"id":"l:` + sentenceID + `","front":"f","back":"","source":{"lessonId":"l","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}`
+		return `{"id":"l:` + sentenceID + `","front":"f","back":"","source":{"lessonId":"l","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}`
 	}
 	cards := make([]string, storage.MaxCards)
 	for i := range cards {
 		cards[i] = card(i)
 	}
 	half := storage.MaxCards / 2
-	syncCardsJSON(t, api, cookie, strings.Join(cards[:half], ","))
-	if got := syncCardsJSON(t, api, cookie, strings.Join(cards[half:], ",")); len(got) != storage.MaxCards {
+	syncCardsJSON(t, api, user, strings.Join(cards[:half], ","))
+	if got := syncCardsJSON(t, api, user, strings.Join(cards[half:], ",")); len(got) != storage.MaxCards {
 		t.Fatalf("seeded cards = %d, want %d", len(got), storage.MaxCards)
 	}
 
-	response := syncWithCookie(api.handler, `{"cards":[`+card(storage.MaxCards)+`],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	response := syncWithCookie(api.handler, `{"cards":[`+card(storage.MaxCards)+`],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusRequestEntityTooLarge, response.Body.String())
 	}
 	if compactJSON(t, response.Body.Bytes()) != `{"error":"too many cards"}` {
 		t.Fatalf("body = %s", response.Body.String())
 	}
-	if got := syncCardsJSON(t, api, cookie, ""); len(got) != storage.MaxCards {
+	if got := syncCardsJSON(t, api, user, ""); len(got) != storage.MaxCards {
 		t.Fatalf("cards after refused sync = %d, want %d", len(got), storage.MaxCards)
 	}
 }
@@ -858,7 +899,7 @@ func TestSyncRejectsListsOverCap(t *testing.T) {
 		max              int
 	}{
 		{
-			"practice-days", `{"cards":[],"practiceDays":[{"date":"9999-12-31"}],"lessonCompletion":[]}`, `{"error":"too many practice days"}`,
+			"practice-days", `{"cards":[],"practiceDays":[{"date":"9999-12-31"}],"lessonCompletion":[],"learnProgress":[]}`, `{"error":"too many practice days"}`,
 			func(in *storage.State) {
 				for i := range storage.MaxPracticeDays {
 					in.PracticeDays = append(in.PracticeDays, storage.PracticeDay{Date: time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")})
@@ -867,7 +908,7 @@ func TestSyncRejectsListsOverCap(t *testing.T) {
 			func(state storage.State) int { return len(state.PracticeDays) }, storage.MaxPracticeDays,
 		},
 		{
-			"lesson-completion", `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":"over"}]}`, `{"error":"too many lesson completions"}`,
+			"lesson-completion", `{"cards":[],"practiceDays":[],"lessonCompletion":[{"lessonId":"over"}],"learnProgress":[]}`, `{"error":"too many lesson completions"}`,
 			func(in *storage.State) {
 				for i := range storage.MaxLessonCompletions {
 					in.LessonCompletion = append(in.LessonCompletion, storage.LessonCompletion{LessonID: "l" + strconv.Itoa(i)})
@@ -877,23 +918,18 @@ func TestSyncRejectsListsOverCap(t *testing.T) {
 		},
 	} {
 		t.Run(list.name, func(t *testing.T) {
-			cookie := signupForSync(t, api, "sync-"+list.name+"-cap@example.com")
-			me := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie)
-			var user struct {
-				ID string `json:"id"`
-			}
-			decodeJSON(t, me, &user)
-			seed := storage.State{Cards: []storage.Card{}, PracticeDays: []storage.PracticeDay{}, LessonCompletion: []storage.LessonCompletion{}}
+			user := signupForSync(t, api, "sync-"+list.name+"-cap@example.com")
+			seed := storage.State{Cards: []storage.Card{}, PracticeDays: []storage.PracticeDay{}, LessonCompletion: []storage.LessonCompletion{}, LearnProgress: []storage.LearnProgress{}}
 			list.seed(&seed)
-			if _, err := api.repo.SyncState(context.Background(), user.ID, seed); err != nil {
+			if _, err := api.repo.SyncState(context.Background(), user.id, seed); err != nil {
 				t.Fatalf("seed SyncState() error = %v", err)
 			}
 
-			response := syncWithCookie(api.handler, list.over, cookie)
+			response := syncWithCookie(api.handler, list.over, user)
 			if response.Code != http.StatusRequestEntityTooLarge || compactJSON(t, response.Body.Bytes()) != list.body {
 				t.Fatalf("status = %d, body = %s; want 413 %s", response.Code, response.Body.String(), list.body)
 			}
-			after := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+			after := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 			var state storage.State
 			decodeJSON(t, after, &state)
 			if list.count(state) != list.max {
@@ -944,27 +980,6 @@ func stateJSON(t *testing.T, body []byte) (string, string) {
 	return string(compact), epoch
 }
 
-// withoutDirty returns a sync request body's compact JSON with each card's required dirty key removed.
-func withoutDirty(t *testing.T, body string) string {
-	t.Helper()
-	var value map[string]any
-	if err := json.Unmarshal([]byte(body), &value); err != nil {
-		t.Fatalf("invalid JSON body: %v", err)
-	}
-	for i, card := range value["cards"].([]any) {
-		fields := card.(map[string]any)
-		if _, ok := fields["dirty"]; !ok {
-			t.Fatalf("request card %d has no dirty", i)
-		}
-		delete(fields, "dirty")
-	}
-	compact, err := json.Marshal(value)
-	if err != nil {
-		t.Fatalf("compact JSON: %v", err)
-	}
-	return string(compact)
-}
-
 func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder, value any) {
 	t.Helper()
 	if err := json.NewDecoder(recorder.Body).Decode(value); err != nil {
@@ -974,18 +989,18 @@ func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder, value any) {
 
 func TestRequestExtendsSessionCookieOncePer24Hours(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "rolling-cookie@example.com")
+	user := signupForSync(t, api, "rolling-cookie@example.com")
 	if _, err := api.pool.Exec(context.Background(), `UPDATE sessions SET created_at = now() - interval '2 days', expires_at = now() + interval '1 day'`); err != nil {
 		t.Fatalf("age session: %v", err)
 	}
 
-	first := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie)
+	first := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", user.cookie)
 	if first.Code != http.StatusOK {
 		t.Fatalf("/me status = %d, body = %s", first.Code, first.Body.String())
 	}
 	refreshed := responseCookie(t, first)
 	ttl := int(auth.SessionTTL / time.Second)
-	if refreshed.Name != sessionCookieName || refreshed.Value != cookie.Value || refreshed.Path != "/" || !refreshed.HttpOnly || refreshed.Secure || refreshed.SameSite != http.SameSiteLaxMode {
+	if refreshed.Name != sessionCookieName || refreshed.Value != user.cookie.Value || refreshed.Path != "/" || !refreshed.HttpOnly || refreshed.Secure || refreshed.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("refreshed cookie = %#v", refreshed)
 	}
 	if refreshed.MaxAge < ttl-60 || refreshed.MaxAge > ttl {
@@ -999,7 +1014,7 @@ func TestRequestExtendsSessionCookieOncePer24Hours(t *testing.T) {
 		t.Fatalf("cookie Expires = %v, stored expires_at = %v", refreshed.Expires, stored)
 	}
 
-	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[]}`, cookie)
+	second := syncWithCookie(api.handler, `{"cards":[],"practiceDays":[],"lessonCompletion":[],"learnProgress":[]}`, user)
 	if second.Code != http.StatusOK {
 		t.Fatalf("/sync status = %d, body = %s", second.Code, second.Body.String())
 	}
@@ -1014,11 +1029,11 @@ func TestExpiredOrCappedSessionIsRejected(t *testing.T) {
 		`UPDATE sessions SET expires_at = now() - interval '1 second'`,
 		`UPDATE sessions SET created_at = now() - interval '91 days', expires_at = now() + interval '1 day'`,
 	} {
-		cookie := signupForSync(t, api, "rejected-"+strconv.Itoa(len(update))+"@example.com")
-		if _, err := api.pool.Exec(context.Background(), update+` WHERE token_hash = $1`, auth.HashSessionToken(cookie.Value)); err != nil {
+		user := signupForSync(t, api, "rejected-"+strconv.Itoa(len(update))+"@example.com")
+		if _, err := api.pool.Exec(context.Background(), update+` WHERE token_hash = $1`, auth.HashSessionToken(user.cookie.Value)); err != nil {
 			t.Fatalf("update session: %v", err)
 		}
-		if response := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", cookie); response.Code != http.StatusUnauthorized {
+		if response := doJSONWithCookie(api.handler, http.MethodGet, "/me", "", user.cookie); response.Code != http.StatusUnauthorized {
 			t.Fatalf("%s: /me status = %d, want 401", update, response.Code)
 		}
 	}
@@ -1026,10 +1041,10 @@ func TestExpiredOrCappedSessionIsRejected(t *testing.T) {
 
 func TestSyncRejectsOversizedKeys(t *testing.T) {
 	api := newTestAPI(t)
-	cookie := signupForSync(t, api, "sync-oversized-keys@example.com")
+	user := signupForSync(t, api, "sync-oversized-keys@example.com")
 	state := func(lessonID, sentenceID, completedLessonID string) string {
 		id := lessonID + ":" + sentenceID
-		return `{"cards":[{"dirty":true,"id":"` + id + `","front":"front","back":"back","source":{"lessonId":"` + lessonID + `","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[{"lessonId":"` + completedLessonID + `"}]}`
+		return `{"cards":[{"id":"` + id + `","front":"front","back":"back","source":{"lessonId":"` + lessonID + `","sentenceId":"` + sentenceID + `","word":""},"updatedAt":"2026-09-22T10:00:00Z","deletedAt":null,"fsrs":{"due":"2026-09-22T10:00:00Z","stability":0,"difficulty":0,"elapsed_days":0,"scheduled_days":0,"learning_steps":0,"reps":0,"lapses":0,"state":0}}],"practiceDays":[],"lessonCompletion":[{"lessonId":"` + completedLessonID + `"}],"learnProgress":[]}`
 	}
 	for name, body := range map[string]string{
 		"card id over cap":              state(randomKey(storage.MaxKeyBytes-1), "s", "lesson-1"),
@@ -1039,7 +1054,7 @@ func TestSyncRejectsOversizedKeys(t *testing.T) {
 		"long completion lesson id":     state("lesson-1", "s", randomKey(4000)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			response := syncWithCookie(api.handler, body, cookie)
+			response := syncWithCookie(api.handler, body, user)
 			if response.Code != http.StatusBadRequest || compactJSON(t, response.Body.Bytes()) != `{"error":"invalid sync state"}` {
 				t.Fatalf("status = %d, body = %s, want 400 invalid sync state", response.Code, response.Body.String())
 			}
@@ -1047,7 +1062,7 @@ func TestSyncRejectsOversizedKeys(t *testing.T) {
 	}
 
 	atCap := state(randomKey(storage.MaxKeyBytes-2), "s", randomKey(storage.MaxKeyBytes))
-	if response := syncWithCookie(api.handler, atCap, cookie); response.Code != http.StatusOK {
+	if response := syncWithCookie(api.handler, atCap, user); response.Code != http.StatusOK {
 		t.Fatalf("at-cap keys status = %d, body = %s, want 200", response.Code, response.Body.String())
 	}
 }

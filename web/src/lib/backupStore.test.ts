@@ -2,15 +2,10 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
 
 import { exportData, importData } from "./backup";
-import { claimOwner, exportAll, exportBackupData, mergeInto, replaceAll } from "./backupStore";
+import { claimOwner, readSyncSnapshot, exportBackupData, mergeInto, replaceAll } from "./backupStore";
 import { withDb } from "./db";
-import { onLearnProgressChanged } from "./learnProgress";
-import {
-  getCompletedLessons,
-  getPracticeDays,
-  markLessonComplete,
-  recordPractice,
-} from "./progressStore";
+import { applyLearnChange, onLearnProgressChanged } from "./learnProgress";
+import { markLessonComplete, recordPractice } from "./progressStore";
 import { deleteCard } from "./vocab";
 import { dueCards, getAllCards, putCard } from "./vocabStore";
 import { listUserLessons, putUserLesson } from "./userLessons";
@@ -87,8 +82,8 @@ describe("backup store", () => {
     await replaceAll(importData(exportData(exported, now)));
 
     expect(await getAllCards()).toEqual(exported.cards);
-    expect(await getPracticeDays()).toEqual(["2026-01-05"]);
-    expect(await getCompletedLessons()).toEqual(["lesson-1"]);
+    expect(await withDb((db) => db.getAllKeys("practiceDays"))).toEqual(["2026-01-05"]);
+    expect(await withDb((db) => db.getAllKeys("lessonCompletion"))).toEqual(["lesson-1"]);
     expect(await listUserLessons()).toEqual([userLesson]);
     expect(dueCards(await getAllCards(), now)).toHaveLength(1);
     expect((await getAllCards())[0]?.fsrs.due).toBeInstanceOf(Date);
@@ -123,8 +118,8 @@ describe("backup store", () => {
     await replaceAll(imported);
 
     expect((await getAllCards()).map(({ front }) => front)).toEqual(["new"]);
-    expect(await getPracticeDays()).toEqual(["2026-01-05"]);
-    expect(await getCompletedLessons()).toEqual(["new-lesson"]);
+    expect(await withDb((db) => db.getAllKeys("practiceDays"))).toEqual(["2026-01-05"]);
+    expect(await withDb((db) => db.getAllKeys("lessonCompletion"))).toEqual(["new-lesson"]);
     expect(await listUserLessons()).toEqual([userLesson]);
   });
 
@@ -134,7 +129,7 @@ describe("backup store", () => {
 
     expect(await claimOwner("user-2")).toBe(false);
     expect(await claimOwner("user-1")).toBe(true);
-    expect(await exportAll()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [] });
+    expect(await readSyncSnapshot()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [] });
   });
 
   it("merges sync state by updatedAt and unions progress rows", async () => {
@@ -147,16 +142,28 @@ describe("backup store", () => {
       practiceDays: [{ date: "2026-01-06" }],
       lessonCompletion: [{ lessonId: "lesson-2" }], learnProgress: [],
       syncEpoch: SYNC_EPOCH,
-    }, []);
+    }, { cards: [], learnProgress: [] });
 
     expect(await getAllCards()).toEqual([second]);
-    expect(await getPracticeDays()).toEqual(["2026-01-06"]);
-    expect(await getCompletedLessons()).toEqual(["lesson-2"]);
+    expect(await withDb((db) => db.getAllKeys("practiceDays"))).toEqual(["2026-01-06"]);
+    expect(await withDb((db) => db.getAllKeys("lessonCompletion"))).toEqual(["lesson-2"]);
+  });
+
+  it("settles a live card that differs only in body at the reply's timestamp to the server's copy", async () => {
+    // Two devices edited the same card at the same instant; the server's canonical body wins and the
+    // settled card is stored clean, so the next request sends nothing.
+    await putCard(card("conflict", now, { front: "device two" }));
+    const sent = await readSyncSnapshot();
+    const remote = card("conflict", now, { front: "server canonical" });
+    const reply = { cards: [remote], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH };
+    expect(await mergeInto(reply, sent)).toBe(false);
+    expect(await getAllCards()).toEqual([remote]);
+    expect((await readSyncSnapshot()).cards.every((stored) => !stored.dirty)).toBe(true);
   });
 
   it("merges sync state without touching user lessons", async () => {
     await putUserLesson(userLesson);
-    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [card("synced", now)], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, { cards: [], learnProgress: [] });
 
     expect(await listUserLessons()).toEqual([userLesson]);
   });
@@ -165,31 +172,87 @@ describe("backup store", () => {
     await withDb(async (db) => {
       await db.put("learnProgress", { lessonId: "kept", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T12:00:00.000Z" });
       await db.put("learnProgress", { lessonId: "replaced", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T10:00:00.000Z" });
+      // Same instant as the reply's row but a different payload: the server copy wins.
+      await db.put("learnProgress", { lessonId: "tie", passed: ["local"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" });
+      // Same instant and the same payload: applying the reply again is a no-op.
+      await db.put("learnProgress", { lessonId: "same", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" });
     });
     let changed = 0;
     const stop = onLearnProgressChanged(() => changed++);
-    await mergeInto(
-      {
-        cards: [],
-        practiceDays: [],
-        lessonCompletion: [],
-        learnProgress: [
-          { lessonId: "kept", passed: [], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
-          { lessonId: "replaced", passed: [], skipsUsed: 2, updatedAt: "2026-09-22T11:00:00.000Z" },
-          { lessonId: "new", passed: ["s9"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
-        ],
-        syncEpoch: "epoch",
-      },
-      [],
-    );
-    stop();
+    // The request carried exactly the stored rows.
+    const sent = await readSyncSnapshot();
+    const reply = {
+      cards: [],
+      practiceDays: [],
+      lessonCompletion: [],
+      learnProgress: [
+        { lessonId: "kept", passed: [], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
+        { lessonId: "replaced", passed: [], skipsUsed: 2, updatedAt: "2026-09-22T11:00:00.000Z" },
+        { lessonId: "new", passed: ["s9"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
+        { lessonId: "tie", passed: ["remote"], skipsUsed: 1, updatedAt: "2026-09-22T11:00:00.000Z" },
+        { lessonId: "same", passed: ["s1"], skipsUsed: 0, updatedAt: "2026-09-22T11:00:00.000Z" },
+      ],
+      syncEpoch: "epoch",
+    };
+    await mergeInto(reply, sent);
     const stored = await withDb((db) => db.getAll("learnProgress"));
     expect(Object.fromEntries(stored.map((progress) => [progress.lessonId, progress.passed]))).toEqual({
       kept: ["s1"],
       new: ["s9"],
       replaced: [],
+      same: ["s1"],
+      tie: ["remote"],
     });
     expect(changed).toBe(1);
+    // Replaying the identical reply puts nothing new and notifies no one.
+    await mergeInto(reply, sent);
+    expect(changed).toBe(1);
+    expect(await withDb((db) => db.getAll("learnProgress"))).toEqual(stored);
+    stop();
+  });
+
+  it("keeps an unsent local change that collides at the reply's instant and resends it once", async () => {
+    const t0 = "2026-09-22T10:00:00.000Z";
+    const t1 = "2026-09-22T10:00:01.000Z";
+    await withDb((db) => db.put("learnProgress", { lessonId: "l1", passed: ["s1"], skipsUsed: 0, updatedAt: t0 }));
+    // The request carried this row; the local pass below happened after it left.
+    const sent = await readSyncSnapshot();
+    await applyLearnChange("l1", { kind: "pass", sentenceId: "s2" }, new Date(t1));
+
+    const remote = { lessonId: "l1", passed: ["s9"], skipsUsed: 0, updatedAt: t1 };
+    const reply = { cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [remote], syncEpoch: "epoch" };
+    expect(await mergeInto(reply, sent)).toBe(true);
+    // The unsent pass survived, restamped one tick over the collision, for the follow-up sync to push.
+    const kept = {
+      lessonId: "l1",
+      passed: ["s1", "s2"],
+      skipsUsed: 0,
+      updatedAt: "2026-09-22T10:00:01.001Z",
+    };
+    expect(await withDb((db) => db.get("learnProgress", "l1"))).toEqual(kept);
+
+    // The follow-up pushes the restamped row; the ack settles it, with no second repush loop.
+    const followUp = await readSyncSnapshot();
+    const ack = { ...reply, learnProgress: [kept] };
+    expect(await mergeInto(ack, followUp)).toBe(false);
+    expect(await withDb((db) => db.get("learnProgress", "l1"))).toEqual(kept);
+  });
+
+  it("rejects an unrepresentable Learn tie without applying any part of the reply", async () => {
+    const sent = await readSyncSnapshot();
+    const updatedAt = "9999-12-31T23:59:59.999Z";
+    const local = { lessonId: "at-limit", passed: ["mine"], skipsUsed: 0, updatedAt };
+    await withDb((db) => db.put("learnProgress", local));
+    const reply = {
+      syncEpoch: "must-not-land",
+      cards: [card("must-not-land", now)],
+      practiceDays: [{ date: "2026-01-05" }],
+      lessonCompletion: [{ lessonId: "must-not-land" }],
+      learnProgress: [{ ...local, passed: ["other"] }],
+    };
+    await expect(mergeInto(reply, sent)).rejects.toThrow("Learn progress timestamp out of range.");
+    expect(await readSyncSnapshot()).toEqual({ cards: [], practiceDays: [], lessonCompletion: [], learnProgress: [local] });
+    expect(await withDb((db) => db.get("meta", "syncEpoch"))).toBeUndefined();
   });
 
   it("puts Learn progress in the backup and replaces it on import", async () => {
@@ -203,12 +266,12 @@ describe("backup store", () => {
   it("keeps user lessons out of the sync payload", async () => {
     await putUserLesson(userLesson);
 
-    expect(Object.keys(await exportAll()).sort()).toEqual(["cards", "learnProgress", "lessonCompletion", "practiceDays"]);
+    expect(Object.keys(await readSyncSnapshot()).sort()).toEqual(["cards", "learnProgress", "lessonCompletion", "practiceDays"]);
     expect((await exportBackupData()).userLessons).toEqual([userLesson]);
   });
 
-  it("exportAll reads a consistent snapshot during a concurrent write", async () => {
-    await expectConsistentExport(exportAll, ["cards", "practiceDays", "lessonCompletion"]);
+  it("readSyncSnapshot reads a consistent snapshot during a concurrent write", async () => {
+    await expectConsistentExport(readSyncSnapshot, ["cards", "practiceDays", "lessonCompletion"]);
   });
 
   it("exportBackupData reads a consistent snapshot during a concurrent write", async () => {
@@ -223,12 +286,12 @@ describe("backup store", () => {
 
 // W2: the request carries each card's stored dirty flag; the backup never does.
 describe("dirty flag on export", () => {
-  it("exportAll carries dirty; exportBackupData and exportData do not", async () => {
+  it("readSyncSnapshot carries dirty; exportBackupData and exportData do not", async () => {
     const synced = card("synced", now);
-    await mergeInto({ cards: [synced], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, []);
+    await mergeInto({ cards: [synced], practiceDays: [], lessonCompletion: [], learnProgress: [], syncEpoch: SYNC_EPOCH }, { cards: [], learnProgress: [] });
     await putCard(card("local", now));
 
-    expect((await exportAll()).cards.map(({ id, dirty }) => [id, dirty])).toEqual([["lesson-1:local", true], ["lesson-1:synced", false]]);
+    expect((await readSyncSnapshot()).cards.map(({ id, dirty }) => [id, dirty])).toEqual([["lesson-1:local", true], ["lesson-1:synced", false]]);
     const backup = await exportBackupData();
     expect(backup.cards.every((stored) => !("dirty" in stored))).toBe(true);
     expect(exportData(backup, now)).not.toContain("dirty");

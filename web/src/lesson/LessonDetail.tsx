@@ -18,27 +18,21 @@ import { VStack } from "@astryxdesign/core/VStack";
 import * as stylex from "@stylexjs/stylex";
 
 import type { Lesson } from "../api/lessons";
-import { ErrorMessage, Status, ViewHeading } from "../components/feedback";
+import { Alert, ErrorMessage, Status, ViewHeading } from "../components/feedback";
 import { sharedStyles } from "../components/styles";
 import { useLesson } from "../hooks/lessons";
+import { useLearnProgress } from "../hooks/useLearnProgress";
 import { useLessonProgress } from "../hooks/useLessonProgress";
 import { usePracticeMedia } from "../hooks/usePracticeMedia";
 import type { PracticeMode } from "../lib/progress";
-import {
-  EMPTY_LEARN_PROGRESS,
-  LEARN_MODE_KEY,
-  onLearnProgressChanged,
-  readLearnProgress,
-  writeLearnProgress,
-  type LearnProgress,
-} from "../lib/learnProgress";
+import { LEARN_MODE_KEY, SKIPS_PER_LESSON } from "../lib/learnProgress";
 import { PRONUNCIATION_CHECK_KEY, readPref, writePref } from "../lib/prefs";
 import { recognitionSupported } from "../lib/recognition";
 import { speechSupported, stopSpeaking } from "../lib/speech";
 import { loadStressDict, type StressDict } from "../lib/stress";
 import type { NewCard, VocabCard } from "../lib/vocab";
 import { splitWords } from "../lib/words";
-import { GuidedShadowing, SKIPS_PER_LESSON } from "./GuidedShadowing";
+import { GuidedShadowing } from "./GuidedShadowing";
 import { SentenceCard, type LessonMode } from "./SentenceCard";
 import { LearnTranscript } from "./LearnView";
 import { LearnSentence } from "./LearnSentence";
@@ -198,8 +192,8 @@ export function LessonDetail({
   // The sentence whose video clip played last, captioned under the video.
   const [clipSentenceId, setClipSentenceId] = useState<string | null>(null);
 
-  // The sentence shown one at a time, or null for the full list; per visit.
-  const [guidedIndex, setGuidedIndex] = useState<number | null>(null);
+  // The sentence the learner asked to see one at a time, or null for the full list; per visit.
+  const [requestedIndex, setRequestedIndex] = useState<number | null>(null);
   // Learn mode (Shadow Gate) in the guided view. The mode is a device preference; the sentences passed or
   // skipped and the skips used are saved per lesson, backed up and synced.
   const [learn, setLearnState] = useState(() => readPref(LEARN_MODE_KEY) === "on");
@@ -207,39 +201,12 @@ export function LessonDetail({
     writePref(LEARN_MODE_KEY, on ? "on" : null);
     setLearnState(on);
   };
-  const [learnProgress, setLearnProgressState] = useState<LearnProgress>(EMPTY_LEARN_PROGRESS);
-  // Set once this visit changes the progress, so a slower read cannot overwrite the change.
-  const changedProgress = useRef(false);
-  useEffect(() => {
-    let cancelled = false;
-    const load = (fromElsewhere: boolean) => {
-      readLearnProgress(data.id).then(
-        (stored) => {
-          if (!cancelled && (fromElsewhere || !changedProgress.current)) setLearnProgressState(stored);
-        },
-        () => undefined,
-      );
-    };
-    load(false);
-    // A sync or a backup import may change it while the lesson is open.
-    const stop = onLearnProgressChanged(() => load(true));
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [data.id]);
-  const setLearnProgress = (next: LearnProgress) => {
-    changedProgress.current = true;
-    setLearnProgressState(next);
-    writeLearnProgress(data.id, next).catch(() => undefined);
-  };
-  const passedIds = new Set(learnProgress.passed);
-  const skipsUsed = learnProgress.skipsUsed;
-  const pass = (sentenceId: string, skipped = false) =>
-    setLearnProgress({
-      passed: learnProgress.passed.includes(sentenceId) ? learnProgress.passed : [...learnProgress.passed, sentenceId],
-      skipsUsed: learnProgress.skipsUsed + (skipped ? 1 : 0),
-    });
+  // Learn progress renders only what committed: a pending read shows loading, a failed one an Alert.
+  const learnState = useLearnProgress(data.id);
+  const passedIds = new Set(learnState.progress?.passed ?? []);
+  // An imported row can exceed the lesson's skip budget; it just can't gain more.
+  const skipsLeft = Math.max(0, SKIPS_PER_LESSON - (learnState.progress?.skipsUsed ?? 0));
+  const failedChange = learnState.failed;
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayButtonRef = useRef<HTMLButtonElement>(null);
@@ -290,8 +257,32 @@ export function LessonDetail({
 
   const learnAvailable = pronunciationSupported && pronunciationCheck;
   const learnOn = learn && learnAvailable;
+  // Learn mode navigates only inside the committed open prefix: the first unpassed sentence, or the
+  // last one once every sentence passed. A stale request from Free mode or a reset clamps to it.
+  const firstUnpassed = data.sentences.findIndex((sentence) => !passedIds.has(sentence.id));
+  const lastOpen = firstUnpassed === -1 ? data.sentences.length - 1 : firstUnpassed;
+  const guidedIndex =
+    learn && learnAvailable && learnState.progress && requestedIndex !== null
+      ? Math.min(requestedIndex, lastOpen)
+      : requestedIndex;
+  // A clamped request is reconciled to the index shown: a stale cursor from Free mode or an older
+  // open edge cannot jump forward when the next sentence passes.
+  useEffect(() => {
+    if (requestedIndex !== guidedIndex) setRequestedIndex(guidedIndex);
+  }, [requestedIndex, guidedIndex]);
   // Learn mode one sentence at a time: the stage and shadow bar, with the transcript beside them.
   const learnGuided = learnOn && guidedIndex !== null;
+  // Bumped on a committed Start over so the sentence's own state resets with it.
+  const [learnRun, setLearnRun] = useState(0);
+  // One handler for Start over and its failed-save retry: the UI resets only once the commit lands.
+  const resetLearn = async () => {
+    if (await learnState.commit({ kind: "reset" })) {
+      stopMedia();
+      setScores(new Map());
+      setRequestedIndex((current) => (current === null ? null : 0));
+      setLearnRun((run) => run + 1);
+    }
+  };
   // In Learn mode the video's caption follows the sentence being learned; elsewhere, the last clip played.
   const captionId = learnGuided ? data.sentences[guidedIndex].id : clipSentenceId;
   const clipSentence = data.sentences.find((sentence) => sentence.id === captionId) ?? null;
@@ -357,7 +348,7 @@ export function LessonDetail({
             {/* Hidden text stays hidden in the caption too. */}
             {clipSentence && showTranscript && !hiddenText.has(clipSentence.id) && (
               <div data-testid="video-caption" className={stylex.props(styles.caption).className}>
-                <p className={stylex.props(styles.captionEn).className}>{clipSentence.text}</p>
+                <p lang="en" className={stylex.props(styles.captionEn).className}>{clipSentence.text}</p>
                 {showVietnamese && clipSentence.vi && (
                   <p lang="vi" className={stylex.props(styles.captionVi).className}>{clipSentence.vi}</p>
                 )}
@@ -388,7 +379,7 @@ export function LessonDetail({
           value={mode}
           onChange={(nextMode) => {
             setMode(nextMode as LessonMode);
-            setGuidedIndex(null);
+            setRequestedIndex(null);
             stopMedia({ keepVideo: true });
           }}
         >
@@ -443,7 +434,7 @@ export function LessonDetail({
                 value={guidedIndex !== null}
                 onChange={(pressed) => {
                   stopMedia({ keepVideo: true });
-                  setGuidedIndex(pressed ? 0 : null);
+                  setRequestedIndex(pressed ? 0 : null);
                 }}
               />
               <DropdownMenuCheckboxItem
@@ -534,52 +525,76 @@ export function LessonDetail({
             count={data.sentences.length}
             step={(index) => {
               stopMedia();
-              setGuidedIndex(index);
+              setRequestedIndex(index);
             }}
             gate={{
               available: learnAvailable,
               on: learnOn,
               setOn: setLearn,
-              skipsLeft: SKIPS_PER_LESSON - skipsUsed,
-              progressCount: learnProgress.passed.length,
-              startOver: () => setLearnProgress(EMPTY_LEARN_PROGRESS),
+              skipsLeft,
+              progressCount: learnState.progress ? learnState.progress.passed.length : null,
+              saving: learnState.saving,
+              retrySave:
+                failedChange && learnState.progress
+                  ? failedChange.kind === "reset"
+                    ? () => void resetLearn()
+                    : () => void learnState.commit(failedChange)
+                  : null,
+              startOver: () => void resetLearn(),
             }}
           >
             {(go) =>
               learnOn ? (
-                <LearnSentence
-                  key={data.sentences[guidedIndex].id}
-                  lesson={data}
-                  index={guidedIndex}
-                  go={go}
-                  speed={speed}
-                  setSpeed={(next) => setSpeed(next as (typeof SPEEDS)[number])}
-                  speeds={SPEEDS}
-                  passed={passedIds.has(data.sentences[guidedIndex].id)}
-                  skipsLeft={SKIPS_PER_LESSON - skipsUsed}
-                  showVietnamese={showVietnamese}
-                  stressDict={showStress ? loadedStressDict : null}
-                  stopMedia={stopMedia}
-                  onChecked={(result) => {
-                    const { id } = data.sentences[guidedIndex];
-                    shadowPractice(id, "check");
-                    setScores((current) => new Map(current).set(id, Math.max(result.score, current.get(id) ?? 0)));
-                    if (result.passed) pass(id);
-                  }}
-                  onTyped={() => {
-                    const { id } = data.sentences[guidedIndex];
-                    practice(id, "dictation");
-                    pass(id);
-                  }}
-                  onSkip={() => {
-                    pass(data.sentences[guidedIndex].id, true);
-                    go(guidedIndex + 1);
-                  }}
-                  savedCardIds={savedCardIds}
-                  addCard={addCard}
-                  removeCard={removeCard}
-                  undoRemove={undoRemove}
-                />
+                learnState.loadFailed ? (
+                  <VStack gap={1}>
+                    <Alert>{t("Couldn't load Learn progress.")}</Alert>
+                    <Button
+                      label={t("Try again")}
+                      variant="secondary"
+                      onClick={() => void learnState.reload()}
+                    />
+                  </VStack>
+                ) : learnState.progress === null ? (
+                  <Status>
+                    <Text as="p" type="supporting">
+                      {t("Loading Learn progress…")}
+                    </Text>
+                  </Status>
+                ) : (
+                  <LearnSentence
+                    key={`${learnRun}:${data.sentences[guidedIndex].id}`}
+                    lesson={data}
+                    index={guidedIndex}
+                    go={go}
+                    speed={speed}
+                    setSpeed={(next) => setSpeed(next as (typeof SPEEDS)[number])}
+                    speeds={SPEEDS}
+                    passed={passedIds.has(data.sentences[guidedIndex].id)}
+                    skipsLeft={skipsLeft}
+                    busy={learnState.saving}
+                    showVietnamese={showVietnamese}
+                    stressDict={showStress ? loadedStressDict : null}
+                    stopMedia={stopMedia}
+                    onChecked={(result) => {
+                      const { id } = data.sentences[guidedIndex];
+                      shadowPractice(id, "check");
+                      setScores((current) => new Map(current).set(id, Math.max(result.score, current.get(id) ?? 0)));
+                      if (result.passed) void learnState.commit({ kind: "pass", sentenceId: id });
+                    }}
+                    onTyped={() => {
+                      const { id } = data.sentences[guidedIndex];
+                      practice(id, "dictation");
+                      void learnState.commit({ kind: "pass", sentenceId: id });
+                    }}
+                    onSkip={() =>
+                      learnState.commit({ kind: "skip", sentenceId: data.sentences[guidedIndex].id })
+                    }
+                    savedCardIds={savedCardIds}
+                    addCard={addCard}
+                    removeCard={removeCard}
+                    undoRemove={undoRemove}
+                  />
+                )
               ) : (
                 // Keyed so a step to another sentence starts its practice afresh.
                 <SentenceCard
@@ -592,7 +607,7 @@ export function LessonDetail({
               )
             }
           </GuidedShadowing>
-          {learnGuided && (
+          {learnGuided && learnState.progress !== null && !learnState.loadFailed && (
             <LearnTranscript
               sentences={data.sentences}
               current={guidedIndex}
@@ -601,7 +616,7 @@ export function LessonDetail({
               showVietnamese={showVietnamese}
               onOpen={(index) => {
                 stopMedia();
-                setGuidedIndex(index);
+                setRequestedIndex(index);
               }}
             />
           )}

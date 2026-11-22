@@ -1,38 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { tr } from "../i18n";
 import type { DailyCount } from "../lib/db";
-import { streakState, todayKey, weekView, xp } from "../lib/progress";
+import { streakState, todayKey, weekView } from "../lib/progress";
 import {
-  getAllDailyCounts,
-  getCompletedLessons,
-  getDailyCount,
-  getPracticeDays,
   markLessonComplete as saveLessonCompletion,
+  readProgressSnapshot,
   recordPractice as savePractice,
+  type ProgressSnapshot,
 } from "../lib/progressStore";
 
 export function useProgress() {
-  const [practiceDays, setPracticeDays] = useState<string[]>([]);
-  const [completedLessons, setCompletedLessons] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [dailyCount, setDailyCount] = useState<DailyCount | null>(null);
-  const [allCounts, setAllCounts] = useState<DailyCount[]>([]);
+  const [progress, setProgress] = useState<ProgressSnapshot>(() => ({
+    practiceDays: [], completedLessons: new Set(), dailyCount: null, xp: 0,
+  }));
   const [error, setError] = useState<Error | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [days, lessons, count, counts] = await Promise.all([
-        getPracticeDays(),
-        getCompletedLessons(),
-        getDailyCount(todayKey(new Date())),
-        getAllDailyCounts(),
-      ]);
-      setPracticeDays(days);
-      setCompletedLessons(new Set(lessons));
-      setDailyCount(count);
-      setAllCounts(counts);
+      setProgress(await readProgressSnapshot(todayKey(new Date())));
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError : new Error(tr("Unable to load progress")));
@@ -66,17 +52,20 @@ export function useProgress() {
   );
 
   const today = todayKey(new Date());
+  const { practiceDays, dailyCount, completedLessons } = progress;
   // A count loaded before local midnight belongs to another day.
   const todayCount = dailyCount?.date === today ? dailyCount : undefined;
-  const { streak, freezes } = streakState(practiceDays, today);
+  const { streak, freezes, week } = useMemo(() => ({
+    ...streakState(practiceDays, today), week: weekView(practiceDays, today),
+  }), [practiceDays, today]);
   return {
     actionsToday: todayCount?.actions ?? 0,
     newCardsToday: todayCount?.newCards ?? 0,
     streak,
     freezes,
     // XP is local-only: dailyCounts is not synced.
-    xp: xp(allCounts),
-    week: weekView(practiceDays, today),
+    xp: progress.xp,
+    week,
     completedLessons,
     error,
     recordPractice,

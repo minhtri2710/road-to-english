@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { exportData } from "./lib/backup";
 import { todayKey } from "./lib/progress";
-import { recordPractice, getPracticeDays } from "./lib/progressStore";
+import { withDb } from "./lib/db";
+import { recordPractice } from "./lib/progressStore";
 import { createCard, deleteCard, Rating, reviewCard, State } from "./lib/vocab";
 import { getAllCards, putCard } from "./lib/vocabStore";
 import * as backupStore from "./lib/backupStore";
@@ -315,7 +316,7 @@ describe("App", () => {
       expect(container.textContent).toContain("Changed on another device");
       expect(buttonsNamed(container, "Show answer")).toHaveLength(1);
       expect(recordPractice).not.toHaveBeenCalled();
-      expect(await getPracticeDays()).toEqual([]);
+      expect(await withDb((db) => db.getAllKeys("practiceDays"))).toEqual([]);
     });
 
     it("does not resurrect a card tombstoned in IndexedDB by a rating", async () => {
@@ -436,7 +437,7 @@ describe("App", () => {
       const cards = await getAllCards();
       expect(cards.filter((card) => card.fsrs.state === State.New)).toHaveLength(20);
       await openLibrary(container);
-      expect(container.textContent).toContain("1 of 10 practice actions today");
+      await waitForCondition(hasText(container, "1 of 10 practice actions today"));
     });
 
     it("restores the New-card cap on the next local day", async () => {
@@ -448,10 +449,8 @@ describe("App", () => {
       }
       const first = await renderApp();
       await openReview(first.container);
-      await waitForCondition(hasText(first.container, "0 due"));
-      expect(first.container.textContent).toContain(
-        "Daily limit of 20 new cards reached. 21 new cards are waiting.",
-      );
+      await waitForCondition(hasText(first.container, "Daily limit of 20 new cards reached. 21 new cards are waiting."));
+      expect(first.container.textContent).toContain("0 due");
       await first.unmount();
 
       vi.setSystemTime(new Date(2026, 0, 6, 0, 0, 1));
@@ -930,7 +929,7 @@ describe("App", () => {
     });
 
     it("shows the storage line when progress fails to load", async () => {
-      vi.spyOn(progressStore, "getPracticeDays").mockRejectedValue(new Error("progress store broke"));
+      vi.spyOn(progressStore, "readProgressSnapshot").mockRejectedValue(new Error("progress store broke"));
       const { container } = await renderApp();
       await waitForCondition(hasText(container, `${storageLine}: progress store broke.`));
       expect(container.textContent).toContain("Greetings & Basics");
@@ -1305,10 +1304,15 @@ describe("App", () => {
       const view = await openLesson();
       const { container } = view;
       await waitForCondition(() => h1Texts(container)[0] === "Greetings & Basics");
-      expect(contentLang(container)).toHaveLength(0);
+      expect(contentLang(container).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual(
+        greetingsLesson.sentences.map(({ text }) => ["en", text]),
+      );
       await click(container, "Vietnamese");
       expect(contentLang(container).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual(
-        greetingsLesson.sentences.map(({ vi }) => ["vi", vi]),
+        greetingsLesson.sentences.flatMap(({ text, vi }) => [
+          ["en", text],
+          ["vi", vi],
+        ]),
       );
 
       await click(container, "Review");
@@ -1317,6 +1321,8 @@ describe("App", () => {
       const answer = container.querySelector('main [lang="vi"]')?.parentElement;
       expect(answer?.textContent).toBe(`${sentence.text} — ${sentence.vi}`);
       expect(contentLang(container).map((node) => [node.getAttribute("lang"), node.textContent])).toEqual([
+        ["en", "morning"],
+        ["en", `${sentence.text} — `],
         ["vi", sentence.vi],
       ]);
     });

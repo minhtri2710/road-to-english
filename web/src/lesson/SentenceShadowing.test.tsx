@@ -78,8 +78,7 @@ describe("SentenceShadowing", () => {
     expect(announced()).toContain("Recording.");
     const meter = container.querySelector<HTMLElement>('[data-testid="recording-level-fill"]');
     await harnessAct(async () => {
-      frames.shift()?.(0);
-      frames.shift()?.(16);
+      frames.splice(0).forEach((frame) => frame(16));
     });
     expect(meter).not.toBeNull();
     expect(meter?.style.getPropertyValue("--input-level")).toBe("0.96875");

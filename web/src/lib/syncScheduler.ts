@@ -1,8 +1,9 @@
 import { ApiError, NetworkError } from "../api/client";
 import { tr } from "../i18n";
 import { syncState } from "../api/sync";
-import { claimOwner, exportAll, mergeInto } from "./backupStore";
-import type { SyncRequest } from "./backup";
+import { claimOwner, mergeInto, readSyncSnapshot } from "./backupStore";
+import type { SyncState } from "./backup";
+import { plainCard } from "./vocabStore";
 
 // offline, server, rejected, badReply and local are failed runs, named by where they failed.
 export type SyncStatus =
@@ -46,23 +47,26 @@ export function createSyncScheduler(
       if (!active) {
         return null;
       }
-      const local: SyncRequest = await exportAll();
+      const snapshot = await readSyncSnapshot();
       if (!active) {
         return null;
       }
+      // Only locally changed cards go on the wire; dirty stays a local IndexedDB flag.
+      const local: SyncState = { ...snapshot, cards: snapshot.cards.filter((card) => card.dirty).map(plainCard) };
       body = JSON.stringify(local);
       if (refused?.body === body) {
         return { status: refused.status, code: refused.code };
       }
       sending = true;
-      const remote = await syncState(local);
+      const remote = await syncState(local, userId);
       sending = false;
       refused = null;
       if (!active) {
         return null;
       }
-      // A mismatched epoch marked every card dirty: one follow-up run re-pushes them.
-      if (await mergeInto(remote, local.cards)) {
+      // One follow-up run re-pushes what the reply could not settle: a mismatched epoch marked every card
+      // dirty, and an unsent local Learn change that collided at the reply's instant was restamped for resend.
+      if (await mergeInto(remote, snapshot)) {
         dirty = true;
       }
       if (!active) {
@@ -81,6 +85,10 @@ export function createSyncScheduler(
       // A reply arrived but its JSON or its state shape could not be read.
       if (!(error instanceof ApiError)) {
         return { status: "badReply", code: null };
+      }
+      // The session's account is not this browser's sync owner: no merge, no clearing, no sign-out.
+      if (error.status === 409 && error.code === "sync owner mismatch") {
+        return { status: "ownerMismatch", code: null };
       }
       if (error.status === 413 || error.status === 400) {
         refused = { body, status: error.status === 413 ? "tooLarge" : "rejected", code: error.status === 413 ? error.code : null };

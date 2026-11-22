@@ -112,10 +112,12 @@ describe("sync state validation", () => {
     ["invalid deletedAt", { deletedAt: "yesterday" }],
     ["null cards", { cards: null }],
     ["null practice days", { practiceDays: null }],
-    ["null lesson completion", { lessonCompletion: null, learnProgress: [] }],
+    ["null lesson completion", { lessonCompletion: null }],
+    ["missing learn progress", { learnProgress: undefined }],
+    ["null learn progress", { learnProgress: null }],
   ])("rejects %s", (_name, cardOverrides) => {
     const overrides = cardOverrides as Record<string, unknown>;
-    const next = "cards" in overrides || "practiceDays" in overrides || "lessonCompletion" in overrides
+    const next = "cards" in overrides || "practiceDays" in overrides || "lessonCompletion" in overrides || "learnProgress" in overrides
       ? { ...state(), ...overrides }
       : { ...state(), cards: [{ ...state().cards[0], ...overrides }] };
     expect(() => reviveSyncState(next)).toThrow();
@@ -209,12 +211,6 @@ describe("sync state validation", () => {
       "lessonCompletion",
       "practiceDays",
     ]);
-  });
-
-  it("reads a file without Learn progress, from before it was saved, as none", () => {
-    const { learnProgress: _omitted, ...older } = state();
-    void _omitted;
-    expect(reviveSyncState(older).learnProgress).toEqual([]);
   });
 
   it("keeps valid Learn progress and rejects a broken entry", () => {

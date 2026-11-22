@@ -1,9 +1,10 @@
 name: Visual
 
 # Screenshot comparisons against the chromium-darwin baselines in web/e2e/visual.spec.ts-snapshots, on a macOS
-# runner so they render as the baselines did. To regenerate the baselines after an intended change, add the
-# "update-visuals" label to the pull request, or run this workflow by hand with "update" ticked: it commits the
-# new screenshots to the branch and removes the label.
+# runner so they render as the baselines did. Comparing and regenerating are read-only: the macOS job never
+# writes to the repository. To update baselines after an intended change, add the "update-visuals" label to a
+# same-repo pull request, or run this workflow by hand on a branch with "update" ticked: the restricted publish
+# job then uploads the new screenshots to the branch and removes the label.
 
 on:
   pull_request:
@@ -16,27 +17,26 @@ on:
         default: false
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
-  group: visual-${{ github.head_ref || github.ref }}
+  group: visual-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   visual:
     name: Visual (macOS)
-    # Labelling with anything else must not re-run the comparison.
-    if: github.event.action != 'labeled' || github.event.label.name == 'update-visuals'
+    # Labelling with anything else must not re-run the comparison; a fork label never triggers an update.
+    if: github.event.action != 'labeled' || (github.event.label.name == 'update-visuals' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: macos-15
     env:
-      UPDATE: ${{ (github.event_name == 'workflow_dispatch' && inputs.update) || contains(github.event.pull_request.labels.*.name, 'update-visuals') }}
+      UPDATE: ${{ (github.event_name == 'workflow_dispatch' && inputs.update && startsWith(github.ref, 'refs/heads/')) || (github.event.action == 'labeled' && github.event.label.name == 'update-visuals' && github.event.pull_request.head.repo.full_name == github.repository) }}
+      RTE_TEST_DATABASE_URL: postgres://rte_test@127.0.0.1:5436/rte_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
         with:
-          # The branch itself, so new baselines can be committed to it.
-          ref: ${{ github.head_ref || github.ref }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: api/go.mod
@@ -54,9 +54,9 @@ jobs:
         run: |
           brew install postgresql@17
           PG="$(brew --prefix postgresql@17)/bin"
-          "$PG/initdb" -D "$RUNNER_TEMP/pg" -U rte --auth=trust
-          "$PG/pg_ctl" -D "$RUNNER_TEMP/pg" -o "-p 5435" -l "$RUNNER_TEMP/pg.log" -w start
-          "$PG/createdb" -h localhost -p 5435 -U rte rte
+          "$PG/initdb" -D "$RUNNER_TEMP/pg" -U rte_test --auth=trust
+          "$PG/pg_ctl" -D "$RUNNER_TEMP/pg" -o "-h 127.0.0.1 -p 5436" -l "$RUNNER_TEMP/pg.log" -w start
+          "$PG/createdb" -h 127.0.0.1 -p 5436 -U rte_test rte_test
       - run: pnpm -C web install --frozen-lockfile
       - run: pnpm -C web exec playwright install chromium
       - name: Compare screenshots
@@ -67,32 +67,62 @@ jobs:
         if: env.UPDATE == 'true'
         working-directory: web
         run: pnpm exec playwright test e2e/visual.spec.ts --update-snapshots
-      - name: Commit new baselines
+      # The unprivileged job hands the PNGs to the publisher; it never sees a write credential.
+      - uses: actions/upload-artifact@v4
         if: env.UPDATE == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git add web/e2e/visual.spec.ts-snapshots
-          if git diff --cached --quiet; then
-            echo "Baselines already match."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "test: update visual baselines from the macOS runner"
-            git push
-            # A GITHUB_TOKEN push starts no workflow, so start CI and the comparison on the new commit.
-            BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-            gh workflow run ci.yml --repo "${{ github.repository }}" --ref "$BRANCH"
-            gh workflow run visual.yml --repo "${{ github.repository }}" --ref "$BRANCH"
-          fi
-      - name: Remove the update-visuals label
-        if: env.UPDATE == 'true' && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --remove-label update-visuals
+        with:
+          name: visual-baselines
+          path: web/e2e/visual.spec.ts-snapshots/*.png
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: visual-results
           path: web/test-results
           retention-days: 7
+
+  publish:
+    needs: visual
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.update && startsWith(github.ref, 'refs/heads/')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'update-visuals' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    env:
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TESTED_SHA }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: visual-baselines
+          path: ${{ runner.temp }}/visual-baselines
+      - name: Publish baselines for the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          git check-ref-format "refs/heads/$BRANCH"
+          tip=$(git ls-remote --exit-code origin "refs/heads/$BRANCH" | cut -f1)
+          if [[ "$tip" != "$TESTED_SHA" ]]; then echo 'Branch changed; baselines not published.'; exit 1; fi
+          # Stage only image blobs. No code from the tested branch runs with write permissions.
+          for image in "$RUNNER_TEMP"/visual-baselines/*.png; do
+            [[ -f "$image" && ! -L "$image" ]] || exit 1
+            blob=$(git hash-object -w --no-filters -- "$image")
+            git update-index --add --cacheinfo "100644,$blob,web/e2e/visual.spec.ts-snapshots/${image##*/}"
+          done
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'test: update visual baselines from the macOS runner'
+            git push origin "HEAD:refs/heads/$BRANCH"
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+            gh workflow run visual.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          fi
+          if [[ -n "$PR" ]]; then gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label update-visuals; fi

@@ -12,6 +12,7 @@ export const app: Record<string, string> = {
   "{count} due": "{count} đến hạn",
   "Your lessons": "Bài học của bạn",
   "Loading lesson...": "Đang tải bài học...",
+  "Loading…": "Đang tải…",
 
   // Header
   Library: "Thư viện",

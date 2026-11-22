@@ -571,6 +571,7 @@ describe("ReviewDeck", () => {
     expect(answer().textContent).toBe("Tôi thích trà. — like + noun");
     expect(Array.from(answer().querySelectorAll("[lang]")).map((span) => [span.getAttribute("lang"), span.textContent])).toEqual([
       ["vi", "Tôi thích trà."],
+      ["en", " — like + noun"],
     ]);
 
     await rate(container, "Good");

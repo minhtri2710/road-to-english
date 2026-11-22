@@ -54,30 +54,13 @@ func testCard(id, lessonID, sentenceID, front, back string, fsrs []byte) Card {
 	return card
 }
 
-// syncState sends in with every card that sets no dirty flag marked dirty, as a local write would.
 func syncState(t *testing.T, repo *Repository, userID string, in State) State {
 	t.Helper()
-	in.Cards = slices.Clone(in.Cards)
-	for i := range in.Cards {
-		if in.Cards[i].Dirty == nil {
-			in.Cards[i] = dirtyCard(in.Cards[i])
-		}
-	}
 	out, err := repo.SyncState(context.Background(), userID, in)
 	if err != nil {
 		t.Fatalf("SyncState() error = %v", err)
 	}
 	return out.State
-}
-
-func dirtyCard(card Card) Card {
-	card.Dirty = new(true)
-	return card
-}
-
-func cleanCard(card Card) Card {
-	card.Dirty = new(false)
-	return card
 }
 
 func emptyState() State {
@@ -95,7 +78,7 @@ func TestCardRoundTripPreservesFSRSBytes(t *testing.T) {
 	wantFSRS := []byte(`{ "due": "2026-09-22T10:00:00.000Z", "last_review": "2026-09-21T10:00:00.000Z", "stability": 2.5, "difficulty": 4.2, "elapsed_days": 1, "scheduled_days": 2, "learning_steps": 0, "reps": 3, "lapses": 0, "state": 2 }`)
 	want := testCard("greetings-basics:greetings-basics-1", "greetings-basics", "greetings-basics-1", "Good morning", "Buenos días", wantFSRS)
 
-	gotState := syncState(t, repo, user.ID, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotState := syncState(t, repo, user.ID, State{Cards: []Card{want}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 	if len(gotState.Cards) != 1 {
 		t.Fatalf("SyncState() returned %d cards, want 1", len(gotState.Cards))
 	}
@@ -114,7 +97,7 @@ func TestSyncStateValidatesBeforeBegin(t *testing.T) {
 	repo.pool.Close()
 
 	invalid := emptyState()
-	invalid.Cards = []Card{dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))}
+	invalid.Cards = []Card{(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))}
 	invalid.Cards[0].Source.Word = nil
 	if _, err := repo.SyncState(context.Background(), user.ID, invalid); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("SyncState(invalid) error = %v, want ErrInvalidState", err)
@@ -130,14 +113,14 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 	user := createTestUser(t, repo, "invalid-classes@example.com")
 	valid := func() State {
 		return State{
-			Cards:            []Card{dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))},
+			Cards:            []Card{(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))},
 			PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
 			LessonCompletion: []LessonCompletion{{LessonID: "lesson-1"}},
 			LearnProgress:    []LearnProgress{{LessonID: "lesson-1", Passed: []string{"sentence-1"}, SkipsUsed: 1, UpdatedAt: "2026-09-22T10:00:00Z"}},
 		}
 	}
 	addCard := func(state *State, mutate func(*Card)) {
-		card := dirtyCard(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))
+		card := (testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "front", "", fsrs("2026-09-22T10:00:00Z", 0)))
 		mutate(&card)
 		state.Cards = append(state.Cards, card)
 	}
@@ -145,6 +128,7 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 		"nil cards":                       func(s *State) { s.Cards = nil },
 		"nil practice days":               func(s *State) { s.PracticeDays = nil },
 		"nil lesson completion":           func(s *State) { s.LessonCompletion = nil },
+		"nil learn progress":              func(s *State) { s.LearnProgress = nil },
 		"card text":                       func(s *State) { addCard(s, func(c *Card) { c.Front = "" }) },
 		"card word":                       func(s *State) { addCard(s, func(c *Card) { c.Source.Word = nil }) },
 		"card id":                         func(s *State) { addCard(s, func(c *Card) { c.ID = "wrong" }) },
@@ -177,7 +161,7 @@ func TestSyncStateRejectsEachInvalidClassWithoutWriting(t *testing.T) {
 }
 
 func oneCardState(card Card) State {
-	return State{Cards: []Card{dirtyCard(card)}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}}
+	return State{Cards: []Card{(card)}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}}
 }
 
 // testdata/card-words.json is shared with the web isCardWord test, so the two contracts cannot drift.
@@ -243,7 +227,7 @@ func TestCardRoundTripPreservesUpdatedAtAndDeletedAt(t *testing.T) {
 	deletedInstant := inWindow().Add(-24*time.Hour + 500*time.Millisecond)
 	deleted := tombstone(testCard("lesson-1:sentence-2", "lesson-1", "sentence-2", "deleted", "card", fsrs("2026-01-01T00:00:00Z", 0)), deletedInstant.Format("2006-01-02T15:04:05.0Z"))
 
-	got := syncState(t, repo, user.ID, State{Cards: []Card{live, deleted}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	got := syncState(t, repo, user.ID, State{Cards: []Card{live, deleted}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 	if !reflect.DeepEqual(got.Cards, []Card{live, deleted}) {
 		t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{live, deleted})
 	}
@@ -313,7 +297,7 @@ func TestSyncStateDoneContextReturnsContextError(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "done-context@example.com")
 	in := emptyState()
-	in.Cards = []Card{dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))}
+	in.Cards = []Card{(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))}
 
 	expired, cancelExpired := context.WithTimeout(context.Background(), 0)
 	defer cancelExpired()
@@ -345,7 +329,7 @@ func TestSyncStateBatchErrorRollsBack(t *testing.T) {
 	})
 
 	in := emptyState()
-	in.Cards = []Card{dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))}
+	in.Cards = []Card{(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))}
 	in.PracticeDays = []PracticeDay{{Date: "1999-12-30"}, {Date: "1999-12-31"}}
 	in.LessonCompletion = []LessonCompletion{{LessonID: "lesson-1"}}
 	_, err := repo.SyncState(ctx, user.ID, in)
@@ -386,7 +370,7 @@ func TestSyncStateCapsStoredCards(t *testing.T) {
 	}
 
 	over := emptyState()
-	over.Cards = []Card{dirtyCard(capCard(MaxCards))}
+	over.Cards = []Card{(capCard(MaxCards))}
 	if _, err := repo.SyncState(ctx, user.ID, over); !errors.Is(err, ErrTooManyCards) {
 		t.Fatalf("SyncState() error = %v, want ErrTooManyCards", err)
 	}
@@ -565,15 +549,12 @@ func TestCardUpsertMergeRule(t *testing.T) {
 		return value
 	}
 	cases := loadMergeRuleCases(t)
-	run := func(t *testing.T, stored, incoming, want Card, clean bool) {
+	run := func(t *testing.T, stored, incoming, want Card) {
 		t.Helper()
 		repo := newTestRepo(t)
 		user := createTestUser(t, repo, "merge@example.com")
-		syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
-		if clean {
-			incoming = cleanCard(incoming)
-		}
-		got := syncState(t, repo, user.ID, State{Cards: []Card{incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+		syncState(t, repo, user.ID, State{Cards: []Card{stored}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
+		got := syncState(t, repo, user.ID, State{Cards: []Card{incoming}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 		if !reflect.DeepEqual(got.Cards, []Card{want}) {
 			t.Fatalf("cards = %#v, want %#v", got.Cards, []Card{want})
 		}
@@ -587,19 +568,13 @@ func TestCardUpsertMergeRule(t *testing.T) {
 	}
 	for _, row := range cases {
 		stored, incoming, want := build(row.Stored), build(row.Incoming), build(row.Want)
-		for _, variant := range []struct {
-			name  string
-			clean bool
-		}{{name: row.Name}, {name: row.Name + " (clean)", clean: true}} {
-			t.Run(variant.name, func(t *testing.T) {
-				run(t, stored, incoming, want, variant.clean)
+		t.Run(row.Name, func(t *testing.T) {
+			run(t, stored, incoming, want)
+		})
+		if *row.Symmetric {
+			t.Run(row.Name+" (swapped)", func(t *testing.T) {
+				run(t, incoming, stored, want)
 			})
-			if *row.Symmetric {
-				swappedName := variant.name + " (swapped)"
-				t.Run(swappedName, func(t *testing.T) {
-					run(t, incoming, stored, want, variant.clean)
-				})
-			}
 		}
 	}
 }
@@ -611,11 +586,13 @@ func TestPracticeDaysAndLessonCompletionUnion(t *testing.T) {
 		Cards:            []Card{},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-22"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-x"}},
+		LearnProgress:    []LearnProgress{},
 	}
 	second := State{
 		Cards:            []Card{},
 		PracticeDays:     []PracticeDay{{Date: "2026-09-23"}},
 		LessonCompletion: []LessonCompletion{{LessonID: "lesson-y"}},
+		LearnProgress:    []LearnProgress{},
 	}
 	want := State{
 		Cards:            []Card{},
@@ -681,7 +658,7 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 	}
 
 	gotA := syncState(t, repo, userA.ID, stateA)
-	gotB := syncState(t, repo, userB.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotB := syncState(t, repo, userB.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 	if !reflect.DeepEqual(gotA, stateA) {
 		t.Fatalf("user A state = %#v, want %#v", gotA, stateA)
 	}
@@ -690,7 +667,7 @@ func TestUserStateIsolatedByUser(t *testing.T) {
 	}
 
 	gotB = syncState(t, repo, userB.ID, stateB)
-	gotA = syncState(t, repo, userA.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	gotA = syncState(t, repo, userA.ID, State{Cards: []Card{}, PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 	if !reflect.DeepEqual(gotB, stateB) {
 		t.Fatalf("user B state = %#v, want %#v", gotB, stateB)
 	}
@@ -835,11 +812,11 @@ func TestSyncStateConcurrentOppositeOrders(t *testing.T) {
 		forward := emptyState()
 		for i := range 30 {
 			lessonID := "lesson-" + strconv.Itoa(round) + "-" + strconv.Itoa(i)
-			forward.Cards = append(forward.Cards, dirtyCard(testCard(lessonID+":s", lessonID, "s", "front", "back", fsrs("2026-09-22T10:00:00Z", 0))))
+			forward.Cards = append(forward.Cards, (testCard(lessonID+":s", lessonID, "s", "front", "back", fsrs("2026-09-22T10:00:00Z", 0))))
 			forward.PracticeDays = append(forward.PracticeDays, PracticeDay{Date: time.Date(2000+round, 1, 1+i, 0, 0, 0, 0, time.UTC).Format("2006-01-02")})
 			forward.LessonCompletion = append(forward.LessonCompletion, LessonCompletion{LessonID: lessonID})
 		}
-		backward := State{Cards: slices.Clone(forward.Cards), PracticeDays: slices.Clone(forward.PracticeDays), LessonCompletion: slices.Clone(forward.LessonCompletion)}
+		backward := State{Cards: slices.Clone(forward.Cards), PracticeDays: slices.Clone(forward.PracticeDays), LessonCompletion: slices.Clone(forward.LessonCompletion), LearnProgress: slices.Clone(forward.LearnProgress)}
 		slices.Reverse(backward.Cards)
 		slices.Reverse(backward.PracticeDays)
 		slices.Reverse(backward.LessonCompletion)
@@ -861,7 +838,7 @@ func TestSyncStateConcurrentOppositeOrders(t *testing.T) {
 
 func syncCards(t *testing.T, repo *Repository, userID string, cards ...Card) Synced {
 	t.Helper()
-	out, err := repo.SyncState(context.Background(), userID, State{Cards: append([]Card{}, cards...), PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}})
+	out, err := repo.SyncState(context.Background(), userID, State{Cards: append([]Card{}, cards...), PracticeDays: []PracticeDay{}, LessonCompletion: []LessonCompletion{}, LearnProgress: []LearnProgress{}})
 	if err != nil {
 		t.Fatalf("SyncState() error = %v", err)
 	}
@@ -889,28 +866,6 @@ func responseIDs(cards []Card) []string {
 	return ids
 }
 
-// G1: a clean card never inserts, whatever its updatedAt; a dirty one does.
-func TestSyncCleanCardWithoutRowIsNotInserted(t *testing.T) {
-	repo := newTestRepo(t)
-	now := time.Now().UTC().Truncate(time.Second)
-	for name, updatedAt := range map[string]time.Time{"past": now.Add(-time.Hour), "now": now, "future": now.Add(time.Hour)} {
-		t.Run(name, func(t *testing.T) {
-			user := createTestUser(t, repo, "clean-"+name+"@example.com")
-			card := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))
-			card.UpdatedAt = updatedAt.Format(time.RFC3339)
-			if out := syncCards(t, repo, user.ID, cleanCard(card)); len(out.Cards) != 0 {
-				t.Fatalf("clean response cards = %v, want none", responseIDs(out.Cards))
-			}
-			if ids := storedCardIDs(t, repo, user.ID); len(ids) != 0 {
-				t.Fatalf("clean stored = %v, want none", ids)
-			}
-			if out := syncCards(t, repo, user.ID, dirtyCard(card)); !slices.Equal(responseIDs(out.Cards), []string{card.ID}) {
-				t.Fatalf("dirty response cards = %v, want %s", responseIDs(out.Cards), card.ID)
-			}
-		})
-	}
-}
-
 func purgeAge(t *testing.T, repo *Repository, userID, id, age string) {
 	t.Helper()
 	if _, err := repo.pool.Exec(context.Background(), "UPDATE cards SET deleted_at = now() - $3::interval, updated_at = now() - $3::interval WHERE user_id = $1 AND id = $2", userID, id, age); err != nil {
@@ -918,18 +873,18 @@ func purgeAge(t *testing.T, repo *Repository, userID, id, age string) {
 	}
 }
 
-// G3: the three measured cases, and the documented residual.
+// G3: a stale live copy never beats the newer tombstone; a card sent after the purge inserts.
 func TestSyncTombstoneResurrectCases(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "resurrect@example.com")
 	live := testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))
 	live.UpdatedAt = inWindow().Add(-48 * time.Hour).Format(time.RFC3339)
 	deleted := tombstone(live, inWindow().Format(time.RFC3339))
-	syncCards(t, repo, user.ID, dirtyCard(live))
-	syncCards(t, repo, user.ID, dirtyCard(deleted))
+	syncCards(t, repo, user.ID, (live))
+	syncCards(t, repo, user.ID, (deleted))
 
-	// 1: no purge; B re-sends its stale clean live copy and receives the tombstone.
-	out := syncCards(t, repo, user.ID, cleanCard(live))
+	// 1: no purge; B re-sends its stale live copy and receives the tombstone.
+	out := syncCards(t, repo, user.ID, live)
 	if len(out.Cards) != 1 || out.Cards[0].DeletedAt.Value == nil {
 		t.Fatalf("case 1 cards = %#v, want the tombstone", out.Cards)
 	}
@@ -938,17 +893,9 @@ func TestSyncTombstoneResurrectCases(t *testing.T) {
 	if out := syncCards(t, repo, user.ID); len(out.Cards) != 0 {
 		t.Fatalf("after purge cards = %v, want none", responseIDs(out.Cards))
 	}
-	// 2: A re-sends its clean tombstone; the purge holds.
-	if out := syncCards(t, repo, user.ID, cleanCard(deleted)); len(out.Cards) != 0 || len(storedCardIDs(t, repo, user.ID)) != 0 {
-		t.Fatalf("case 2 cards = %v, want none", responseIDs(out.Cards))
-	}
-	// 3: B re-sends its clean stale live copy; the purge holds.
-	if out := syncCards(t, repo, user.ID, cleanCard(live)); len(out.Cards) != 0 || len(storedCardIDs(t, repo, user.ID)) != 0 {
-		t.Fatalf("case 3 cards = %v, want none", responseIDs(out.Cards))
-	}
-	// Residual: a dirty live copy after the purge is inserted.
-	if out := syncCards(t, repo, user.ID, dirtyCard(live)); len(out.Cards) != 1 || out.Cards[0].DeletedAt.Value != nil {
-		t.Fatalf("residual cards = %#v, want the live card", out.Cards)
+	// 2: the client only sends changed cards, so any card sent after the purge is inserted.
+	if out := syncCards(t, repo, user.ID, live); len(out.Cards) != 1 || out.Cards[0].DeletedAt.Value != nil {
+		t.Fatalf("cards after purge = %#v, want the live card", out.Cards)
 	}
 }
 
@@ -959,9 +906,9 @@ func TestSyncPurgeBoundary(t *testing.T) {
 	ctx := context.Background()
 	mk := func(sentenceID string) Card {
 		card := testCard("lesson-1:"+sentenceID, "lesson-1", sentenceID, "front", "back", fsrs("2026-01-01T00:00:00Z", 0))
-		return dirtyCard(tombstone(card, inWindow().Format(time.RFC3339)))
+		return (tombstone(card, inWindow().Format(time.RFC3339)))
 	}
-	liveCard := dirtyCard(testCard("lesson-1:live", "lesson-1", "live", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))
+	liveCard := (testCard("lesson-1:live", "lesson-1", "live", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))
 	liveCard.UpdatedAt = "0001-01-01T00:00:00Z"
 	syncCards(t, repo, user.ID, mk("over"), mk("under"), mk("year-1"), liveCard)
 	purgeAge(t, repo, user.ID, "lesson-1:over", "180 days 1 minute")
@@ -983,8 +930,8 @@ func TestSyncPurgeLeavesOtherUsersTombstones(t *testing.T) {
 	repo := newTestRepo(t)
 	a := createTestUser(t, repo, "purge-scope-a@example.com")
 	b := createTestUser(t, repo, "purge-scope-b@example.com")
-	live := dirtyCard(testCard("lesson-1:live", "lesson-1", "live", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))
-	deleted := dirtyCard(tombstone(testCard("lesson-1:deleted", "lesson-1", "deleted", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)), inWindow().Format(time.RFC3339)))
+	live := (testCard("lesson-1:live", "lesson-1", "live", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)))
+	deleted := (tombstone(testCard("lesson-1:deleted", "lesson-1", "deleted", "front", "back", fsrs("2026-01-01T00:00:00Z", 0)), inWindow().Format(time.RFC3339)))
 	for _, user := range []User{a, b} {
 		syncCards(t, repo, user.ID, live, deleted)
 	}
@@ -1035,7 +982,7 @@ func TestSyncEpoch(t *testing.T) {
 	repo := newTestRepo(t)
 	user := createTestUser(t, repo, "epoch@example.com")
 	ctx := context.Background()
-	first := syncCards(t, repo, user.ID, dirtyCard(testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))))
+	first := syncCards(t, repo, user.ID, (testCard("lesson-1:sentence-1", "lesson-1", "sentence-1", "front", "back", fsrs("2026-01-01T00:00:00Z", 0))))
 	if first.SyncEpoch == "" {
 		t.Fatal("empty syncEpoch")
 	}

@@ -9,7 +9,7 @@ import { useT } from "../i18n";
 import { ScoreRing, ScoredWords } from "../lesson/ShadowGate";
 import { LessonCard } from "../library/LessonCard";
 import { FAIR_SCORE, GOOD_SCORE, PASS_SCORE, scoreShadow } from "../lib/shadowScore";
-import { SKIPS_PER_LESSON } from "../lesson/GuidedShadowing";
+import { SKIPS_PER_LESSON } from "../lib/learnProgress";
 
 const EXAMPLE_SENTENCE = "I've never seen anything like it.";
 const EXAMPLE_VI = "Tôi chưa từng thấy thứ gì như vậy.";
@@ -536,7 +536,7 @@ export function Landing({
               <span className={stylex.props(styles.frameTag).className}>{t("LEARN MODE")}</span>
             </div>
             <div className={stylex.props(styles.caption).className}>
-              <p className={stylex.props(styles.captionEn).className}>{EXAMPLE_SENTENCE}</p>
+              <p lang="en" className={stylex.props(styles.captionEn).className}>{EXAMPLE_SENTENCE}</p>
               <p lang="vi" className={stylex.props(styles.captionVi).className}>{EXAMPLE_VI}</p>
             </div>
           </div>

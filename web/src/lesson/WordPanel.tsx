@@ -16,7 +16,7 @@ import { speechSupported } from "../lib/speech";
 import { intonation, wordStress, type StressDict } from "../lib/stress";
 import { cardId, type NewCard, type VocabCard } from "../lib/vocab";
 import { cardWord, isCardWord, splitWords, wordIndexAtChar } from "../lib/words";
-import { tr, useT } from "../i18n";
+import { tr, useLang, useT } from "../i18n";
 
 const styles = stylex.create({
   reading: {
@@ -184,6 +184,7 @@ export function SentenceWords({
   stressDict: StressDict | null;
 }) {
   const t = useT();
+  const uiLang = useLang();
   const summaryId = useId();
   const parts = splitWords(text);
   const stresses = parts.map((part) =>
@@ -203,7 +204,7 @@ export function SentenceWords({
   );
   return (
     <>
-      <p aria-describedby={summary ? summaryId : undefined} {...stylex.props(styles.reading)}>
+      <p lang="en" aria-describedby={summary ? summaryId : undefined} {...stylex.props(styles.reading)}>
         {parts.map((part, index) => {
           if (!isCardWord(cardWord(part))) {
             const precedingPunctuation = punctuationAfter[index - 1] ?? "";
@@ -245,7 +246,7 @@ export function SentenceWords({
           );
         })}
         {tone && (
-          <span role="img" aria-label={tone === "falling" ? t("falling intonation") : t("rising intonation")}>
+          <span role="img" lang={uiLang} aria-label={tone === "falling" ? t("falling intonation") : t("rising intonation")}>
             {tone === "falling" ? " ↘" : " ↗"}
           </span>
         )}
@@ -292,7 +293,7 @@ export function WordPanel({
   return (
     <VStack gap={1} id={id}>
       <HStack gap={1} align="center" xstyle={sharedStyles.shadowingControls}>
-        <Text weight="semibold">{text}</Text>
+        <Text weight="semibold"><span lang="en">{text}</span></Text>
         <Button
           label={t("Hear word")}
           variant="secondary"
@@ -331,8 +332,10 @@ export function WordPanel({
         )}
         {typeof lookup === "object" && lookup !== null && (
           <Text as="p">
-            {lookup.phonetic && `${lookup.phonetic} · `}
-            <Text weight="semibold">{lookup.partOfSpeech}</Text> — {lookup.definition}
+            <span lang="en">
+              {lookup.phonetic && `${lookup.phonetic} · `}
+              <Text weight="semibold">{lookup.partOfSpeech}</Text> — {lookup.definition}
+            </span>
           </Text>
         )}
       </Status>

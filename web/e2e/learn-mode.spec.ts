@@ -73,6 +73,23 @@ test.describe("Learn mode", () => {
     await expect(next(page)).toBeEnabled();
   });
 
+  test("does not jump forward when a sentence passes while the clamped cursor came from Free mode", async ({ page }) => {
+    await openGuided(page, { pronunciation: true });
+    // Free mode moves to sentence 3; Learn mode opens only the committed prefix, so the cursor clamps back.
+    await next(page).click();
+    await next(page).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 3 of 9" })).toBeVisible();
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
+
+    await say(page, FIRST);
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(gate(page).getByText("Unlocked · 100 points")).toBeVisible();
+    // The pass widened the open edge; a stale sentence-3 request must not take the view forward.
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
+    await expect(next(page)).toBeEnabled();
+  });
+
   test("allows three skips per lesson", async ({ page }) => {
     await openGuided(page, { pronunciation: true });
     await page.getByRole("radio", { name: "Learn" }).click();
@@ -82,6 +99,43 @@ test.describe("Learn mode", () => {
     }
     await expect(page.getByRole("button", { name: "Skip (0 of 3 left)" })).toBeDisabled();
     await expect(next(page)).toBeDisabled();
+  });
+
+  test("shows zero skips and still allows a pass when stored skips exceed the cap", async ({ page }) => {
+    // An imported row can carry more skips than the lesson's budget: clamp the display, keep passes working.
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("road-to-english");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const tx = db.transaction("learnProgress", "readwrite");
+      tx.objectStore("learnProgress").put({
+        lessonId: "greetings-basics",
+        passed: [],
+        skipsUsed: 7,
+        updatedAt: new Date().toISOString(),
+      });
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    });
+    await page.getByRole("button", { name: LESSON }).click();
+    await (await menuItem(page, "Pronunciation check")).click();
+    await page.getByRole("button", { name: "Enable" }).click();
+    await (await menuItem(page, "One at a time")).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await expect(page.getByText("Unlocked 0 of 9 sentences · 0 of 3 skips left. Saved on this device.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Skip (0 of 3 left)" })).toBeDisabled();
+    await say(page, FIRST);
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(gate(page).getByText("Unlocked · 100 points")).toBeVisible();
+    await expect(next(page)).toBeEnabled();
   });
 
   test("keeps Learn mode, unlocked sentences and skips after a reload, until Start over", async ({ page }) => {
@@ -100,10 +154,19 @@ test.describe("Learn mode", () => {
     await expect(next(page)).toBeEnabled();
     await expect(page.getByText("Unlocked 2 of 9 sentences · 2 of 3 skips left. Saved on this device.")).toBeVisible();
 
+    // Forward to the open edge: the cursor Start over must clear back to sentence 1.
+    await next(page).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 2 of 9" })).toBeVisible();
+    await next(page).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 3 of 9" })).toBeVisible();
+    await expect(next(page)).toBeDisabled();
+
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Start over" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Sentence 1 of 9" })).toBeVisible();
     await expect(page.getByText("Unlocked 0 of 9 sentences · 3 of 3 skips left. Saved on this device.")).toBeVisible();
     await expect(next(page)).toBeDisabled();
+    await expect(page.getByRole("complementary", { name: "Transcript" }).getByRole("img", { name: "Locked" })).toHaveCount(8);
   });
 
   test("the Learn view fits a 320px screen at 200% text", async ({ page }) => {
@@ -147,6 +210,82 @@ test.describe("Learn mode", () => {
     );
     await page.getByRole("button", { name: "Check typing" }).click();
     await expect(gate(page).getByText("Unlocked", { exact: true })).toBeVisible();
+    await expect(next(page)).toBeEnabled();
+  });
+
+  test("shows a load error for Learn progress and recovers with Try again", async ({ page }) => {
+    // Fail reads of the learnProgress store until the flag is lifted: React StrictMode mounts the hook twice,
+    // so a one-shot failure would be consumed by the discarded mount's read.
+    await page.addInitScript(() => {
+      const original = IDBDatabase.prototype.transaction;
+      (window as unknown as { __failLearnReads: boolean }).__failLearnReads = true;
+      IDBDatabase.prototype.transaction = function (
+        this: IDBDatabase,
+        ...args: Parameters<IDBDatabase["transaction"]>
+      ) {
+        if (
+          (window as unknown as { __failLearnReads?: boolean }).__failLearnReads &&
+          args[0] === "learnProgress" &&
+          args[1] !== "readwrite"
+        ) {
+          throw new DOMException("injected read failure");
+        }
+        return original.apply(this, args);
+      };
+    });
+    await openGuided(page, { pronunciation: true });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Couldn't load Learn progress.");
+    await expect(gate(page)).toHaveCount(0);
+    await page.evaluate(() => {
+      delete (window as unknown as { __failLearnReads?: boolean }).__failLearnReads;
+    });
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByText("Unlocked 0 of 9 sentences · 3 of 3 skips left. Saved on this device.")).toBeVisible();
+    await expect(gate(page)).toBeVisible();
+  });
+
+  test("keeps the score but not the unlock when saving Learn progress fails, then retries", async ({ page }) => {
+    await openGuided(page, { pronunciation: true });
+    // Abort a real learnProgress readwrite transaction after its put was issued, so both the request and the
+    // transaction reject inside applyLearnChange — and no request promise rejects unobserved.
+    await page.evaluate(() => {
+      const rejections: string[] = [];
+      window.addEventListener("unhandledrejection", (event) => rejections.push(String(event.reason)));
+      (window as unknown as { __learnRejections: string[] }).__learnRejections = rejections;
+      const original = IDBObjectStore.prototype.put;
+      let armed = true;
+      IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+        if (armed && this.name === "learnProgress" && this.transaction.mode === "readwrite") {
+          armed = false;
+          const request = original.apply(this, args);
+          this.transaction.abort();
+          return request;
+        }
+        return original.apply(this, args);
+      };
+    });
+    await page.getByRole("radio", { name: "Learn" }).click();
+    await expect(page.getByText("Unlocked 0 of 9 sentences · 3 of 3 skips left. Saved on this device.")).toBeVisible();
+
+    await say(page, FIRST);
+    await gate(page).getByRole("button", { name: "Say the sentence" }).click();
+    await expect(gate(page).getByRole("img", { name: "Score 100 of 100" })).toBeVisible();
+    await expect(gate(page).getByText("100 points")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText("Couldn't save Learn progress.");
+    await expect(gate(page).getByText(/Unlocked/)).toHaveCount(0);
+    await expect(next(page)).toBeDisabled();
+
+    expect(await page.evaluate(() => (window as unknown as { __learnRejections: string[] }).__learnRejections)).toEqual([]);
+
+    await page.getByRole("button", { name: "Retry save" }).click();
+    await expect(gate(page).getByText("Unlocked · 100 points")).toBeVisible();
+    await expect(next(page)).toBeEnabled();
+    expect(await page.evaluate(() => (window as unknown as { __learnRejections: string[] }).__learnRejections)).toEqual([]);
+
+    await page.reload();
+    await openGuided(page, { pronunciation: false });
+    await expect(page.getByText("Unlocked 1 of 9 sentences · 3 of 3 skips left. Saved on this device.")).toBeVisible();
     await expect(next(page)).toBeEnabled();
   });
 
