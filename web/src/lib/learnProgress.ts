@@ -1,12 +1,8 @@
 import { withDb, type StoredLearnProgress } from "./db";
-import { readPref, writePref } from "./prefs";
 import { notifyLocalMutation } from "./syncEvents";
 
 // "on" while the learner keeps Learn mode on in the guided view; every lesson opens in it. A device preference: not synced.
 export const LEARN_MODE_KEY = "road-to-english.learnMode";
-
-// Before sync carried it, progress lived in localStorage under this prefix; it moves into the database on first read.
-const legacyKey = (lessonId: string) => `road-to-english.learnProgress.${lessonId}`;
 
 // A lesson's Shadow Gate progress: the sentences passed or skipped, and the skips used. Synced and backed up
 // per lesson, where the newer updatedAt wins, so a Start over carries to other devices too.
@@ -15,49 +11,85 @@ export interface LearnProgress {
   skipsUsed: number;
 }
 
-export const EMPTY_LEARN_PROGRESS: LearnProgress = { passed: [], skipsUsed: 0 };
+const EMPTY_LEARN_PROGRESS: LearnProgress = { passed: [], skipsUsed: 0 };
 
-function parseLegacy(raw: string | null): LearnProgress | null {
-  if (raw === null) return null;
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const { passed, skipsUsed } = value as Partial<LearnProgress>;
-    return {
-      passed: Array.isArray(passed) ? [...new Set(passed.filter((id): id is string => typeof id === "string" && id !== ""))] : [],
-      skipsUsed: typeof skipsUsed === "number" && Number.isInteger(skipsUsed) && skipsUsed >= 0 ? skipsUsed : 0,
-    };
-  } catch {
-    return null;
-  }
-}
+export const SKIPS_PER_LESSON = 3;
 
 export async function readLearnProgress(lessonId: string): Promise<LearnProgress> {
   const stored = await withDb((db) => db.get("learnProgress", lessonId));
-  if (stored) return { passed: stored.passed, skipsUsed: stored.skipsUsed };
-  const legacy = parseLegacy(readPref(legacyKey(lessonId)));
-  if (!legacy) return EMPTY_LEARN_PROGRESS;
-  await writeLearnProgress(lessonId, legacy);
-  writePref(legacyKey(lessonId), null);
-  return legacy;
+  if (!stored) return EMPTY_LEARN_PROGRESS;
+  return { passed: stored.passed, skipsUsed: stored.skipsUsed };
 }
 
-// Stores the lesson's progress, stamped now, and asks for a sync. Empty progress is kept too: it is how a
-// Start over reaches the other devices.
-export async function writeLearnProgress(lessonId: string, progress: LearnProgress, now = new Date()): Promise<void> {
-  const record: StoredLearnProgress = {
-    lessonId,
-    passed: progress.passed,
-    skipsUsed: progress.skipsUsed,
-    updatedAt: now.toISOString(),
-  };
-  await withDb((db) => db.put("learnProgress", record));
-  notifyLocalMutation();
+export type LearnChange =
+  | { kind: "pass" | "skip"; sentenceId: string }
+  | { kind: "reset" };
+
+// The next committed timestamp: after the stored copy even when the clock went backwards. StoredLearnProgress
+// rows at the same instant are ordered by the write that produced them.
+export function learnStamp(now: Date, existingUpdatedAt?: string): string {
+  const stamp = new Date(Math.max(now.getTime(), existingUpdatedAt ? Date.parse(existingUpdatedAt) + 1 : -Infinity));
+  if (stamp.getUTCFullYear() > 9999) {
+    throw new Error("Learn progress timestamp out of range.");
+  }
+  return stamp.toISOString();
 }
 
-// The newer of two copies of one lesson's progress; an equal time keeps the local copy.
-export function newerLearnProgress(local: StoredLearnProgress | undefined, remote: StoredLearnProgress): boolean {
-  return local === undefined || Date.parse(remote.updatedAt) > Date.parse(local.updatedAt);
+// Applies one committed change to the stored row in a single transaction, and asks for a sync only after the
+// write commits. A change already in the stored row is a no-op: nothing is stamped or synced. Both the request
+// and the transaction are awaited, so a failed put can never reject unobserved.
+export async function applyLearnChange(
+  lessonId: string,
+  change: LearnChange,
+  now = new Date(),
+): Promise<LearnProgress> {
+  return withDb(async (db) => {
+    const tx = db.transaction("learnProgress", "readwrite");
+    const changeRow = async () => {
+      const existing = await tx.objectStore("learnProgress").get(lessonId);
+      const current: LearnProgress = existing
+        ? { passed: existing.passed, skipsUsed: existing.skipsUsed }
+        : EMPTY_LEARN_PROGRESS;
+      if (
+        change.kind !== "reset" &&
+        (current.passed.includes(change.sentenceId) ||
+          (change.kind === "skip" && current.skipsUsed >= SKIPS_PER_LESSON))
+      ) {
+        return { progress: current, changed: false };
+      }
+      const next =
+        change.kind === "reset"
+          ? EMPTY_LEARN_PROGRESS
+          : {
+              passed: [...current.passed, change.sentenceId],
+              skipsUsed: current.skipsUsed + (change.kind === "skip" ? 1 : 0),
+            };
+      await tx.objectStore("learnProgress").put({
+        lessonId,
+        ...next,
+        updatedAt: learnStamp(now, existing?.updatedAt),
+      });
+      return { progress: next, changed: true };
+    };
+    const [{ progress, changed }] = await Promise.all([changeRow(), tx.done]);
+    if (changed) notifyLocalMutation();
+    return progress;
+  });
+}
+
+// Whether two Learn progress rows carry the same payload.
+export function sameLearnContent(a: LearnProgress, b: LearnProgress): boolean {
+  return a.skipsUsed === b.skipsUsed && a.passed.length === b.passed.length && a.passed.every((id, i) => id === b.passed[i]);
+}
+
+// Whether a sync reply's copy replaces the local one: newer wins, an equal time wins only when the payload differs.
+export function shouldApplyLearnReply(
+  local: StoredLearnProgress | undefined,
+  remote: StoredLearnProgress,
+): boolean {
+  if (!local) return true;
+  const delta = Date.parse(remote.updatedAt) - Date.parse(local.updatedAt);
+  return delta > 0 || (delta === 0 && !sameLearnContent(local, remote));
 }
 
 // Lets an open lesson reread its progress after a sync or a backup import changed it.

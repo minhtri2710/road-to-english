@@ -420,7 +420,7 @@ export function FeedbackCard({ result, children }: { result: ShadowScore; childr
 }
 
 // "Can't speak right now?": typing the whole sentence correctly also unlocks it.
-export function TypeInstead({ text, onPassed }: { text: string; onPassed: () => void }) {
+export function TypeInstead({ text, busy, onPassed }: { text: string; busy: boolean; onPassed: () => void }) {
   const t = useT();
   const inputId = useId();
   const [typed, setTyped] = useState("");
@@ -432,6 +432,7 @@ export function TypeInstead({ text, onPassed }: { text: string; onPassed: () => 
         className={stylex.props(styles.typeForm).className}
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy) return;
           const right = diffWords(typed, text).every((entry) => entry.kind === "correct");
           setResult(right ? "right" : "wrong");
           if (right) onPassed();
@@ -452,9 +453,9 @@ export function TypeInstead({ text, onPassed }: { text: string; onPassed: () => 
           }}
         />
         <HStack gap={1} align="center" wrap="wrap">
-          <Button label={t("Check typing")} type="submit" variant="secondary" />
+          <Button label={t("Check typing")} type="submit" variant="secondary" isDisabled={busy} />
           <Status>
-            {result === "right" && <Text type="supporting">{t("Every word is right. The next sentence is open.")}</Text>}
+            {result === "right" && <Text type="supporting">{t("Every word is right.")}</Text>}
             {result === "wrong" && <Text type="supporting">{t("Not every word matches yet. Listen again and fix it.")}</Text>}
           </Status>
         </HStack>
@@ -506,7 +507,7 @@ export function LearnTranscript({
       </div>
       <ol className={stylex.props(styles.lines).className}>
         {sentences.map((sentence, index) => {
-          const open = index <= openUpTo || index <= current;
+          const open = index <= openUpTo;
           const isCurrent = index === current;
           const score = scores.get(sentence.id);
           const mark =
@@ -529,7 +530,7 @@ export function LearnTranscript({
               <span className={stylex.props(styles.lineText).className}>
                 {open ? (
                   <>
-                    <span>{sentence.text}</span>
+                    <span lang="en">{sentence.text}</span>
                     {showVietnamese && sentence.vi && (
                       <span lang="vi" className={stylex.props(styles.lineVi).className}>
                         {sentence.vi}

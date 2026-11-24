@@ -11,7 +11,7 @@ export default tseslint.config(
     // The service worker runs in its own global scope, not the page's.
     files: ["public/sw.js"],
     languageOptions: {
-      globals: { self: "readonly", caches: "readonly", fetch: "readonly", URL: "readonly", Promise: "readonly" },
+      globals: { self: "readonly", caches: "readonly", fetch: "readonly", URL: "readonly", Promise: "readonly", Request: "readonly", importScripts: "readonly" },
     },
   },
 );

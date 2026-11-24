@@ -285,7 +285,7 @@ describe("sync scheduler failures", () => {
   });
 
   it.each([
-    ["export", () => vi.spyOn(backupStore, "exportAll").mockRejectedValue(new DOMException("read failed", "UnknownError"))],
+    ["export", () => vi.spyOn(backupStore, "readSyncSnapshot").mockRejectedValue(new DOMException("read failed", "UnknownError"))],
     ["merge", () => vi.spyOn(backupStore, "mergeInto").mockRejectedValue(new DOMException("write failed", "UnknownError"))],
   ])("reports an IndexedDB %s failure as local and retries it on the next unchanged trigger", async (_name, fail) => {
     const spy = fail();
@@ -348,7 +348,7 @@ describe("sync scheduler settle step", () => {
     await putCard(x);
     syncMock.mockResolvedValueOnce(reply([x]));
     expect(await run()).toEqual(["synced"]);
-    expect(sentCards(0)).toEqual([{ ...x, dirty: true }]);
+    expect(sentCards(0)).toEqual([x]);
     expect(await storedCards()).toEqual([{ ...x, dirty: false }]);
   });
 
@@ -394,6 +394,18 @@ describe("sync scheduler settle step", () => {
     expect(await storedCards()).toEqual([{ ...sent, dirty: false }, { ...created, dirty: true }]);
   });
 
+  // A 409 with the owner-mismatch code reports ownerMismatch; any other 409 is a server failure.
+  it.each<[string, SyncStatus, () => Error]>([
+    ["the mismatch code", "ownerMismatch", () => new ApiError(409, null, "sync owner mismatch")],
+    ["another code", "server", () => new ApiError(409, null, "conflict")],
+  ])("reports a 409 with %s as %s and keeps the local row dirty", async (_name, status, error) => {
+    const x = card("2026-01-02T00:00:00Z");
+    await putCard(x);
+    syncMock.mockRejectedValueOnce(error());
+    expect(await run()).toEqual([status]);
+    expect(await storedCards()).toEqual([{ ...x, dirty: true }]);
+  });
+
   // W3: a failed sync clears nothing.
   it.each<[string, SyncStatus, () => Error]>([
     ["a 500", "server", () => new ApiError(500, null)],
@@ -417,7 +429,7 @@ describe("sync scheduler settle step", () => {
     expect(await storedCards()).toEqual([{ ...x, dirty: false }]);
     await run();
     expect(syncMock.mock.results[0]!.type).toBe("return");
-    expect(sentCards(1)).toEqual([{ ...x, dirty: false }]);
+    expect(sentCards(1)).toEqual([]);
     expect(await storedCards()).toEqual([]);
     await run();
     expect(sentCards(2)).toEqual([]);
@@ -433,7 +445,7 @@ describe("sync scheduler settle step", () => {
     await replaceAll(importData(exportData(await exportBackupData(), now)));
     syncMock.mockResolvedValueOnce(reply([x, y]));
     await run();
-    expect(sentCards(1).map(({ id, dirty }) => [id, dirty])).toEqual([[x.id, true], [y.id, true]]);
+    expect(sentCards(1)).toEqual([x, y]);
   });
 
   // W6 (S2): a new epoch means the server lost its copy: nothing is deleted, every card is re-pushed dirty once.
@@ -451,7 +463,7 @@ describe("sync scheduler settle step", () => {
     const statuses = run(2);
     await vi.waitFor(() => expect(syncMock).toHaveBeenCalledTimes(2));
     expect(await storedCards()).toEqual([{ ...x, dirty: true }, { ...y, dirty: true }]);
-    expect(sentCards(1)).toEqual([{ ...x, dirty: true }, { ...y, dirty: true }]);
+    expect(sentCards(1)).toEqual([x, y]);
     followUp.resolve(reply([x, y], "epoch-2"));
     expect(await statuses).toEqual(["synced", "synced"]);
     expect(syncMock).toHaveBeenCalledTimes(2);
@@ -466,8 +478,8 @@ describe("sync scheduler settle step", () => {
     syncMock.mockResolvedValueOnce(reply([x]));
     expect(await run(2)).toEqual(["synced", "synced"]);
     expect(syncMock).toHaveBeenCalledTimes(2);
-    expect(sentCards(0)).toEqual([{ ...x, dirty: false }]);
-    expect(sentCards(1)).toEqual([{ ...x, dirty: true }]);
+    expect(sentCards(0)).toEqual([]);
+    expect(sentCards(1)).toEqual([x]);
     expect(await storedCards()).toEqual([{ ...x, dirty: false }]);
   });
 });

@@ -3,22 +3,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openAppDatabase } from "./db";
 import { streakState, todayKey } from "./progress";
 import {
-  getCompletedLessons,
-  getDailyCount,
-  getPracticeDays,
   markLessonComplete,
+  readProgressSnapshot,
   recordPractice,
 } from "./progressStore";
 import { setSyncTrigger } from "./syncEvents";
 
 describe("progress store", () => {
-  it("round-trips practice days and completed lessons", async () => {
-    await recordPractice("2026-01-05", { newCard: false });
-    await recordPractice("2026-01-05", { newCard: false });
+  it("reads the day's count and total XP from one progress snapshot", async () => {
+    await recordPractice("2026-01-04", { newCard: false });
+    await recordPractice("2026-01-05", { newCard: true });
     await markLessonComplete("lesson-1");
-
-    expect(await getPracticeDays()).toEqual(["2026-01-05"]);
-    expect(await getCompletedLessons()).toEqual(["lesson-1"]);
+    const open = vi.spyOn(indexedDB, "open");
+    const transaction = vi.spyOn(IDBDatabase.prototype, "transaction");
+    expect(await readProgressSnapshot("2026-01-05")).toEqual({
+      practiceDays: ["2026-01-04", "2026-01-05"], completedLessons: new Set(["lesson-1"]),
+      dailyCount: { date: "2026-01-05", actions: 1, newCards: 1 }, xp: 20,
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 
   it("notifies a local mutation only after the practice transaction commits", async () => {
@@ -53,17 +56,14 @@ describe("progress store", () => {
     await recordPractice("2026-01-05", { newCard: true });
     await recordPractice("2026-01-05", { newCard: true });
 
-    expect(await getDailyCount("2026-01-05")).toEqual({
+    const snapshot = await readProgressSnapshot("2026-01-05");
+    expect(snapshot.dailyCount).toEqual({
       date: "2026-01-05",
       actions: 3,
       newCards: 2,
     });
-    expect(await getPracticeDays()).toEqual(["2026-01-05"]);
-    expect(await getDailyCount("2026-01-06")).toEqual({
-      date: "2026-01-06",
-      actions: 0,
-      newCards: 0,
-    });
+    expect(snapshot.practiceDays).toEqual(["2026-01-05"]);
+    expect((await readProgressSnapshot("2026-01-06")).dailyCount).toBeNull();
   });
 
   it("writes the practice day and the daily count in one transaction", async () => {
@@ -80,8 +80,9 @@ describe("progress store", () => {
       "practiceDays",
     ]);
     expect(transaction.mock.calls[0][1]).toBe("readwrite");
-    expect(await getPracticeDays()).toEqual(["2026-01-05"]);
-    expect((await getDailyCount("2026-01-05")).actions).toBe(1);
+    const snapshot = await readProgressSnapshot("2026-01-05");
+    expect(snapshot.practiceDays).toEqual(["2026-01-05"]);
+    expect(snapshot.dailyCount?.actions).toBe(1);
   });
 
   it("splits actions at local midnight while the streak continues", async () => {
@@ -94,8 +95,9 @@ describe("progress store", () => {
     await recordPractice(after, { newCard: false });
 
     expect([before, after]).toEqual(["2026-01-05", "2026-01-06"]);
-    expect(await getDailyCount(before)).toEqual({ date: before, actions: 1, newCards: 1 });
-    expect(await getDailyCount(after)).toEqual({ date: after, actions: 1, newCards: 0 });
-    expect(streakState(await getPracticeDays(), after).streak).toBe(2);
+    expect((await readProgressSnapshot(before)).dailyCount).toEqual({ date: before, actions: 1, newCards: 1 });
+    const snapshot = await readProgressSnapshot(after);
+    expect(snapshot.dailyCount).toEqual({ date: after, actions: 1, newCards: 0 });
+    expect(streakState(snapshot.practiceDays, after).streak).toBe(2);
   });
 });

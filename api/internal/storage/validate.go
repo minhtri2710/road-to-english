@@ -14,7 +14,7 @@ import (
 
 // validate checks the whole sync input against the wire contract web validateCard also enforces.
 func (s State) validate() error {
-	if s.Cards == nil || s.PracticeDays == nil || s.LessonCompletion == nil {
+	if s.Cards == nil || s.PracticeDays == nil || s.LessonCompletion == nil || s.LearnProgress == nil {
 		return ErrInvalidState
 	}
 
@@ -37,9 +37,6 @@ func (s State) validate() error {
 			return ErrInvalidState
 		}
 		if _, err := parseTimestamp(card.UpdatedAt); err != nil {
-			return ErrInvalidState
-		}
-		if card.Dirty == nil {
 			return ErrInvalidState
 		}
 		if !card.DeletedAt.Present {

@@ -16,10 +16,11 @@ describe("UserLessonList", () => {
     await userLessonsStore.putUserLesson(userLesson);
     await progressStore.markLessonComplete(userLesson.id);
     const { container } = await renderApp();
-    await waitForCondition(hasText(container, userLesson.title));
-    const row = Array.from(container.querySelectorAll("main li button")).find(
+    const lessonRow = () => Array.from(container.querySelectorAll("main li button")).find(
       (button) => button.getAttribute("aria-label") === userLesson.title,
-    )!;
+    );
+    await waitForCondition(() => lessonRow()?.textContent?.includes("Completed") ?? false);
+    const row = lessonRow()!;
     const description = (row.getAttribute("aria-describedby") ?? "")
       .split(" ")
       .map((id) => document.getElementById(id)?.textContent)

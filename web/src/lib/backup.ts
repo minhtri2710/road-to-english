@@ -19,8 +19,9 @@ export interface SyncState {
 const MAX_PASSED_SENTENCES = 10000;
 const MAX_SKIPS_USED = 1000;
 
-// The /sync request: every card carries its stored dirty flag.
-export interface SyncRequest extends Omit<SyncState, "cards"> {
+// The local read behind a /sync request: every card carries its stored dirty flag. Dirty is
+// local-only; the wire sends a SyncState built from this snapshot's dirty cards.
+export interface SyncSnapshot extends Omit<SyncState, "cards"> {
   cards: StoredCard[];
 }
 
@@ -53,8 +54,7 @@ interface SerializedState {
   cards: SerializedCard[];
   practiceDays: { date: string }[];
   lessonCompletion: { lessonId: string }[];
-  // Missing from a backup file written before Learn progress was saved.
-  learnProgress?: StoredLearnProgress[];
+  learnProgress: StoredLearnProgress[];
 }
 
 interface BackupEnvelope extends BackupData {
@@ -177,7 +177,7 @@ function validateCard(value: unknown, index: number): asserts value is Serialize
 }
 
 function validateSyncState(value: unknown): asserts value is SerializedState {
-  if (!isRecord(value) || !Array.isArray(value.cards) || !Array.isArray(value.practiceDays) || !Array.isArray(value.lessonCompletion)) {
+  if (!isRecord(value) || !Array.isArray(value.cards) || !Array.isArray(value.practiceDays) || !Array.isArray(value.lessonCompletion) || !Array.isArray(value.learnProgress)) {
     throw new Error(tr("Invalid backup stores."));
   }
 
@@ -202,10 +202,6 @@ function validateSyncState(value: unknown): asserts value is SerializedState {
     }
   });
 
-  if (value.learnProgress === undefined) return;
-  if (!Array.isArray(value.learnProgress)) {
-    throw new Error(tr("Invalid backup stores."));
-  }
   const progressLessons = new Set<string>();
   value.learnProgress.forEach((progress: unknown, index) => {
     if (!isValidLearnProgress(progress) || progressLessons.has(progress.lessonId)) {
@@ -258,7 +254,7 @@ export function reviveSyncState(value: unknown): SyncState {
     })),
     practiceDays: value.practiceDays,
     lessonCompletion: value.lessonCompletion,
-    learnProgress: (value.learnProgress ?? []).map(({ lessonId, passed, skipsUsed, updatedAt }) => ({ lessonId, passed, skipsUsed, updatedAt })),
+    learnProgress: value.learnProgress.map(({ lessonId, passed, skipsUsed, updatedAt }) => ({ lessonId, passed, skipsUsed, updatedAt })),
   };
 }
 

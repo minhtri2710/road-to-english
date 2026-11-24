@@ -27,19 +27,27 @@ describe("sync API", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(syncState(local)).resolves.toEqual(response);
+    await expect(syncState(local, "user-1")).resolves.toEqual(response);
     expect(fetchMock).toHaveBeenCalledWith("/sync", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-RTE-Sync-Owner": "user-1" },
       body: JSON.stringify(local),
     });
+  });
+
+  it("rejects a 200 missing learnProgress through the shared validator", async () => {
+    const { learnProgress: _omitted, ...older } = response;
+    void _omitted;
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(older), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(syncState(local, "user-1")).rejects.not.toBeInstanceOf(ApiError);
   });
 
   it("rejects an invalid response through the shared validator", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...response, practiceDays: [{ date: "2026-02-30" }] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(syncState(local)).rejects.toThrow();
+    await expect(syncState(local, "user-1")).rejects.toThrow();
   });
 });
 
@@ -52,6 +60,6 @@ describe("sync API epoch", () => {
   it.each([["missing", undefined], ["empty", ""], ["not a string", 1]])("rejects a 200 whose syncEpoch is %s", async (_name, syncEpoch) => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...response, syncEpoch }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(syncState(local)).rejects.not.toBeInstanceOf(ApiError);
+    await expect(syncState(local, "user-1")).rejects.not.toBeInstanceOf(ApiError);
   });
 });

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
@@ -28,15 +28,18 @@ import { useT } from "./i18n";
 import { todayKey } from "./lib/progress";
 import { capNewCards } from "./lib/vocab";
 import { projectTheme } from "./theme";
-import { LessonDetail, LibraryLessonDetail } from "./lesson/LessonDetail";
 import { IMPORT_TITLE, ImportTextForm } from "./library/ImportTextForm";
 import { LessonList } from "./library/LessonList";
 import { UserLessonList } from "./library/UserLessonList";
-import { Landing } from "./landing/Landing";
-import { ReviewDeck } from "./review/ReviewDeck";
 
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
+
+// React loads these views on demand; the service worker installs their code separately for offline use.
+const Landing = lazy(() => import("./landing/Landing").then(({ Landing }) => ({ default: Landing })));
+const ReviewDeck = lazy(() => import("./review/ReviewDeck").then(({ ReviewDeck }) => ({ default: ReviewDeck })));
+const LessonDetail = lazy(() => import("./lesson/LessonDetail").then(({ LessonDetail }) => ({ default: LessonDetail })));
+const LibraryLessonDetail = lazy(() => import("./lesson/LessonDetail").then(({ LibraryLessonDetail }) => ({ default: LibraryLessonDetail })));
 
 const appStyles = stylex.create({
   page: {
@@ -232,107 +235,109 @@ function AppViews() {
               </Text>
             </div>
           )}
-          {view === "about" ? (
-            <Landing
-              takeHeadingFocus={takeHeadingFocus}
-              onStart={() => navigate({ view: "library" })}
-              onOpenLesson={(id) => navigate({ view: "lesson", id })}
-            />
-          ) : view === "review" ? (
-            <VStack gap={2} xstyle={appStyles.readingColumn}>
-              <Badge label={t("{count} due", { count: reviewDeck.length })} variant="info" xstyle={appStyles.reviewDue} />
-              <ReviewDeck
-                due={reviewDeck}
-                hiddenNew={deck.due.length - reviewDeck.length}
-                nextDueInMinutes={deck.nextDueInMinutes}
-                hasCards={deck.savedCardIds.size > 0}
-                loading={deck.loading}
-                loadFailed={deck.error !== null}
-                review={deck.review}
-                recordPractice={recordPractice}
-                onGoToLibrary={() => navigate({ view: "library" })}
+          <Suspense fallback={<Text as="p" role="status" data-testid="route-loading">{t("Loading…")}</Text>}>
+            {view === "about" ? (
+              <Landing
+                takeHeadingFocus={takeHeadingFocus}
+                onStart={() => navigate({ view: "library" })}
+                onOpenLesson={(id) => navigate({ view: "lesson", id })}
               />
-            </VStack>
-          ) : view === "library" ? (
-            <VStack gap={4} xstyle={appStyles.sections}>
-              <LessonList
-                intro={(
-                  <div className={stylex.props(appStyles.intro).className}>
-                    <ul aria-label={t("The practice loop")} className={stylex.props(appStyles.chips).className}>
-                      <li className={stylex.props(appStyles.chip, appStyles.listenChip).className}>{t("LISTEN")}</li>
-                      <li className={stylex.props(appStyles.chip, appStyles.speakChip).className}>{t("SAY IT BACK")}</li>
-                      <li className={stylex.props(appStyles.chip, appStyles.unlockChip).className}>{t("UNLOCK")}</li>
-                    </ul>
-                    <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.heroTitle}>{t("Lesson library")}</ViewHeading>
-                    <Text type="large" xstyle={sharedStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
-                    <Button label={t("How it works")} variant="secondary" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
-                  </div>
-                )}
-                onSelect={(id) => navigate({ view: "lesson", id })}
-                completedLessons={progress.completedLessons}
-                takeFocus={takeReturnFocus}
-                focusHeading={focusHeading}
-                onSettled={onLibrarySettled}
-                levelFilter={levelFilter}
-                chooseLevelFilter={chooseLevelFilter}
-                lastLesson={lastLesson}
-                ownLessons={Array.isArray(userLessons) ? userLessons : []}
-                onContinue={() => lastLesson && navigate(lastLesson)}
-                today={{
-                  due,
-                  actionsToday: progress.actionsToday,
-                  dailyGoal,
-                  goalMet,
-                  chooseGoal,
-                  streak: progress.streak,
-                  freezes: progress.freezes,
-                  xp: progress.xp,
-                  week: progress.week,
-                  onReview: () => navigate({ view: "review" }),
-                }}
-              />
-              <VStack gap={2}>
-                <VStack gap={0.5}>
-                  <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow, sharedStyles.speakEyebrow).className}>{t("Your own")}</p>
-                  <Heading level={2} ref={userLessonsHeading} tabIndex={-1} xstyle={sharedStyles.sectionTitle}>{t("Your lessons")}</Heading>
-                </VStack>
-                <UserLessonList
-                  lessons={userLessons}
-                  onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
-                  onDelete={(lesson) => void deleteLesson(lesson)}
-                  deleteFailedId={deleteFailedId}
-                  completedLessons={progress.completedLessons}
-                  takeFocus={takeReturnFocus}
-                  onCreateLesson={() => navigate({ view: "manage" }, IMPORT_TITLE)}
+            ) : view === "review" ? (
+              <VStack gap={2} xstyle={appStyles.readingColumn}>
+                <Badge label={t("{count} due", { count: reviewDeck.length })} variant="info" xstyle={appStyles.reviewDue} />
+                <ReviewDeck
+                  due={reviewDeck}
+                  hiddenNew={deck.due.length - reviewDeck.length}
+                  nextDueInMinutes={deck.nextDueInMinutes}
+                  hasCards={deck.savedCardIds.size > 0}
+                  loading={deck.loading}
+                  loadFailed={deck.error !== null}
+                  review={deck.review}
+                  recordPractice={recordPractice}
+                  onGoToLibrary={() => navigate({ view: "library" })}
                 />
               </VStack>
-            </VStack>
-          ) : view === "manage" ? (
-            <div className={stylex.props(appStyles.manageGrid).className}>
-              <div className={stylex.props(sharedStyles.panel).className}>
-                <ImportTextForm
-                  onCreate={createLesson}
+            ) : view === "library" ? (
+              <VStack gap={4} xstyle={appStyles.sections}>
+                <LessonList
+                  intro={(
+                    <div className={stylex.props(appStyles.intro).className}>
+                      <ul aria-label={t("The practice loop")} className={stylex.props(appStyles.chips).className}>
+                        <li className={stylex.props(appStyles.chip, appStyles.listenChip).className}>{t("LISTEN")}</li>
+                        <li className={stylex.props(appStyles.chip, appStyles.speakChip).className}>{t("SAY IT BACK")}</li>
+                        <li className={stylex.props(appStyles.chip, appStyles.unlockChip).className}>{t("UNLOCK")}</li>
+                      </ul>
+                      <ViewHeading takeFocus={takeHeadingFocus} xstyle={sharedStyles.heroTitle}>{t("Lesson library")}</ViewHeading>
+                      <Text type="large" xstyle={sharedStyles.lead}>{t("Choose a lesson to practise reading and speaking.")}</Text>
+                      <Button label={t("How it works")} variant="secondary" xstyle={appStyles.introLink} onClick={() => navigate({ view: "about" })} />
+                    </div>
+                  )}
+                  onSelect={(id) => navigate({ view: "lesson", id })}
+                  completedLessons={progress.completedLessons}
+                  takeFocus={takeReturnFocus}
+                  focusHeading={focusHeading}
+                  onSettled={onLibrarySettled}
                   levelFilter={levelFilter}
-                  takeReturnFocus={takeReturnFocus}
+                  chooseLevelFilter={chooseLevelFilter}
+                  lastLesson={lastLesson}
+                  ownLessons={Array.isArray(userLessons) ? userLessons : []}
+                  onContinue={() => lastLesson && navigate(lastLesson)}
+                  today={{
+                    due,
+                    actionsToday: progress.actionsToday,
+                    dailyGoal,
+                    goalMet,
+                    chooseGoal,
+                    streak: progress.streak,
+                    freezes: progress.freezes,
+                    xp: progress.xp,
+                    week: progress.week,
+                    onReview: () => navigate({ view: "review" }),
+                  }}
                 />
+                <VStack gap={2}>
+                  <VStack gap={0.5}>
+                    <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow, sharedStyles.speakEyebrow).className}>{t("Your own")}</p>
+                    <Heading level={2} ref={userLessonsHeading} tabIndex={-1} xstyle={sharedStyles.sectionTitle}>{t("Your lessons")}</Heading>
+                  </VStack>
+                  <UserLessonList
+                    lessons={userLessons}
+                    onSelect={(lesson) => navigate({ view: "my", id: lesson.id })}
+                    onDelete={(lesson) => void deleteLesson(lesson)}
+                    deleteFailedId={deleteFailedId}
+                    completedLessons={progress.completedLessons}
+                    takeFocus={takeReturnFocus}
+                    onCreateLesson={() => navigate({ view: "manage" }, IMPORT_TITLE)}
+                  />
+                </VStack>
+              </VStack>
+            ) : view === "manage" ? (
+              <div className={stylex.props(appStyles.manageGrid).className}>
+                <div className={stylex.props(sharedStyles.panel).className}>
+                  <ImportTextForm
+                    onCreate={createLesson}
+                    levelFilter={levelFilter}
+                    takeReturnFocus={takeReturnFocus}
+                  />
+                </div>
+                <div className={stylex.props(sharedStyles.panel).className}>
+                  <YourData
+                    storageKept={storageKept}
+                    signedIn={auth.user !== null}
+                    setError={setBackupError}
+                    onImported={reloadAfterImport}
+                    takeReturnFocus={takeReturnFocus}
+                  />
+                </div>
               </div>
-              <div className={stylex.props(sharedStyles.panel).className}>
-                <YourData
-                  storageKept={storageKept}
-                  signedIn={auth.user !== null}
-                  setError={setBackupError}
-                  onImported={reloadAfterImport}
-                  takeReturnFocus={takeReturnFocus}
-                />
-              </div>
-            </div>
-          ) : route.view === "lesson" ? (
-            <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
-          ) : userLesson ? (
-            <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
-          ) : (
-            <Text as="p">{t("Loading lesson...")}</Text>
-          )}
+            ) : route.view === "lesson" ? (
+              <LibraryLessonDetail key={route.id} id={route.id} {...detailProps} />
+            ) : userLesson ? (
+              <LessonDetail key={userLesson.id} lesson={userLesson} {...detailProps} />
+            ) : (
+              <Text as="p">{t("Loading lesson...")}</Text>
+            )}
+          </Suspense>
         </VStack>
       </div>
       <AppFooter onNavigate={navigate} />

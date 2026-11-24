@@ -4,9 +4,9 @@ import { vi } from "vitest";
 
 import type { Lesson } from "../api/lessons";
 import { App } from "../App";
+import { withDb } from "../lib/db";
 import { writePref } from "../lib/prefs";
 import { todayKey } from "../lib/progress";
-import { getDailyCount } from "../lib/progressStore";
 import { greetingsLesson, lessonSummaries } from "./fixtures";
 
 // The App test harness: a fetch that serves the api, a StrictMode App, and DOM helpers.
@@ -123,6 +123,7 @@ export async function renderApp({ route, lesson }: { route?: FetchRoute; lesson?
       </StrictMode>,
     );
   });
+  await settleLazy(container);
   const view: AppView = { container, root, unmount: () => close(view) };
   mounted.add(view);
   return view;
@@ -159,6 +160,19 @@ export async function clickButtonWith(container: HTMLElement, text: string): Pro
   await clickElement(link, `${text} link`);
 }
 
+// Waits out a lazy route chunk so helpers can keep asserting synchronously after a click. Vitest's own
+// barrier resolves whatever dynamic import the click started; the bounded poll then waits for the
+// route-loading marker to clear and fails the test on a timeout instead of passing a suspended view.
+async function settleLazy(container: HTMLElement): Promise<void> {
+  // Awaiting inside act makes the resolved lazy ping part of that act's drained work.
+  await harnessAct(() => vi.dynamicImportSettled());
+  if (container.querySelector('[data-testid="route-loading"]')) {
+    await waitForCondition(() => container.querySelector('[data-testid="route-loading"]') === null);
+  }
+  // The just-revealed view mounts and starts its data load; one drained task lets that land too.
+  await harnessAct(nextTask);
+}
+
 // Clicks this element; a missing one fails the test.
 export async function clickElement(element: HTMLElement | null | undefined, what: string): Promise<void> {
   if (!element) throw new Error(`${what} not found`);
@@ -169,6 +183,7 @@ export async function clickElement(element: HTMLElement | null | undefined, what
       element.click();
     }
   });
+  await settleLazy(element.ownerDocument.body);
 }
 
 export const h1Texts = (container: HTMLElement) => Array.from(container.querySelectorAll("h1")).map((h1) => h1.textContent);
@@ -260,7 +275,7 @@ export async function waitForCondition(condition: () => boolean): Promise<void> 
 
 // Today's practice actions as stored; lesson views show no count, the library's Today card does.
 export async function actionsToday(): Promise<number> {
-  return (await getDailyCount(todayKey(new Date())))?.actions ?? 0;
+  return (await withDb((db) => db.get("dailyCounts", todayKey(new Date()))))?.actions ?? 0;
 }
 
 export async function waitForActions(count: number): Promise<void> {

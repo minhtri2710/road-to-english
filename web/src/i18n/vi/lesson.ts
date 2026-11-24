@@ -145,8 +145,14 @@ export const lesson: Record<string, string> = {
     "Bật Kiểm tra phát âm trong Hiển thị để dùng chế độ Học",
   "Free": "Tự do",
   "Learn": "Học",
-  "Unlocked {passed} of {count} sentences · {left} of {total} skips left. Saved on this device.":
-    "Đã mở khoá {passed}/{count} câu · còn {left}/{total} lượt bỏ qua. Lưu trên thiết bị này.",
+  "Unlocked {passed} of {count} sentences · {left} of {total} skips left.":
+    "Đã mở khoá {passed}/{count} câu · còn {left}/{total} lượt bỏ qua.",
+  "Saved on this device.": "Đã lưu trên thiết bị này.",
+  "Loading Learn progress…": "Đang tải tiến độ học…",
+  "Couldn't load Learn progress.": "Không tải được tiến độ học.",
+  "Saving Learn progress…": "Đang lưu tiến độ học…",
+  "Couldn't save Learn progress.": "Không lưu được tiến độ học.",
+  "Retry save": "Thử lưu lại",
   "Start over": "Làm lại từ đầu",
   "Lock every sentence again and get all skips back?": "Khoá lại tất cả các câu và lấy lại mọi lượt bỏ qua?",
   "Learn mode locks each next sentence until you say this one clearly. Turn on Pronunciation check in Display to use it.":
@@ -171,6 +177,7 @@ export const lesson: Record<string, string> = {
   "Unlocked · {score} points": "Đã mở khoá · {score} điểm",
   "The next sentence is open.": "Câu tiếp theo đã mở.",
   "Not yet · {score} points": "Chưa đạt · {score} điểm",
+  "{score} points": "{score} điểm",
   "Reach {score} to open the next sentence. Listen slowly, then try again.":
     "Đạt {score} điểm để mở câu tiếp theo. Nghe chậm rồi thử lại.",
   "Unlocked": "Đã mở khoá",
@@ -181,6 +188,7 @@ export const lesson: Record<string, string> = {
   "Shadow Gate": "Cổng nói đuổi",
   "Listen slowly {speed}×": "Nghe chậm {speed}×",
   "Score {score}. Next sentence unlocked.": "Điểm {score}. Đã mở khoá câu tiếp theo.",
+  "Score {score}.": "Điểm {score}.",
   "Score {score}. Reach {pass} to unlock the next sentence.": "Điểm {score}. Đạt {pass} điểm để mở khoá câu tiếp theo.",
 
   // Speech recognition errors
@@ -232,7 +240,7 @@ export const lesson: Record<string, string> = {
   "Can't speak right now? Type it instead": "Không thể nói lúc này? Gõ lại câu",
   "Type the sentence you heard. Getting every word right unlocks the next one.": "Gõ lại câu bạn vừa nghe. Đúng tất cả các từ sẽ mở khoá câu tiếp theo.",
   "Check typing": "Kiểm tra",
-  "Every word is right. The next sentence is open.": "Đúng tất cả các từ. Câu tiếp theo đã mở.",
+  "Every word is right.": "Đúng tất cả các từ.",
   "Not every word matches yet. Listen again and fix it.": "Vẫn còn từ chưa khớp. Hãy nghe lại và sửa.",
   "Sentence": "Câu",
   "unlocked": "đã mở khoá",

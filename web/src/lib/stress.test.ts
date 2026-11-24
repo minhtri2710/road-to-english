@@ -109,7 +109,9 @@ describe("intonation", () => {
 
 describe("the vendored dictionary", () => {
   it("marks known words from CMUdict", async () => {
-    const vendored = await loadStressDict();
+    const [vendored, concurrent] = await Promise.all([loadStressDict(), loadStressDict()]);
+    expect(concurrent).toBe(vendored);
+    expect(await loadStressDict()).toBe(vendored);
     expect(wordStress("banana", vendored)).toEqual({ syllables: 3, primary: 1 });
     expect(wordStress("today", vendored)).toEqual({ syllables: 2, primary: 1 });
     expect(wordStress("record", vendored)).toBeNull();

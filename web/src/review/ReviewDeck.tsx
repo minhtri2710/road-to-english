@@ -170,10 +170,10 @@ function listen(text: string, onWord?: (charIndex: number) => void, onFinish?: (
   speak(text, LISTEN_WPM, 1, { onWord, onEnd: onFinish, onError: onFinish });
 }
 
-function SpokenText({ text, charIndex }: { text: string; charIndex: number | null }) {
+function SpokenText({ text, charIndex, lang = "en" }: { text: string; charIndex: number | null; lang?: string }) {
   const spokenIndex = wordIndexAtChar(text, charIndex);
   return (
-    <>
+    <span lang={lang}>
       {splitWords(text).map((part, index) => {
         const spoken = spokenIndex === index;
         return (
@@ -182,7 +182,7 @@ function SpokenText({ text, charIndex }: { text: string; charIndex: number | nul
           </span>
         );
       })}
-    </>
+    </span>
   );
 }
 
@@ -208,13 +208,14 @@ const TEXT_TARGETS = "input, textarea";
 function CardBack({ card }: { card: VocabCard }) {
   const split = splitCardBack(card);
   if (split === null) {
-    return card.back;
+    // A user lesson's notes are authored content; only library cards are known English.
+    return card.source.lessonId.startsWith("user-") ? card.back : <span lang="en">{card.back}</span>;
   }
   return (
     <>
-      {split.before}
+      {split.before !== "" && <span lang="en">{split.before}</span>}
       <span lang="vi">{split.vi}</span>
-      {split.after}
+      {split.after !== "" && <span lang="en">{split.after}</span>}
     </>
   );
 }
@@ -478,7 +479,7 @@ export function ReviewDeck({
       >
         <VStack gap={2}>
           <Text as="p" weight="semibold" ref={promptRef} tabIndex={-1}>
-            {listenFirst && !showAnswer ? t("Listen and recall the card.") : <SpokenText text={card.front} charIndex={spokenWord?.surface === "card" && spokenWord.cardTurn === cardTurn ? spokenWord.charIndex : null} />}
+            {listenFirst && !showAnswer ? t("Listen and recall the card.") : <SpokenText text={card.front} charIndex={spokenWord?.surface === "card" && spokenWord.cardTurn === cardTurn ? spokenWord.charIndex : null} lang={card.source.lessonId.startsWith("user-") ? undefined : "en"} />}
           </Text>
           {canSpeak && (
             <HStack gap={1} vAlign="center">

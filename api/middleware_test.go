@@ -28,8 +28,8 @@ func TestCORSPreflight(t *testing.T) {
 	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
 	}
-	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type" {
-		t.Fatalf("Access-Control-Allow-Headers = %q, want Content-Type", got)
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type, X-RTE-Sync-Owner" {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want Content-Type, X-RTE-Sync-Owner", got)
 	}
 	if got := recorder.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
 		t.Fatalf("Access-Control-Allow-Credentials = %q, want true", got)
