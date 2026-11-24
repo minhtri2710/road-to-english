@@ -20,7 +20,9 @@ import { sharedStyles } from "./styles";
 
 const styles = stylex.create({
   header: {
-    borderBottom: "1px solid var(--color-border)",
+    borderBottomWidth: "1px",
+    borderBottomStyle: "solid",
+    borderBottomColor: "var(--color-border)",
     backgroundColor: "var(--color-background-body)",
   },
   inner: {

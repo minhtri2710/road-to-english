@@ -41,7 +41,9 @@ const cardFlip = stylex.keyframes({
 const styles = stylex.create({
   reviewCard: {
     padding: "var(--spacing-6)",
-    border: "1px solid var(--color-border)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",
   },
@@ -53,7 +55,9 @@ const styles = stylex.create({
   },
   summaryCard: {
     padding: "var(--spacing-3)",
-    border: "1px solid var(--color-border)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--color-border)",
     borderRadius: "var(--radius-element)",
     backgroundColor: "var(--color-background-surface)",
   },

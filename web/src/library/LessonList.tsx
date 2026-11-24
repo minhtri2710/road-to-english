@@ -33,7 +33,6 @@ const LEVEL_NAMES: Record<Level, string> = {
 const styles = stylex.create({
   levelFilter: {
     flexWrap: "wrap",
-    alignSelf: "flex-start",
     maxWidth: "100%",
   },
   // The design's hero: the library's title and intro, with Today beside it from laptop width.
@@ -42,7 +41,19 @@ const styles = stylex.create({
     gridTemplateColumns: { default: "minmax(0, 1fr)", "@media (min-width: 960px)": "minmax(0, 1fr) minmax(0, 30rem)" },
     alignItems: "center",
     gap: { default: "var(--spacing-2)", "@media (min-width: 960px)": "var(--spacing-10)" },
-    paddingBlockEnd: { default: 0, "@media (min-width: 481px)": "var(--spacing-6)" },
+    paddingBlockEnd: { default: 0, "@media (min-width: 481px)": "var(--spacing-10)" },
+  },
+  // Room between the section header, its progress and the first level group from tablet width.
+  sectionGap: {
+    rowGap: { default: null, "@media (min-width: 481px)": "var(--spacing-6)" },
+  },
+  // The section's title on the left and the level filter on the right, as the design's section headers.
+  sectionHeader: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: "var(--spacing-1) var(--spacing-6)",
   },
   // A failed load sits in a panel the size of a lesson card's row, so the page keeps its shape.
   errorPanel: {
@@ -277,7 +288,7 @@ export function LessonList({
   }
 
   return (
-    <VStack gap={2}>
+    <VStack gap={2} xstyle={styles.sectionGap}>
       <div className={stylex.props(styles.hero).className}>
         {intro}
         {welcomed ? (
@@ -305,20 +316,22 @@ export function LessonList({
         )}
       </div>
       <VStack gap={1}>
-        <VStack gap={0.5}>
-          <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow).className}>{t("Lessons")}</p>
-          <Heading level={2} xstyle={sharedStyles.sectionTitle}>{t("Library lessons")}</Heading>
-        </VStack>
-        <SegmentedControl
-          label={t("Library level")}
-          xstyle={styles.levelFilter}
-          value={levelFilter}
-          onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
-        >
-          {LEVEL_FILTERS.map((filter) => (
-            <SegmentedControlItem key={filter} value={filter} label={filter === "All" ? t("All") : filter} />
-          ))}
-        </SegmentedControl>
+        <div className={stylex.props(styles.sectionHeader).className}>
+          <VStack gap={0.5}>
+            <p aria-hidden="true" className={stylex.props(sharedStyles.eyebrow).className}>{t("Lessons")}</p>
+            <Heading level={2} xstyle={sharedStyles.sectionTitle}>{t("Library lessons")}</Heading>
+          </VStack>
+          <SegmentedControl
+            label={t("Library level")}
+            xstyle={styles.levelFilter}
+            value={levelFilter}
+            onChange={(filter) => chooseLevelFilter(filter as LevelFilter)}
+          >
+            {LEVEL_FILTERS.map((filter) => (
+              <SegmentedControlItem key={filter} value={filter} label={filter === "All" ? t("All") : filter} />
+            ))}
+          </SegmentedControl>
+        </div>
         {shown && shown.length > 0 && (
           <div className={stylex.props(styles.progressRow).className}>
             <Text type="supporting" id="library-overall-progress-text">{`${levelFilter === "All" ? "" : `${levelFilter}: `}${t("{done} of {total} completed", { done: completedCount, total: shown.length })}`}</Text>
