@@ -103,7 +103,8 @@ export const projectTheme = defineTheme({
     "--color-on-error": pair(themePalette.onError),
     "--color-error-muted": pair(themePalette.errorMuted),
     "--color-border": ["#D6D1C5", "#323941"],
-    "--color-border-emphasized": ["#8B8F96", "#6B737D"],
+    // Line-strong: at least 3:1 on both the page (#F6F4EF, 3.15:1) and white surfaces (3.47:1).
+    "--color-border-emphasized": ["#868A91", "#6B737D"],
     "--color-shadow": ["rgba(21, 24, 29, 0.10)", "rgba(0, 0, 0, 0.40)"],
     "--shadow-low": "0 1px 2px light-dark(rgba(21, 24, 29, 0.06), rgba(0, 0, 0, 0.40)), 0 4px 12px light-dark(rgba(21, 24, 29, 0.06), rgba(0, 0, 0, 0))",
     "--shadow-med": "0 2px 4px light-dark(rgba(21, 24, 29, 0.08), rgba(0, 0, 0, 0.40)), 0 8px 24px light-dark(rgba(21, 24, 29, 0.10), rgba(0, 0, 0, 0.40))",

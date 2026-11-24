@@ -223,6 +223,9 @@ export function SentenceCard({
         </VStack>
       ) : (
         <VStack gap={1}>
+          <span aria-hidden="true" className={stylex.props(styles.number).className}>
+            {String(data.sentences.indexOf(sentence) + 1).padStart(2, "0")}
+          </span>
           {mode === "dictation" ? (
             <SentenceDictation
               id={sentence.id}
